@@ -1,0 +1,55 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "plugins": ["boundaries"],
+  "settings": {
+    "boundaries/include": ["src/**/*"],
+    "boundaries/elements": [
+      {
+        "type": "app",
+        "pattern": "src/app/**/*",
+        "mode": "file"
+      },
+      {
+        "type": "feature",
+        "pattern": "src/features/*/**/*",
+        "mode": "file",
+        "capture": ["featureName"]
+      },
+      {
+        "type": "shared",
+        "pattern": "src/shared/**/*",
+        "mode": "file"
+      },
+      {
+        "type": "never-import",
+        "pattern": "src/middleware.ts",
+        "mode": "file"
+      }
+    ]
+  },
+  "rules": {
+    "boundaries/element-types": [
+      "error",
+      {
+        "default": "disallow",
+        "rules": [
+          {
+            "from": ["shared"],
+            "allow": ["shared"]
+          },
+          {
+            "from": ["feature"],
+            "allow": [
+              "shared",
+              ["feature", { "featureName": "${from.featureName}" }]
+            ]
+          },
+          {
+            "from": ["app"],
+            "allow": ["app", "shared", "feature"]
+          }
+        ]
+      }
+    ]
+  }
+}
