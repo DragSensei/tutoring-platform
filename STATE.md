@@ -1,8 +1,8 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Active Branch:** `fix/restore-landing-page`
-- **Last Completed Work:** Restored complete, clean landing page. Fixed nav (About Us, Contact Us, Sign In) and slim footer. Centered quick-dashboard under navbar: student wallet balance at the top, next lecture details with live countdown timer, and tutor upcoming lectures view. Removed courses catalog, pricing tables, and clutter.
+- **Active Branch:** `fix/hydration-and-real-landing-page`
+- **Last Completed Work:** Fixed React client/server locale hydration error by removing unstable toLocaleString dynamic client state from public root. Restored true public landing page for families with hero headline, value pillars (Hands-on Building, Expert Mentors, Creative Confidence), and portal entry points, keeping student wallets and tutor agendas behind authentication.
 - **Immediate Next Move:** Connect live Neon PostgreSQL instance via `.env`, run `npx prisma db push`, and execute staging end-to-end user testing.
 - **Blockers / Open Decisions:** Awaiting production Neon database connection string for staging deployment.
 
