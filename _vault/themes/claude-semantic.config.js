@@ -27,10 +27,10 @@ module.exports = {
           strong: '#D1CEBD',  // Tactile Input Borders: Focused structural edges
         },
         brand: {
-          primary: '#C2410C',      // Terracotta / Crimson Ochre: Purposeful primary CTA
-          hover: '#9A3412',        // Deep Ochre Hover
-          subtle: '#FFF7ED',       // Warm Coral 50: Quiet badge fills
-          border: '#FFEDD5',       // Subtle border for alert states
+          primary: '#DC2626',   // Crimson Red
+          hover: '#B91C1C',     // Deep Crimson
+          subtle: '#FEF2F2',    // Soft Rose 50
+          border: '#FECACA',    // Soft Rose 200
         },
         state: {
           success: '#2E7D32',
