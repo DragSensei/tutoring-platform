@@ -1,19 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { motion } from 'motion/react';
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.05,
-    },
-  },
-};
 
 const itemVariants = {
   hidden: { opacity: 0, y: 14 },
@@ -24,31 +12,9 @@ const itemVariants = {
   },
 };
 
-export default function ContactPage() {
+export function ContactCard() {
   return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      animate="show"
-      className="max-w-xl mx-auto py-8 text-center space-y-6"
-    >
-      <motion.div variants={itemVariants} className="relative w-16 h-16 mx-auto">
-        <Image
-          src="/logo.png"
-          alt="Big Hero Robotics Academy"
-          fill
-          className="object-contain"
-          priority
-        />
-      </motion.div>
-
-      <motion.div variants={itemVariants} className="space-y-1.5">
-        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Contact Big Hero Robotics</h1>
-        <p className="text-slate-600 text-sm">
-          Have questions about robotics programs, competition teams, or session schedules? We are here to help!
-        </p>
-      </motion.div>
-
+    <>
       <motion.div
         variants={itemVariants}
         className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm text-left space-y-4 text-sm"
@@ -98,6 +64,6 @@ export default function ContactPage() {
           &larr; Back to Home
         </Link>
       </motion.div>
-    </motion.div>
+    </>
   );
 }

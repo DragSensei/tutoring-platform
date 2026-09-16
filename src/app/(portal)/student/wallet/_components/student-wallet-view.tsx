@@ -1,41 +1,15 @@
-import { prisma } from '@/shared/lib/prisma';
-import { getSession } from '@/features/auth/server/session';
-import { getStudentWallet } from '@/features/wallets/server/wallet-actions';
 import { BalanceCounter } from '@/features/wallets/components/balance-counter';
 import { TransactionLedger } from '@/features/wallets/components/transaction-ledger';
 import { Card, CardHeader, CardTitle, CardContent } from '@/shared/components/card';
 import { Badge } from '@/shared/components/badge';
+import { StudentWalletData } from '@/features/wallets/types';
 
-export const dynamic = 'force-dynamic';
+interface StudentWalletViewProps {
+  studentName: string;
+  wallet: StudentWalletData;
+}
 
-export default async function StudentWalletPage() {
-  const session = await getSession();
-
-  let studentId = session?.userId;
-  let studentName = session?.name || 'Student';
-
-  // Fallback to first student in DB if viewing without login
-  if (!studentId) {
-    const studentUser = await prisma.user.findFirst({
-      where: { role: 'STUDENT' },
-    });
-    if (studentUser) {
-      studentId = studentUser.id;
-      studentName = studentUser.name;
-    }
-  }
-
-  if (!studentId) {
-    return (
-      <div className="text-center py-12">
-        <h2 className="text-2xl font-bold text-slate-800">No Student Account Available</h2>
-        <p className="text-slate-500 mt-2">Log in or create a student to view the wallet.</p>
-      </div>
-    );
-  }
-
-  const wallet = await getStudentWallet(studentId);
-
+export function StudentWalletView({ studentName, wallet }: StudentWalletViewProps) {
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
       <div>
