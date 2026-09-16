@@ -1,8 +1,8 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Active Branch:** `feat/contact-page-academy-intel`
-- **Last Completed Work:** Updated `/contact` page with official Big Hero Robotics Academy info (Hotline/WhatsApp +20 122 229 8892, 20+ branches across Egypt/MENA, Syndicate accreditation) preserving exact visual design.
+- **Active Branch:** `feat/interactive-pages-and-stepped-login`
+- **Last Completed Work:** Animated landing page, created and animated About Us page, animated Contact Us page, and built stepped frontend login flow (Step 1: Phone number entry -> Step 2: Password entry with eye show/hide toggle and displayed account number).
 - **Immediate Next Move:** Connect live Neon PostgreSQL instance via `.env`, run `npx prisma db push`, and execute staging end-to-end user testing.
 - **Blockers / Open Decisions:** Awaiting production Neon database connection string for staging deployment.
 

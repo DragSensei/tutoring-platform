@@ -1,10 +1,38 @@
+'use client';
+
 import Link from 'next/link';
+import { motion } from 'motion/react';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.12,
+      delayChildren: 0.08,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 16 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+  },
+};
 
 export default function HomePage() {
   return (
-    <div className="min-h-[calc(100vh-12rem)] flex flex-col justify-center items-center text-center max-w-4xl mx-auto px-4 py-4 space-y-8">
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+      className="min-h-[calc(100vh-12rem)] flex flex-col justify-center items-center text-center max-w-4xl mx-auto px-4 py-4 space-y-8"
+    >
       {/* 1. HERO HEADER */}
-      <section className="space-y-4 flex flex-col items-center">
+      <motion.section variants={itemVariants} className="space-y-4 flex flex-col items-center">
         <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.15]">
           Where Young Heroes <br className="hidden sm:inline" />
           <span className="text-red-600">Build Tomorrow’s Technology.</span>
@@ -30,11 +58,18 @@ export default function HomePage() {
             About Our Programs
           </Link>
         </div>
-      </section>
+      </motion.section>
 
       {/* 2. THREE PILLARS (WHY PARENTS CHOOSE US) */}
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-5 w-full max-w-3xl pt-2">
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-2 hover:border-slate-300 transition-colors">
+      <motion.section
+        variants={itemVariants}
+        className="grid grid-cols-1 sm:grid-cols-3 gap-5 w-full max-w-3xl pt-2"
+      >
+        <motion.div
+          whileHover={{ y: -4 }}
+          transition={{ duration: 0.2 }}
+          className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-2 hover:border-slate-300 transition-colors"
+        >
           <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center text-xl font-bold">
             🤖
           </div>
@@ -42,9 +77,13 @@ export default function HomePage() {
           <p className="text-xs text-slate-500 leading-relaxed">
             Children build real physical robots, write code, and see their creations move and solve challenges.
           </p>
-        </div>
+        </motion.div>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-2 hover:border-slate-300 transition-colors">
+        <motion.div
+          whileHover={{ y: -4 }}
+          transition={{ duration: 0.2 }}
+          className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-2 hover:border-slate-300 transition-colors"
+        >
           <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl font-bold">
             👨‍🏫
           </div>
@@ -52,9 +91,13 @@ export default function HomePage() {
           <p className="text-xs text-slate-500 leading-relaxed">
             Passionate engineers who guide and empower each student step-by-step with patience and encouragement.
           </p>
-        </div>
+        </motion.div>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-2 hover:border-slate-300 transition-colors">
+        <motion.div
+          whileHover={{ y: -4 }}
+          transition={{ duration: 0.2 }}
+          className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-2 hover:border-slate-300 transition-colors"
+        >
           <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl font-bold">
             💡
           </div>
@@ -62,11 +105,14 @@ export default function HomePage() {
           <p className="text-xs text-slate-500 leading-relaxed">
             Transform screen time into productive STEM mastery, problem-solving skills, and teamwork.
           </p>
-        </div>
-      </section>
+        </motion.div>
+      </motion.section>
 
       {/* 3. REASSURING BOTTOM BAR WITH ACADEMY INTEL */}
-      <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-500 pt-2">
+      <motion.div
+        variants={itemVariants}
+        className="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-500 pt-2"
+      >
         <span className="flex items-center gap-1.5">
           <span className="text-emerald-600 font-bold">✓</span> Ages 6 to 26
         </span>
@@ -79,7 +125,7 @@ export default function HomePage() {
         <span className="flex items-center gap-1.5">
           <span className="text-emerald-600 font-bold">✓</span> FLL & VEX Competition Teams
         </span>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
