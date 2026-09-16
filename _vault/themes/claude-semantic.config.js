@@ -27,18 +27,20 @@ module.exports = {
           strong: '#D1CEBD',  // Tactile Input Borders: Focused structural edges
         },
         brand: {
-          primary: '#DC2626',   // Crimson Red
-          hover: '#B91C1C',     // Deep Crimson
-          subtle: '#FEF2F2',    // Soft Rose 50
-          border: '#FECACA',    // Soft Rose 200
+          // [REQUIRED PER-PROJECT OVERRIDE]: Every new project MUST override these placeholder
+          // brand tokens in its own project-specific theme.config.ts (never inherit silently).
+          primary: '#18181B', // Neutral Dark Charcoal Placeholder (REQUIRED PROJECT OVERRIDE)
+          hover: '#27272A',   // Neutral Hover Placeholder (REQUIRED PROJECT OVERRIDE)
+          subtle: '#F4F4F5',  // Neutral Tint Placeholder (REQUIRED PROJECT OVERRIDE)
+          border: '#E4E4E7',  // Neutral Border Placeholder (REQUIRED PROJECT OVERRIDE)
         },
         state: {
           success: '#2E7D32',
           successBg: '#F1F8E9',
           warning: '#B45309',
           warningBg: '#FEF3C7',
-          danger: '#B91C1C',
-          dangerBg: '#FEF2F2',
+          danger: '#C5221F',
+          dangerBg: '#FCE8E6',
         }
       },
       fontFamily: {

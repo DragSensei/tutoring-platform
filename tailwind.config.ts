@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import projectTheme from "./theme.config";
 
 const config: Config = {
   content: [
@@ -13,6 +14,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        brand: projectTheme.brand,
         canvas: {
           DEFAULT: '#FBFBF9',
           subtle: '#F4F3EE',

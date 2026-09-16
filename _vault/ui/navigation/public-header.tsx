@@ -44,7 +44,7 @@ export function PublicHeader({
         <div className="flex items-center gap-3">
           <Link
             href={authHref}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-red-700 active:scale-95"
+            className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-hover active:scale-95"
           >
             {authLabel}
           </Link>

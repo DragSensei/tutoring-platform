@@ -6,14 +6,14 @@ import React from "react";
  */
 import { HeroSection } from "./_components/HeroSection";
 import { PillarsSection } from "./_components/PillarsSection";
-import { AcademyIntel } from "./_components/AcademyIntel";
+import { FeatureGrid } from "./_components/FeatureGrid";
 
 export default function MarketingPage() {
   return (
-    <main className="min-h-screen bg-[#FBFBF9] text-stone-900">
+    <main className="min-h-screen bg-canvas text-stone-900">
       <HeroSection />
       <PillarsSection />
-      <AcademyIntel />
+      <FeatureGrid />
     </main>
   );
 }
