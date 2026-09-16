@@ -1,17 +1,29 @@
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function HomePage() {
   return (
-    <div className="min-h-[calc(100vh-12rem)] flex flex-col justify-center items-center text-center max-w-4xl mx-auto px-4 py-4 space-y-10">
-      {/* 1. HERO HEADER */}
-      <section className="space-y-4">
+    <div className="min-h-[calc(100vh-12rem)] flex flex-col justify-center items-center text-center max-w-4xl mx-auto px-4 py-4 space-y-8">
+      {/* 1. HERO HEADER WITH BIG HERO LOGO */}
+      <section className="space-y-4 flex flex-col items-center">
+        {/* Big Hero Emblem */}
+        <div className="relative w-24 h-24 sm:w-28 sm:h-28 drop-shadow-md hover:scale-105 transition-transform">
+          <Image
+            src="/logo.png"
+            alt="Big Hero Robotics Academy"
+            fill
+            className="object-contain"
+            priority
+          />
+        </div>
+
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-red-50 border border-red-200 text-xs font-semibold text-red-700 shadow-sm">
-          <span>🚀</span>
-          <span>Welcome to Kinetic Robotics Academy</span>
+          <span>🦸‍♂️</span>
+          <span>Welcome to Big Hero Robotics Academy</span>
         </div>
 
         <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.15]">
-          Where Young Creators <br className="hidden sm:inline" />
+          Where Young Heroes <br className="hidden sm:inline" />
           <span className="text-red-600">Build Tomorrow’s Technology.</span>
         </h1>
 
@@ -21,7 +33,7 @@ export default function HomePage() {
         </p>
 
         {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-2">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-2 w-full">
           <Link
             href="/login"
             className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-md shadow-red-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"

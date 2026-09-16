@@ -1,8 +1,8 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Active Branch:** `fix/hydration-and-real-landing-page`
-- **Last Completed Work:** Fixed React client/server locale hydration error by removing unstable toLocaleString dynamic client state from public root. Restored true public landing page for families with hero headline, value pillars (Hands-on Building, Expert Mentors, Creative Confidence), and portal entry points, keeping student wallets and tutor agendas behind authentication.
+- **Active Branch:** `feat/brand-big-hero-robotics`
+- **Last Completed Work:** Integrated official Big Hero Robotics Academy logo (`images.png` copied to `public/logo.png`). Updated branding across navbar, hero section, about page, contact page, and footer.
 - **Immediate Next Move:** Connect live Neon PostgreSQL instance via `.env`, run `npx prisma db push`, and execute staging end-to-end user testing.
 - **Blockers / Open Decisions:** Awaiting production Neon database connection string for staging deployment.
 

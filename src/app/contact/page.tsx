@@ -1,14 +1,20 @@
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function ContactPage() {
   return (
     <div className="max-w-xl mx-auto py-8 text-center space-y-6">
-      <div className="w-12 h-12 rounded-xl bg-red-50 text-red-600 flex items-center justify-center text-2xl mx-auto">
-        📞
+      <div className="relative w-16 h-16 mx-auto">
+        <Image
+          src="/logo.png"
+          alt="Big Hero Robotics Academy"
+          fill
+          className="object-contain"
+        />
       </div>
-      <h1 className="text-3xl font-extrabold text-slate-900">Contact Us</h1>
+      <h1 className="text-3xl font-extrabold text-slate-900">Contact Big Hero Robotics</h1>
       <p className="text-slate-600 text-sm">
-        Have questions about our sessions, schedules, or family wallets? We are here to help!
+        Have questions about sessions, enrollment, or student schedules? We are here to help!
       </p>
 
       <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm text-left space-y-4 text-sm">
@@ -18,7 +24,7 @@ export default function ContactPage() {
         </div>
         <div>
           <span className="text-xs text-slate-400 block font-semibold">EMAIL SUPPORT</span>
-          <span className="font-mono text-base font-bold text-slate-800">support@kineticrobotics.com</span>
+          <span className="font-mono text-base font-bold text-slate-800">support@bigherorobotics.com</span>
         </div>
         <div>
           <span className="text-xs text-slate-400 block font-semibold">ACADEMY WORKSHOP</span>
@@ -31,7 +37,7 @@ export default function ContactPage() {
           href="/"
           className="text-sm font-semibold text-red-600 hover:text-red-700"
         >
-          &larr; Back to Portal
+          &larr; Back to Home
         </Link>
       </div>
     </div>
