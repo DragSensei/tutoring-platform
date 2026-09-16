@@ -1,8 +1,8 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Active Branch:** `feat/brand-big-hero-robotics`
-- **Last Completed Work:** Integrated official Big Hero Robotics Academy logo (`images.png` copied to `public/logo.png`). Updated branding across navbar, hero section, about page, contact page, and footer.
+- **Active Branch:** `fix/brand-big-hero-robotics-text`
+- **Last Completed Work:** Updated navbar brand to unified "Big Hero Robotics" text (removed badge). Researched Big Hero Robotics Academy Egypt.
 - **Immediate Next Move:** Connect live Neon PostgreSQL instance via `.env`, run `npx prisma db push`, and execute staging end-to-end user testing.
 - **Blockers / Open Decisions:** Awaiting production Neon database connection string for staging deployment.
 

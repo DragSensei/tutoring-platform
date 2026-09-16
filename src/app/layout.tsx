@@ -30,14 +30,9 @@ export default function RootLayout({
                   priority
                 />
               </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="font-extrabold text-base tracking-tight text-slate-900">
-                  Big Hero
-                </span>
-                <span className="text-[11px] font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-100">
-                  Robotics Academy
-                </span>
-              </div>
+              <span className="font-extrabold text-base tracking-tight text-slate-900">
+                Big Hero Robotics
+              </span>
             </Link>
 
             {/* Navigation Links */}
