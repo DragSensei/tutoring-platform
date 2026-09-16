@@ -1,97 +1,89 @@
-import Link from 'next/link';
-import Image from 'next/image';
-
 export default function HomePage() {
   return (
-    <div className="min-h-[calc(100vh-12rem)] flex flex-col justify-center items-center text-center max-w-4xl mx-auto px-4 py-4 space-y-8">
-      {/* 1. HERO HEADER WITH BIG HERO LOGO */}
-      <section className="space-y-4 flex flex-col items-center">
-        {/* Big Hero Emblem */}
-        <div className="relative w-24 h-24 sm:w-28 sm:h-28 drop-shadow-md hover:scale-105 transition-transform">
-          <Image
-            src="/logo.png"
-            alt="Big Hero Robotics Academy"
-            fill
-            className="object-contain"
-            priority
-          />
-        </div>
-
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-red-50 border border-red-200 text-xs font-semibold text-red-700 shadow-sm">
-          <span>🦸‍♂️</span>
-          <span>Welcome to Big Hero Robotics Academy</span>
-        </div>
-
-        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.15]">
-          Where Young Heroes <br className="hidden sm:inline" />
-          <span className="text-red-600">Build Tomorrow’s Technology.</span>
+    <div className="min-h-[calc(100vh-8rem)] flex flex-col justify-center items-center text-center max-w-4xl mx-auto px-4 py-6 space-y-6">
+      {/* 1. ACADEMY HEADER */}
+      <div className="space-y-1.5 max-w-2xl mx-auto">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+          Big Hero Robotics Academy
         </h1>
-
-        <p className="text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-          Inspiring coding, robotics, and engineering mentorship for children and teens.
-          We turn curious minds into confident inventors through hands-on projects and supportive guidance.
+        <p className="text-xs sm:text-sm text-slate-600">
+          Egypt’s certified STEM, robotics, and artificial intelligence academy for innovators aged 6 to 26.
         </p>
+      </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-2 w-full">
-          <Link
-            href="/login"
-            className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-md shadow-red-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-          >
-            Sign In to Academy Portal &rarr;
-          </Link>
-          <Link
-            href="/about"
-            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm border border-slate-300 shadow-sm transition-all"
-          >
-            About Our Programs
-          </Link>
+      {/* 2. FAST FACTS & CREDENTIALS (ACADEMY INTEL) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-3xl">
+        <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm text-center hover:border-slate-300 transition-colors">
+          <div className="text-lg font-black text-red-600">2017</div>
+          <div className="text-xs font-bold text-slate-800">Founded in Egypt</div>
+          <div className="text-[11px] text-slate-500">Eng. Hossam Zayed</div>
         </div>
-      </section>
 
-      {/* 2. THREE PILLARS (WHY PARENTS CHOOSE US) */}
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-5 w-full max-w-3xl pt-2">
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-2 hover:border-slate-300 transition-colors">
-          <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center text-xl font-bold">
+        <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm text-center hover:border-slate-300 transition-colors">
+          <div className="text-lg font-black text-slate-900">20+ Branches</div>
+          <div className="text-xs font-bold text-slate-800">Nationwide & MENA</div>
+          <div className="text-[11px] text-slate-500">Cairo, Alex, Delta & KSA</div>
+        </div>
+
+        <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm text-center hover:border-slate-300 transition-colors">
+          <div className="text-lg font-black text-red-600">Syndicate</div>
+          <div className="text-xs font-bold text-slate-800">Accredited Training</div>
+          <div className="text-[11px] text-slate-500">نقابة المهندسين المصرية</div>
+        </div>
+
+        <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm text-center hover:border-slate-300 transition-colors">
+          <div className="text-lg font-black text-slate-900">FLL & VEX</div>
+          <div className="text-xs font-bold text-slate-800">Championship Track</div>
+          <div className="text-[11px] text-slate-500">RoboCup & ARC Winners</div>
+        </div>
+      </div>
+
+      {/* 3. THREE PILLARS (CORE VALUES) */}
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-3xl">
+        <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-1.5 hover:border-slate-300 transition-colors">
+          <div className="w-9 h-9 rounded-lg bg-red-50 text-red-600 flex items-center justify-center text-lg font-bold">
             🤖
           </div>
-          <h2 className="text-base font-bold text-slate-900">Hands-On Building</h2>
+          <h2 className="text-sm font-bold text-slate-900">Hands-On Robotics & AI</h2>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Children build real physical robots, write code, and see their creations move and solve challenges.
+            Practical hardware, sensors, microcontrollers, and coding. Students build real robots that solve autonomous challenges.
           </p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-2 hover:border-slate-300 transition-colors">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl font-bold">
+        <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-1.5 hover:border-slate-300 transition-colors">
+          <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg font-bold">
             👨‍🏫
           </div>
-          <h2 className="text-base font-bold text-slate-900">Expert Mentors</h2>
+          <h2 className="text-sm font-bold text-slate-900">Syndicate-Certified Mentors</h2>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Passionate engineers who guide and empower each student step-by-step with patience and encouragement.
+            Passionate engineers accredited by the Egyptian Engineers Syndicate, empowering students with patient 1-on-1 guidance.
           </p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-2 hover:border-slate-300 transition-colors">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl font-bold">
-            💡
+        <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-1.5 hover:border-slate-300 transition-colors">
+          <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg font-bold">
+            🏆
           </div>
-          <h2 className="text-base font-bold text-slate-900">Creative Confidence</h2>
+          <h2 className="text-sm font-bold text-slate-900">Competition Excellence</h2>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Transform screen time into productive STEM mastery, problem-solving skills, and teamwork.
+            Structured preparation for local and international tournaments including FIRST LEGO League, VEX Robotics, and RoboCup.
           </p>
         </div>
       </section>
 
-      {/* 3. REASSURING BOTTOM BAR FOR FAMILIES */}
-      <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-500 pt-2">
+      {/* 4. REASSURING BOTTOM BAR WITH HOTLINE */}
+      <div className="flex flex-wrap items-center justify-center gap-5 text-xs text-slate-500 pt-1">
         <span className="flex items-center gap-1.5">
-          <span className="text-emerald-600 font-bold">✓</span> Ages 8 to 17
+          <span className="text-emerald-600 font-bold">✓</span> Ages 6 to 26
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="text-emerald-600 font-bold">✓</span> Small Collaborative Groups
+          <span className="text-emerald-600 font-bold">✓</span> Small Collaborative Cohorts
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="text-emerald-600 font-bold">✓</span> Personalized 1-on-1 Mentorship
+          <span className="text-emerald-600 font-bold">✓</span> Egyptian Engineers Syndicate Certified
+        </span>
+        <span className="flex items-center gap-1.5 text-slate-700 font-semibold">
+          📞 Hotline/WhatsApp: +20 122 229 8892
         </span>
       </div>
     </div>
