@@ -13,6 +13,11 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        canvas: {
+          DEFAULT: '#FBFBF9',
+          subtle: '#F4F3EE',
+          dark: '#141413',
+        },
         background: '#131315',
         'carbon-base': '#0A0A0C',
         surface: {

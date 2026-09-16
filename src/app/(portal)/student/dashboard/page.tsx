@@ -9,7 +9,7 @@ export default async function StudentDashboardPage() {
   const { student, wallet, nextLecture, recentEvents } = await getStudentDashboardData();
 
   return (
-    <div className="min-h-screen bg-[#FBFBF9]">
+    <div className="min-h-screen bg-canvas">
       <main className="max-w-5xl mx-auto py-8 px-4 sm:px-6 space-y-8">
         <StudentBalanceBanner
           studentName={student.name}
