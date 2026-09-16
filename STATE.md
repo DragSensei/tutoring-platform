@@ -1,8 +1,8 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Active Branch:** `feat/interactive-pages-and-stepped-login`
-- **Last Completed Work:** Animated landing page, created and animated About Us page, animated Contact Us page, and built stepped frontend login flow (Step 1: Phone number entry -> Step 2: Password entry with eye show/hide toggle and displayed account number).
+- **Active Branch:** `feat/student-dashboard`
+- **Last Completed Work:** Student Portal Dashboard assembled via Claude design vault and automated assembly skill (`assemble-page.mjs`). Implemented `StudentBalanceBanner` (dynamic positive/low/overdraft badges & tabular balance), `UpcomingLecturesCard` (deterministic Cairo/UTC date formatting and active check-in CTA button), and `RecentActivityLedger` (composed `_vault/ui/data/tabular-ledger.tsx`), with `/student` route redirect to `/student/dashboard`. All lint, Vitest unit suites, and multi-viewport visual audits passed cleanly.
 - **Immediate Next Move:** Connect live Neon PostgreSQL instance via `.env`, run `npx prisma db push`, and execute staging end-to-end user testing.
 - **Blockers / Open Decisions:** Awaiting production Neon database connection string for staging deployment.
 
@@ -18,4 +18,5 @@
 - [x] Execute unit & integration test suites (100% passing)
 - [x] Write `CONTRACTS.md` and ADR 0001 (`docs/decisions/0001-feature-driven-architecture-and-stack.md`)
 - [x] Connect remote Git repository URL (https://github.com/DragSensei/tutoring-platform.git)
+- [x] Assemble Claude-styled Student Portal Dashboard (`/student/dashboard`) with balance status, lecture agenda & activity ledger
 - [ ] Deploy to Vercel with Neon connection pooling

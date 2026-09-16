@@ -7,6 +7,8 @@ const config: Config = {
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/features/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/shared/**/*.{js,ts,jsx,tsx,mdx}",
+    "./_vault/**/*.{js,ts,jsx,tsx}",
+    "../../../_vault/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {
