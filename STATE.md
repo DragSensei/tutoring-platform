@@ -1,7 +1,7 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Active Branch:** `feat/student-dashboard`
+- **Active Branch:** `main`
 - **Last Completed Work:** Student Portal Dashboard assembled via Claude design vault and automated assembly skill (`assemble-page.mjs`). Implemented `StudentBalanceBanner` (dynamic positive/low/overdraft badges & tabular balance), `UpcomingLecturesCard` (deterministic Cairo/UTC date formatting and active check-in CTA button), and `RecentActivityLedger` (composed `_vault/ui/data/tabular-ledger.tsx`), with `/student` route redirect to `/student/dashboard`. All lint, Vitest unit suites, and multi-viewport visual audits passed cleanly.
 - **Immediate Next Move:** Connect live Neon PostgreSQL instance via `.env`, run `npx prisma db push`, and execute staging end-to-end user testing.
 - **Blockers / Open Decisions:** Awaiting production Neon database connection string for staging deployment.
