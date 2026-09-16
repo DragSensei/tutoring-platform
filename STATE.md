@@ -1,8 +1,8 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Active Branch:** `feat/student-tutor-focused-portal`
-- **Last Completed Work:** Redesigned the primary interface to center directly on what students and tutors need: prominent student wallet balance at the top of the card under the navbar, next session details with a real-time start countdown timer, and a dedicated tutor view for upcoming lectures with copyable check-in links. Simplified navbar to pure public links (`About Us`, `Contact Us`, `Sign In`) and removed all internal admin/gadwal/attendance labels from the footer.
+- **Active Branch:** `fix/restore-landing-page`
+- **Last Completed Work:** Restored complete, clean landing page. Fixed nav (About Us, Contact Us, Sign In) and slim footer. Centered quick-dashboard under navbar: student wallet balance at the top, next lecture details with live countdown timer, and tutor upcoming lectures view. Removed courses catalog, pricing tables, and clutter.
 - **Immediate Next Move:** Connect live Neon PostgreSQL instance via `.env`, run `npx prisma db push`, and execute staging end-to-end user testing.
 - **Blockers / Open Decisions:** Awaiting production Neon database connection string for staging deployment.
 
