@@ -1,8 +1,8 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Active Branch:** `feature/minimal-landing-page`
-- **Last Completed Work:** Redesigned landing page into a clean, simple, light-mode layout tailored for parents and children. Removed all course lists and pricing cards; built a short single-screen landing layout with direct navigation to the Gadwal schedule, student wallet, tutor agenda, and attendance check-in. Committed to dedicated feature branch and pushed to remote.
+- **Active Branch:** `fix/clean-nav-footer`
+- **Last Completed Work:** Streamlined the global navigation bar and footer to fit the educational tutoring platform appropriately. Replaced bloated public admin links with clean role portals (`Schedule`, `Student Wallet`, `Tutor Portal`, `Admin`, and `Sign In`). Converted the footer into a slim, screen-fitting single line with essential status indicators.
 - **Immediate Next Move:** Connect live Neon PostgreSQL instance via `.env`, run `npx prisma db push`, and execute staging end-to-end user testing.
 - **Blockers / Open Decisions:** Awaiting production Neon database connection string for staging deployment.
 
