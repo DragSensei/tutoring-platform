@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'motion/react';
+import { Bot, GraduationCap, Lightbulb } from 'lucide-react';
 
 const itemVariants = {
   hidden: { opacity: 0, y: 16 },
@@ -22,8 +23,8 @@ export function PillarsSection() {
         transition={{ duration: 0.2 }}
         className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-2 hover:border-slate-300 transition-colors"
       >
-        <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center text-xl font-bold">
-          🤖
+        <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
+          <Bot className="w-5 h-5" strokeWidth={2.2} />
         </div>
         <h2 className="text-base font-bold text-slate-900">Hands-On Building</h2>
         <p className="text-xs text-slate-500 leading-relaxed">
@@ -36,8 +37,8 @@ export function PillarsSection() {
         transition={{ duration: 0.2 }}
         className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-2 hover:border-slate-300 transition-colors"
       >
-        <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl font-bold">
-          👨‍🏫
+        <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+          <GraduationCap className="w-5 h-5" strokeWidth={2.2} />
         </div>
         <h2 className="text-base font-bold text-slate-900">Expert Mentors</h2>
         <p className="text-xs text-slate-500 leading-relaxed">
@@ -50,8 +51,8 @@ export function PillarsSection() {
         transition={{ duration: 0.2 }}
         className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm text-left space-y-2 hover:border-slate-300 transition-colors"
       >
-        <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl font-bold">
-          💡
+        <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+          <Lightbulb className="w-5 h-5" strokeWidth={2.2} />
         </div>
         <h2 className="text-base font-bold text-slate-900">Creative Confidence</h2>
         <p className="text-xs text-slate-500 leading-relaxed">

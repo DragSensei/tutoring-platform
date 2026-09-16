@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'motion/react';
+import { GraduationCap, Trophy, Globe2 } from 'lucide-react';
 
 const itemVariants = {
   hidden: { opacity: 0, y: 14 },
@@ -19,8 +20,8 @@ export function AboutCredentials() {
         transition={{ duration: 0.2 }}
         className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-1.5 hover:border-slate-300 transition-colors"
       >
-        <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center text-base font-bold">
-          🎓
+        <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
+          <GraduationCap className="w-4 h-4" strokeWidth={2.2} />
         </div>
         <h2 className="text-sm font-bold text-slate-900">Syndicate Certified</h2>
         <p className="text-xs text-slate-500 leading-relaxed">
@@ -33,8 +34,8 @@ export function AboutCredentials() {
         transition={{ duration: 0.2 }}
         className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-1.5 hover:border-slate-300 transition-colors"
       >
-        <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-base font-bold">
-          🏆
+        <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+          <Trophy className="w-4 h-4" strokeWidth={2.2} />
         </div>
         <h2 className="text-sm font-bold text-slate-900">Champion Teams</h2>
         <p className="text-xs text-slate-500 leading-relaxed">
@@ -47,8 +48,8 @@ export function AboutCredentials() {
         transition={{ duration: 0.2 }}
         className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-1.5 hover:border-slate-300 transition-colors"
       >
-        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-base font-bold">
-          🌍
+        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+          <Globe2 className="w-4 h-4" strokeWidth={2.2} />
         </div>
         <h2 className="text-sm font-bold text-slate-900">20+ Branches</h2>
         <p className="text-xs text-slate-500 leading-relaxed">

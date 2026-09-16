@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { motion } from 'motion/react';
+import { Rocket } from 'lucide-react';
 
 const itemVariants = {
   hidden: { opacity: 0, y: 14 },
@@ -20,7 +21,7 @@ export function AboutMission() {
         className="p-5 bg-white rounded-2xl border border-slate-200 shadow-sm text-left space-y-3 text-xs text-slate-600 leading-relaxed"
       >
         <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <span>🚀</span> Our Mentorship Philosophy
+          <Rocket className="w-4 h-4 text-red-600" /> Our Mentorship Philosophy
         </h3>
         <p>
           We bridge theoretical science and tangible invention. Through small collaborative cohorts, each child works directly with accredited engineer-mentors, turning curiosity into real-world code, functioning mechanisms, and creative confidence.
