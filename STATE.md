@@ -1,7 +1,8 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Last Completed Work:** Initial scaffolding using Feature-Driven Unidirectional Architecture (WDS boundaries pattern). Implemented all 4 feature slices (`auth`, `attendance`, `sessions`, `wallets`), Prisma schema, atomic check-in transaction engine with strict 4-hour window enforcement, animated balance counter, Gadwal timetable, tutor KPIs, ESLint boundary rules, pre-commit secret sentinel hook, ADR 0001, and 21 passing unit/integration tests.
+- **Active Branch:** `feature/minimal-landing-page`
+- **Last Completed Work:** Redesigned landing page into a clean, simple, light-mode layout tailored for parents and children. Removed all course lists and pricing cards; built a short single-screen landing layout with direct navigation to the Gadwal schedule, student wallet, tutor agenda, and attendance check-in. Committed to dedicated feature branch and pushed to remote.
 - **Immediate Next Move:** Connect live Neon PostgreSQL instance via `.env`, run `npx prisma db push`, and execute staging end-to-end user testing.
 - **Blockers / Open Decisions:** Awaiting production Neon database connection string for staging deployment.
 
