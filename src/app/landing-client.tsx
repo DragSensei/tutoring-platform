@@ -19,506 +19,415 @@ interface LandingClientProps {
 }
 
 export function LandingClient({ stats, sampleTokens }: LandingClientProps) {
-  // Live Telemetry Simulation States
-  const [motorRpm, setMotorRpm] = React.useState(4850);
-  const [gyroAngle, setGyroAngle] = React.useState({ pitch: 2.1, roll: -1.4, yaw: 44.8 });
-  const [batteryVoltage, setBatteryVoltage] = React.useState(24.8);
-  const [activeTab, setActiveTab] = React.useState<'telemetry' | 'calculator'>('telemetry');
-  const [calcSessions, setCalcSessions] = React.useState({ privateCount: 2, groupCount: 4 });
-
-  // Simulate subtle real-time telemetry fluctuations
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      setMotorRpm((prev) => Math.min(5200, Math.max(4600, prev + (Math.floor(Math.random() * 81) - 40))));
-      setBatteryVoltage((prev) => +(Math.max(22.2, prev - 0.01 + (Math.random() * 0.015 - 0.007))).toFixed(2));
-      setGyroAngle({
-        pitch: +(2.1 + (Math.random() * 0.6 - 0.3)).toFixed(1),
-        roll: +(-1.4 + (Math.random() * 0.4 - 0.2)).toFixed(1),
-        yaw: +(44.8 + (Math.random() * 0.8 - 0.4)).toFixed(1),
-      });
-    }, 1500);
-    return () => clearInterval(interval);
-  }, []);
-
-  const totalCalculated = calcSessions.privateCount * 500 + calcSessions.groupCount * 375;
+  const [selectedPlan, setSelectedPlan] = React.useState<'GROUP' | 'PRIVATE'>('GROUP');
 
   return (
-    <div className="space-y-20">
-      {/* 1. HERO SECTION */}
-      <section className="relative pt-6 pb-12 overflow-hidden">
-        {/* Subtle decorative grid background */}
-        <div className="absolute inset-0 bg-carbon-grid opacity-30 pointer-events-none" />
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[350px] bg-red-600/10 blur-[120px] pointer-events-none rounded-full" />
-
-        <div className="relative z-10 max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-          {/* Hero Left Column: Headline & Heroic Statement */}
-          <div className="lg:col-span-7 space-y-6">
-            {/* System Status Telemetry Chip */}
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded bg-[#1c1b1d] border border-red-900/40 text-xs font-mono text-red-300">
-              <span className="w-2 h-2 rounded-full bg-red-500 led-crimson" />
-              <span className="font-semibold text-white">[SYS.MISSION_READY]</span>
-              <span className="text-slate-600">::</span>
-              <span className="text-slate-300">KINETIC HEROIC ROBOTICS &bull; V1.4</span>
-            </div>
-
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.1]">
-              IGNITING HEROIC <br className="hidden sm:inline" />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-red-400 to-rose-300">
-                INVENTORS & ROBOTICISTS.
-              </span>
-            </h1>
-
-            <p className="text-slate-400 text-lg leading-relaxed max-w-2xl">
-              Flight-grade STEM, mechanical kinematics, and C++/ROS2 tutoring platform.
-              Equipped with automated <span className="text-slate-200 font-medium">Gadwal timetables</span>,
-              strict <span className="text-slate-200 font-medium">4-hour check-in verification</span>,
-              and frictionless <span className="text-slate-200 font-medium">overdraft student wallets</span>.
-            </p>
-
-            {/* Action CTA Buttons */}
-            <div className="flex flex-wrap gap-4 pt-2">
-              <Link href="/admin/gadwal">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="px-6 py-3 rounded bg-[#dc2626] hover:bg-[#ef4444] text-white font-bold text-sm tracking-wide shadow-[0_0_20px_rgba(220,38,38,0.4)] transition-all flex items-center gap-2"
-                >
-                  <span>⚡</span> EXPLORE GADWAL TIMETABLE
-                </motion.button>
-              </Link>
-
-              <Link href="/student/wallet">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="px-6 py-3 rounded bg-[#16171b] hover:bg-[#202127] text-white font-mono font-medium text-sm border border-[#475569] hover:border-[#cbd5e1] transition-all flex items-center gap-2"
-                >
-                  <span>💳</span> STUDENT WALLET & LEDGER
-                </motion.button>
-              </Link>
-
-              <Link href="/tutor/agenda">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="px-4 py-3 rounded text-slate-400 hover:text-white font-mono text-xs hover:underline transition-all flex items-center gap-1.5"
-                >
-                  <span>[SYS.TUTOR_PORTAL]</span> &rarr;
-                </motion.button>
-              </Link>
-            </div>
-
-            {/* Live Metrics Grid */}
-            <div className="pt-6 grid grid-cols-3 gap-4 border-t border-[#22242b] max-w-xl">
-              <div>
-                <div className="font-mono text-2xl font-bold text-white">
-                  {stats.activeSessionsCount}
-                </div>
-                <div className="font-mono text-xs text-slate-500 uppercase tracking-wider">
-                  Active Sessions
-                </div>
-              </div>
-              <div>
-                <div className="font-mono text-2xl font-bold text-red-400">
-                  {stats.totalStudentsCount}
-                </div>
-                <div className="font-mono text-xs text-slate-500 uppercase tracking-wider">
-                  Enrolled Cadets
-                </div>
-              </div>
-              <div>
-                <div className="font-mono text-2xl font-bold text-slate-200">
-                  4h 00m
-                </div>
-                <div className="font-mono text-xs text-slate-500 uppercase tracking-wider">
-                  Check-in Limit
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Hero Right Column: Live Robotics Telemetry Deck (Flight Terminal Sidecar) */}
-          <div className="lg:col-span-5">
-            <div className="relative rounded-lg bg-[#121316] border border-[#22242b] p-6 shadow-2xl hover:border-red-600/40 hover:shadow-[0_0_24px_-4px_rgba(220,38,38,0.25)] transition-all">
-              {/* Mechanical Ribbon Header */}
-              <div className="flex items-center justify-between pb-4 mb-4 border-b border-[#22242b]">
-                <div className="flex items-center gap-2 font-mono text-xs text-slate-400">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 led-emerald" />
-                  <span className="font-semibold text-white">[FLIGHT_TERMINAL_V4]</span>
-                </div>
-                <span className="font-mono text-[10px] text-red-400 bg-red-950/40 border border-red-900/30 px-2 py-0.5 rounded">
-                  ROBOTICS TELEMETRY
-                </span>
-              </div>
-
-              {/* Sub-tabs for Telemetry vs Calculator */}
-              <div className="flex gap-2 mb-5">
-                <button
-                  onClick={() => setActiveTab('telemetry')}
-                  className={`flex-1 py-1.5 px-3 rounded text-xs font-mono font-medium transition-colors ${
-                    activeTab === 'telemetry'
-                      ? 'bg-red-600/20 text-red-300 border border-red-500/40'
-                      : 'bg-[#1c1b1d] text-slate-400 hover:text-white border border-transparent'
-                  }`}
-                >
-                  LIVE SENSORS
-                </button>
-                <button
-                  onClick={() => setActiveTab('calculator')}
-                  className={`flex-1 py-1.5 px-3 rounded text-xs font-mono font-medium transition-colors ${
-                    activeTab === 'calculator'
-                      ? 'bg-red-600/20 text-red-300 border border-red-500/40'
-                      : 'bg-[#1c1b1d] text-slate-400 hover:text-white border border-transparent'
-                  }`}
-                >
-                  MISSION COST ESTIMATOR
-                </button>
-              </div>
-
-              {activeTab === 'telemetry' ? (
-                <div className="space-y-4 font-mono">
-                  {/* Motor RPM Gauge */}
-                  <div className="bg-[#0e0f12] p-3.5 rounded border border-[#1f2026]">
-                    <div className="flex justify-between items-center text-xs mb-1.5">
-                      <span className="text-slate-400">DRIVE ACTUATOR // MOTOR 01</span>
-                      <span className="text-red-400 font-bold">{motorRpm} RPM</span>
-                    </div>
-                    {/* Segmented Progress Cells */}
-                    <div className="grid grid-cols-12 gap-1 h-2">
-                      {Array.from({ length: 12 }).map((_, idx) => (
-                        <div
-                          key={idx}
-                          className={`rounded-sm transition-colors duration-300 ${
-                            idx < Math.round((motorRpm / 5500) * 12)
-                              ? 'bg-red-500'
-                              : 'bg-[#1c1d22]'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Gyro & Bus Voltage Grid */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-[#0e0f12] p-3 rounded border border-[#1f2026]">
-                      <span className="text-[11px] text-slate-400 block mb-1">GYRO SENSOR (IMU)</span>
-                      <div className="text-xs space-y-0.5 text-slate-300">
-                        <div>P: <span className="text-white font-bold">{gyroAngle.pitch}°</span></div>
-                        <div>R: <span className="text-white font-bold">{gyroAngle.roll}°</span></div>
-                        <div>Y: <span className="text-white font-bold">{gyroAngle.yaw}°</span></div>
-                      </div>
-                    </div>
-
-                    <div className="bg-[#0e0f12] p-3 rounded border border-[#1f2026]">
-                      <span className="text-[11px] text-slate-400 block mb-1">MAIN BUS VOLTAGE</span>
-                      <div className="text-xl font-bold text-emerald-400">{batteryVoltage}V</div>
-                      <span className="text-[10px] text-slate-500 block mt-1">6S LiPo Pack (92%)</span>
-                    </div>
-                  </div>
-
-                  {/* 4-Hour Check-in Rule Telemetry */}
-                  <div className="p-3 bg-red-950/20 border border-red-800/30 rounded flex items-center justify-between text-xs">
-                    <div className="space-y-0.5">
-                      <div className="text-white font-semibold flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-                        CHECK-IN PROTOCOL
-                      </div>
-                      <div className="text-[11px] text-slate-400">Strict start_time + 4 hours limit</div>
-                    </div>
-                    <div className="text-right">
-                      <span className="px-2 py-0.5 rounded bg-red-600 text-white font-bold text-[11px]">
-                        HTTP 403 LOCK
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4 font-mono">
-                  <div className="bg-[#0e0f12] p-3.5 rounded border border-[#1f2026] space-y-3">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-300">Private Missions (@ 500 EGP)</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setCalcSessions((p) => ({ ...p, privateCount: Math.max(0, p.privateCount - 1) }))}
-                          className="w-6 h-6 rounded bg-[#1c1d22] text-white hover:bg-slate-700"
-                        >
-                          -
-                        </button>
-                        <span className="w-6 text-center font-bold">{calcSessions.privateCount}</span>
-                        <button
-                          onClick={() => setCalcSessions((p) => ({ ...p, privateCount: p.privateCount + 1 }))}
-                          className="w-6 h-6 rounded bg-[#1c1d22] text-white hover:bg-slate-700"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-300">Group Workshops (@ 375 EGP)</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setCalcSessions((p) => ({ ...p, groupCount: Math.max(0, p.groupCount - 1) }))}
-                          className="w-6 h-6 rounded bg-[#1c1d22] text-white hover:bg-slate-700"
-                        >
-                          -
-                        </button>
-                        <span className="w-6 text-center font-bold">{calcSessions.groupCount}</span>
-                        <button
-                          onClick={() => setCalcSessions((p) => ({ ...p, groupCount: p.groupCount + 1 }))}
-                          className="w-6 h-6 rounded bg-[#1c1d22] text-white hover:bg-slate-700"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-[#16171b] border border-[#22242b] rounded flex items-center justify-between">
-                    <div>
-                      <span className="text-xs text-slate-400 block">ESTIMATED WALLET DEDUCTION</span>
-                      <span className="text-2xl font-bold text-red-400 font-mono">
-                        {formatEGP(totalCalculated)}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-slate-500 max-w-[130px] text-right">
-                      Supports negative overdraft credit balance
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+    <div className="space-y-16 pb-12">
+      {/* 1. WELCOMING HERO SECTION */}
+      <section className="relative pt-6 pb-12 text-center max-w-4xl mx-auto space-y-6">
+        {/* Friendly Top Badge */}
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-red-50 border border-red-200 text-xs font-semibold text-red-700 shadow-sm">
+          <span>🚀</span>
+          <span>Hands-on STEM & Robotics Academy for Kids & Teens</span>
         </div>
-      </section>
 
-      {/* 2. CORE ARCHITECTURAL MODULES (4 TIERS) */}
-      <section className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-[#22242b] pb-4">
-          <div>
-            <div className="font-mono text-xs text-red-400 font-semibold uppercase tracking-wider mb-1">
-              [SYS.SPECS] FLIGHT-GRADE CAPABILITIES
-            </div>
-            <h2 className="text-3xl font-bold text-white tracking-tight">
-              Mission Control Infrastructure
-            </h2>
-          </div>
-          <span className="font-mono text-xs text-slate-500">
-            Unidirectional Feature-Driven Architecture
+        {/* Hero Title */}
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.15]">
+          Inspiring Young Minds to{' '}
+          <span className="text-red-600 underline decoration-red-200 decoration-wavy decoration-2">
+            Code, Build & Innovate.
           </span>
-        </div>
+        </h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Card 1 */}
-          <div className="group rounded-lg bg-[#121316] border border-[#22242b] p-6 hover:border-red-600/50 hover:shadow-[0_0_24px_-4px_rgba(220,38,38,0.25)] transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <span className="font-mono text-xs text-slate-500">[SYS.MOD_01]</span>
-              <span className="w-2 h-2 rounded-full bg-red-500 led-crimson" />
-            </div>
-            <div className="text-2xl mb-3">📅</div>
-            <h3 className="text-lg font-bold text-white group-hover:text-red-400 transition-colors">
-              Gadwal Timetable
-            </h3>
-            <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-              Schedule Private (500.00 EGP) and Group (375.00 EGP) robotics workshops.
-              System strictly computes deadlines at <code className="text-red-300 font-mono text-xs">start_time + 4h</code>.
-            </p>
-            <div className="mt-4 pt-4 border-t border-[#1c1d22]">
-              <Link
-                href="/admin/gadwal"
-                className="font-mono text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
-              >
-                OPEN GADWAL &rarr;
-              </Link>
-            </div>
-          </div>
-
-          {/* Card 2 */}
-          <div className="group rounded-lg bg-[#121316] border border-[#22242b] p-6 hover:border-red-600/50 hover:shadow-[0_0_24px_-4px_rgba(220,38,38,0.25)] transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <span className="font-mono text-xs text-slate-500">[SYS.MOD_02]</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 led-emerald" />
-            </div>
-            <div className="text-2xl mb-3">⚡</div>
-            <h3 className="text-lg font-bold text-white group-hover:text-red-400 transition-colors">
-              Atomic 4h Check-In
-            </h3>
-            <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-              One-click self-service check-in via UUID tokens. Executes inside an isolated
-              <code className="text-red-300 font-mono text-xs">prisma.$transaction()</code> to verify, deduct, and log.
-            </p>
-            <div className="mt-4 pt-4 border-t border-[#1c1d22]">
-              <Link
-                href={`/attend/${sampleTokens.activeGroup}`}
-                className="font-mono text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
-              >
-                TEST TOKEN CHECK-IN &rarr;
-              </Link>
-            </div>
-          </div>
-
-          {/* Card 3 */}
-          <div className="group rounded-lg bg-[#121316] border border-[#22242b] p-6 hover:border-red-600/50 hover:shadow-[0_0_24px_-4px_rgba(220,38,38,0.25)] transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <span className="font-mono text-xs text-slate-500">[SYS.MOD_03]</span>
-              <span className="w-2 h-2 rounded-full bg-red-500 led-crimson" />
-            </div>
-            <div className="text-2xl mb-3">💳</div>
-            <h3 className="text-lg font-bold text-white group-hover:text-red-400 transition-colors">
-              Overdraft Wallet Ledger
-            </h3>
-            <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-              Animated live balance counters powered by motion.dev. Allows post-paid credit
-              balances and automatically flags overdraft accounts for admin review.
-            </p>
-            <div className="mt-4 pt-4 border-t border-[#1c1d22]">
-              <Link
-                href="/student/wallet"
-                className="font-mono text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
-              >
-                VIEW STUDENT WALLET &rarr;
-              </Link>
-            </div>
-          </div>
-
-          {/* Card 4 */}
-          <div className="group rounded-lg bg-[#121316] border border-[#22242b] p-6 hover:border-red-600/50 hover:shadow-[0_0_24px_-4px_rgba(220,38,38,0.25)] transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <span className="font-mono text-xs text-slate-500">[SYS.MOD_04]</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 led-emerald" />
-            </div>
-            <div className="text-2xl mb-3">👨‍🏫</div>
-            <h3 className="text-lg font-bold text-white group-hover:text-red-400 transition-colors">
-              Tutor Abstraction
-            </h3>
-            <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-              Zero manual roster check-in duties. Tutors only access clean session agendas,
-              copyable token links, and real-time monthly/lifetime volume KPIs.
-            </p>
-            <div className="mt-4 pt-4 border-t border-[#1c1d22]">
-              <Link
-                href="/tutor/agenda"
-                className="font-mono text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
-              >
-                TUTOR TELEMETRY &rarr;
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 3. INTERACTIVE TOKEN CHECK-IN SIMULATOR TERMINAL */}
-      <section className="rounded-lg bg-[#0e0e10] border border-[#22242b] p-6 sm:p-8 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#1c1d22] pb-4">
-          <div>
-            <span className="font-mono text-xs text-red-400 font-semibold uppercase tracking-wider block">
-              [TEST_HARNESS] DEMO VERIFICATION
-            </span>
-            <h3 className="text-2xl font-bold text-white mt-1">
-              Live Token Sandbox & Expiration Sentinel
-            </h3>
-          </div>
-          <span className="text-xs font-mono text-slate-400 px-3 py-1 bg-[#16171b] border border-slate-800 rounded">
-            PRISMA POOLED NEON &bull; LOCAL POSTGRES 18
-          </span>
-        </div>
-
-        <p className="text-sm text-slate-400">
-          Try the active and expired session tokens pre-seeded in the local database to observe 
-          the strict 4-hour window validation and automatic HTTP 403 enforcement:
+        {/* Hero Subtitle */}
+        <p className="text-lg sm:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
+          Interactive robotics, coding, and electronics tutoring designed for young creators.
+          Clear weekly timetables, flexible family wallets, and inspiring mentors.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Active Group Token */}
-          <div className="p-4 rounded bg-[#131315] border border-emerald-900/40 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-xs text-emerald-400 font-bold">[ACTIVE &bull; GROUP]</span>
-              <span className="text-xs font-mono text-slate-400">375.00 EGP</span>
+        {/* Primary Call-to-Action Buttons */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+          <Link href="/admin/gadwal" className="w-full sm:w-auto">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-base shadow-lg shadow-red-600/25 transition-all flex items-center justify-center gap-2"
+            >
+              <span>📅</span> Browse Class Schedule
+            </motion.button>
+          </Link>
+
+          <Link href="/student/wallet" className="w-full sm:w-auto">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-base border border-slate-300 shadow-sm transition-all flex items-center justify-center gap-2"
+            >
+              <span>💳</span> View Student Wallet
+            </motion.button>
+          </Link>
+        </div>
+
+        {/* Friendly Trust Reassurance Highlights */}
+        <div className="pt-4 flex flex-wrap items-center justify-center gap-6 text-xs sm:text-sm font-medium text-slate-500">
+          <div className="flex items-center gap-2">
+            <span className="text-emerald-600 font-bold">✓</span>
+            <span>Small Groups (3–5 Students)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-emerald-600 font-bold">✓</span>
+            <span>Flexible Wallet & Overdraft Credit</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-emerald-600 font-bold">✓</span>
+            <span>1-Click Link Check-in</span>
+          </div>
+        </div>
+      </section>
+
+      {/* 2. HOW IT WORKS: 3 SIMPLE STEPS */}
+      <section className="bg-white rounded-2xl border border-slate-200 p-8 sm:p-10 shadow-sm">
+        <div className="text-center max-w-xl mx-auto mb-10 space-y-2">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+            How It Works for Families
+          </h2>
+          <p className="text-slate-500 text-sm">
+            Getting your child started with robotics is simple, transparent, and completely hassle-free.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {/* Step 1 */}
+          <div className="flex flex-col items-center text-center space-y-3 p-4 rounded-xl hover:bg-slate-50 transition-colors">
+            <div className="w-14 h-14 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-2xl shadow-sm">
+              🗓️
             </div>
-            <div className="text-sm font-semibold text-white">Calculus III & Kinematics</div>
-            <div className="font-mono text-[11px] text-slate-500 truncate">
-              Token: {sampleTokens.activeGroup}
+            <div className="text-xs font-bold text-red-600 uppercase tracking-wider">Step 1</div>
+            <h3 className="text-lg font-bold text-slate-900">Pick a Convenient Session</h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Check our live Gadwal timetable. Choose between dedicated 1-on-1 private lessons or interactive group squads.
+            </p>
+          </div>
+
+          {/* Step 2 */}
+          <div className="flex flex-col items-center text-center space-y-3 p-4 rounded-xl hover:bg-slate-50 transition-colors">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-2xl shadow-sm">
+              🔗
             </div>
-            <Link href={`/attend/${sampleTokens.activeGroup}`} className="block">
-              <button className="w-full py-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-mono text-xs font-semibold transition-colors">
-                Launch Check-In &rarr;
+            <div className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Step 2</div>
+            <h3 className="text-lg font-bold text-slate-900">One-Tap Check-In Link</h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              No complicated apps or paper sign-in sheets. The tutor shares a secure link. Your child taps once to confirm attendance within 4 hours.
+            </p>
+          </div>
+
+          {/* Step 3 */}
+          <div className="flex flex-col items-center text-center space-y-3 p-4 rounded-xl hover:bg-slate-50 transition-colors">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-2xl shadow-sm">
+              💳
+            </div>
+            <div className="text-xs font-bold text-indigo-600 uppercase tracking-wider">Step 3</div>
+            <h3 className="text-lg font-bold text-slate-900">Clear Wallet Ledger</h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Session costs deduct automatically upon check-in. Parents enjoy full receipt transparency and credit overdraft protection.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. TRANSPARENT PRICING & SESSION TYPES */}
+      <section className="space-y-8">
+        <div className="text-center max-w-xl mx-auto space-y-2">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+            Simple, Transparent Session Rates
+          </h2>
+          <p className="text-slate-500 text-sm">
+            Pay per session with your family wallet. No hidden fees or surprise long-term lock-ins.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          {/* Group Workshop Card */}
+          <div
+            onClick={() => setSelectedPlan('GROUP')}
+            className={`cursor-pointer rounded-2xl p-8 border-2 transition-all bg-white shadow-sm hover:shadow-md ${
+              selectedPlan === 'GROUP'
+                ? 'border-red-500 ring-2 ring-red-500/10'
+                : 'border-slate-200 hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
+                Most Popular for Friends
+              </span>
+              <span className="text-2xl">👥</span>
+            </div>
+
+            <h3 className="text-2xl font-bold text-slate-900">Group Workshop</h3>
+            <p className="text-sm text-slate-500 mt-1">
+              Fun, collaborative STEM & robotics missions with 3 to 5 fellow students.
+            </p>
+
+            <div className="my-6 pb-6 border-b border-slate-100">
+              <div className="flex items-baseline gap-1">
+                <span className="text-4xl font-extrabold text-slate-900 font-mono">
+                  {formatEGP(375)}
+                </span>
+                <span className="text-sm text-slate-500 font-medium">/ 2-hr session</span>
+              </div>
+            </div>
+
+            <ul className="space-y-3 text-sm text-slate-600 mb-8">
+              <li className="flex items-center gap-2">
+                <span className="text-emerald-500 font-bold">✓</span> Hands-on team robotics building
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-emerald-500 font-bold">✓</span> Friendly coding mini-challenges
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-emerald-500 font-bold">✓</span> Hardware & kits provided in workshop
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-emerald-500 font-bold">✓</span> Automated 4h attendance link
+              </li>
+            </ul>
+
+            <Link href="/admin/gadwal" className="block">
+              <button className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm transition-colors">
+                View Group Schedule
               </button>
             </Link>
           </div>
 
-          {/* Active Private Token */}
-          <div className="p-4 rounded bg-[#131315] border border-indigo-900/40 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-xs text-indigo-400 font-bold">[ACTIVE &bull; PRIVATE]</span>
-              <span className="text-xs font-mono text-slate-400">500.00 EGP</span>
+          {/* Private 1-on-1 Card */}
+          <div
+            onClick={() => setSelectedPlan('PRIVATE')}
+            className={`cursor-pointer rounded-2xl p-8 border-2 transition-all bg-white shadow-sm hover:shadow-md ${
+              selectedPlan === 'PRIVATE'
+                ? 'border-red-500 ring-2 ring-red-500/10'
+                : 'border-slate-200 hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">
+                1-on-1 Personalized
+              </span>
+              <span className="text-2xl">⭐</span>
             </div>
-            <div className="text-sm font-semibold text-white">Advanced Physics: EM Fields</div>
-            <div className="font-mono text-[11px] text-slate-500 truncate">
-              Token: {sampleTokens.activePrivate}
-            </div>
-            <Link href={`/attend/${sampleTokens.activePrivate}`} className="block">
-              <button className="w-full py-2 rounded bg-indigo-700 hover:bg-indigo-600 text-white font-mono text-xs font-semibold transition-colors">
-                Launch Check-In &rarr;
-              </button>
-            </Link>
-          </div>
 
-          {/* Expired Token */}
-          <div className="p-4 rounded bg-[#131315] border border-rose-900/40 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-xs text-rose-400 font-bold">[EXPIRED &bull; 403 GUARD]</span>
-              <span className="text-xs font-mono text-rose-500">WINDOW PASSED</span>
+            <h3 className="text-2xl font-bold text-slate-900">Private Mentorship</h3>
+            <p className="text-sm text-slate-500 mt-1">
+              Dedicated 1-on-1 focus tailored specifically to your child’s speed and interests.
+            </p>
+
+            <div className="my-6 pb-6 border-b border-slate-100">
+              <div className="flex items-baseline gap-1">
+                <span className="text-4xl font-extrabold text-red-600 font-mono">
+                  {formatEGP(500)}
+                </span>
+                <span className="text-sm text-slate-500 font-medium">/ 2-hr session</span>
+              </div>
             </div>
-            <div className="text-sm font-semibold text-white">Reaction Mechanisms (Archived)</div>
-            <div className="font-mono text-[11px] text-slate-500 truncate">
-              Token: {sampleTokens.expired}
-            </div>
-            <Link href={`/attend/${sampleTokens.expired}`} className="block">
-              <button className="w-full py-2 rounded bg-rose-900/60 hover:bg-rose-800 text-rose-200 font-mono text-xs font-semibold transition-colors">
-                Verify 403 Block &rarr;
+
+            <ul className="space-y-3 text-sm text-slate-600 mb-8">
+              <li className="flex items-center gap-2">
+                <span className="text-emerald-500 font-bold">✓</span> Dedicated mentor for your child
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-emerald-500 font-bold">✓</span> Custom curriculum & project choice
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-emerald-500 font-bold">✓</span> Direct parent progress updates
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="text-emerald-500 font-bold">✓</span> Flexible rescheduling with 4h window
+              </li>
+            </ul>
+
+            <Link href="/admin/gadwal" className="block">
+              <button className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-sm transition-colors">
+                Book Private Session
               </button>
             </Link>
           </div>
         </div>
       </section>
 
-      {/* 4. ROBOTICS & STEM CURRICULUM SQUADRONS */}
+      {/* 4. LEARNING TRACKS BY AGE (VISUAL & SIMPLE) */}
       <section className="space-y-6">
-        <div className="border-b border-[#22242b] pb-4">
-          <span className="font-mono text-xs text-red-400 font-semibold uppercase tracking-wider block">
-            [CURRICULUM.LEVELS]
-          </span>
-          <h3 className="text-3xl font-bold text-white mt-1">
-            Engineering & Competitive Tracks
-          </h3>
+        <div className="text-center max-w-xl mx-auto space-y-2">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+            Programs Tailored for Every Age
+          </h2>
+          <p className="text-slate-500 text-sm">
+            From first robotics kits to advanced engineering rovers.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="rounded-lg bg-[#121316] border border-[#22242b] p-6 space-y-4">
-            <div className="text-xs font-mono text-red-400 font-bold">[LEVEL_01] CHASSIS & SENSORS</div>
-            <h4 className="text-xl font-bold text-white">Autonomous Line Cadets</h4>
-            <p className="text-sm text-slate-400">
-              Fundamental embedded programming with C++ and Arduino microcontrollers. PID speed control and optical infrared sensor tuning.
+          {/* Level 1 */}
+          <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-md transition-shadow space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-2xl font-bold">
+              🐣
+            </div>
+            <div>
+              <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                Ages 8 to 11
+              </span>
+              <h3 className="text-xl font-bold text-slate-900 mt-2">Junior Inventor</h3>
+            </div>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Kids learn how motors, batteries, and sensors connect. Fun visual block coding brings interactive creations to life.
             </p>
-            <div className="font-mono text-xs text-slate-500">Group: 375 EGP / Private: 500 EGP</div>
+            <div className="pt-2 text-xs font-semibold text-slate-500">
+              Skills: Visual Coding &bull; Circuits &bull; Creative Problem Solving
+            </div>
           </div>
 
-          <div className="rounded-lg bg-[#121316] border border-[#22242b] p-6 space-y-4">
-            <div className="text-xs font-mono text-red-400 font-bold">[LEVEL_02] MECHATRONICS</div>
-            <h4 className="text-xl font-bold text-white">BattleBot & Heavy Kinetics</h4>
-            <p className="text-sm text-slate-400">
-              High-torque brushless DC motor control, ESC telemetry, gear ratios, and radio telemetry receivers for combat robotics.
+          {/* Level 2 */}
+          <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-md transition-shadow space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-red-50 text-red-600 flex items-center justify-center text-2xl font-bold">
+              🤖
+            </div>
+            <div>
+              <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                Ages 12 to 14
+              </span>
+              <h3 className="text-xl font-bold text-slate-900 mt-2">Robotics Cadet</h3>
+            </div>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Hands-on Arduino microcontrollers, line-following sensors, and motor speed controllers. Real engineering thinking!
             </p>
-            <div className="font-mono text-xs text-slate-500">Group: 375 EGP / Private: 500 EGP</div>
+            <div className="pt-2 text-xs font-semibold text-slate-500">
+              Skills: Arduino &bull; C++ Basics &bull; Mechanical Chassis Assembly
+            </div>
           </div>
 
-          <div className="rounded-lg bg-[#121316] border border-[#22242b] p-6 space-y-4">
-            <div className="text-xs font-mono text-red-400 font-bold">[LEVEL_03] ROS2 & VISION</div>
-            <h4 className="text-xl font-bold text-white">Autonomous Mobile Rovers</h4>
-            <p className="text-sm text-slate-400">
-              Edge computing on Raspberry Pi & NVIDIA Jetson, Python, OpenCV camera tracking, SLAM lidar navigation, and node architectures.
+          {/* Level 3 */}
+          <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-md transition-shadow space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-2xl font-bold">
+              🚀
+            </div>
+            <div>
+              <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
+                Ages 15 and up
+              </span>
+              <h3 className="text-xl font-bold text-slate-900 mt-2">Future Engineer</h3>
+            </div>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Autonomous mobile rovers, camera obstacle avoidance with Python, ROS2 architecture, and robotics competitions.
             </p>
-            <div className="font-mono text-xs text-slate-500">Group: 375 EGP / Private: 500 EGP</div>
+            <div className="pt-2 text-xs font-semibold text-slate-500">
+              Skills: Python & ROS2 &bull; Computer Vision &bull; Competition Prep
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 5. TRY ATTENDANCE: SIMPLE DEMO BOX */}
+      <section className="bg-slate-100/80 rounded-2xl p-6 sm:p-8 border border-slate-200 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <span className="text-xs font-bold text-red-600 uppercase tracking-wider block">
+              Quick Test Drive
+            </span>
+            <h3 className="text-xl font-bold text-slate-900 mt-1">
+              See How Effortless Check-In Is for Students
+            </h3>
+          </div>
+          <span className="text-xs text-slate-500 bg-white px-3 py-1.5 rounded-lg border border-slate-200 font-medium">
+            ⏱️ Guaranteed 4-Hour Safety Window
+          </span>
+        </div>
+
+        <p className="text-sm text-slate-600 max-w-2xl">
+          When class starts, the tutor simply shares a link with the class. Try clicking one of our pre-scheduled sessions below to see the instant verification screen:
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Active Group Session Demo */}
+          <Link
+            href={`/attend/${sampleTokens.activeGroup}`}
+            className="p-4 rounded-xl bg-white border border-slate-200 hover:border-red-400 hover:shadow-md transition-all flex items-center justify-between group"
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  Active Group (375 EGP)
+                </span>
+                <span className="text-xs text-slate-400">Class in session</span>
+              </div>
+              <div className="text-sm font-bold text-slate-900 group-hover:text-red-600 transition-colors">
+                Calculus & Kinematics Workshop
+              </div>
+            </div>
+            <span className="text-sm font-semibold text-red-600 group-hover:translate-x-1 transition-transform">
+              Try Check-in &rarr;
+            </span>
+          </Link>
+
+          {/* Active Private Session Demo */}
+          <Link
+            href={`/attend/${sampleTokens.activePrivate}`}
+            className="p-4 rounded-xl bg-white border border-slate-200 hover:border-red-400 hover:shadow-md transition-all flex items-center justify-between group"
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                  Active Private (500 EGP)
+                </span>
+                <span className="text-xs text-slate-400">1-on-1</span>
+              </div>
+              <div className="text-sm font-bold text-slate-900 group-hover:text-red-600 transition-colors">
+                Advanced Physics & Robotics Lab
+              </div>
+            </div>
+            <span className="text-sm font-semibold text-red-600 group-hover:translate-x-1 transition-transform">
+              Try Check-in &rarr;
+            </span>
+          </Link>
+        </div>
+      </section>
+
+      {/* 6. PARENT FAQS (REASSURING & DIRECT) */}
+      <section className="bg-white rounded-2xl border border-slate-200 p-8 space-y-6">
+        <h3 className="text-xl font-bold text-slate-900">Frequently Asked Questions for Parents</h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+          <div className="space-y-2">
+            <h4 className="font-bold text-slate-900 flex items-center gap-2">
+              <span>❓</span> What happens if our wallet balance runs out?
+            </h4>
+            <p className="text-slate-600 leading-relaxed">
+              We never stop your child from learning. Our system permits post-paid overdraft balances so your child can attend their scheduled class uninterrupted. You can top up anytime via the parent portal.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="font-bold text-slate-900 flex items-center gap-2">
+              <span>❓</span> Do parents or kids need to install any app?
+            </h4>
+            <p className="text-slate-600 leading-relaxed">
+              No apps required! The platform works directly in your web browser on iPhones, Android devices, iPads, and computers.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="font-bold text-slate-900 flex items-center gap-2">
+              <span>❓</span> What is the 4-hour check-in window?
+            </h4>
+            <p className="text-slate-600 leading-relaxed">
+              To prevent accidental deductions and billing errors, attendance links are only valid for 4 hours from the class start time. This guarantees you are only charged when your child is present.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="font-bold text-slate-900 flex items-center gap-2">
+              <span>❓</span> Who teaches the classes?
+            </h4>
+            <p className="text-slate-600 leading-relaxed">
+              Every mentor is a vetted engineering instructor specialized in robotics, electronics, and software development, trained to make complex concepts fun and approachable for kids.
+            </p>
           </div>
         </div>
       </section>
