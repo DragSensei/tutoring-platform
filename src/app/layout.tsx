@@ -26,6 +26,7 @@ export default function RootLayout({
                   src="/logo.png"
                   alt="Big Hero Robotics Academy Logo"
                   fill
+                  sizes="36px"
                   className="object-contain"
                   priority
                 />

@@ -1,11 +1,10 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Seeding database...');
+  console.log('🌱 Seeding Big Hero Robotics Academy database...');
 
   // Clean existing records
   await prisma.walletTransaction.deleteMany();
@@ -20,18 +19,18 @@ async function main() {
   const admin = await prisma.user.create({
     data: {
       name: 'Sherif Admin',
-      email: 'admin@tutoring.com',
+      email: 'admin@bigherorobotics.com',
       phone: '+201000000001',
       password_hash: passwordHash,
       role: 'ADMIN',
     },
   });
 
-  // 2. Tutors
+  // 2. Faculty / Tutors (Domain faculty from client brief)
   const tutor1 = await prisma.user.create({
     data: {
-      name: 'Dr. Ahmed Mansour',
-      email: 'ahmed@tutoring.com',
+      name: 'Eng. Omar Ashraf',
+      email: 'omar.ashraf@bigherorobotics.com',
       phone: '+201000000002',
       password_hash: passwordHash,
       role: 'TUTOR',
@@ -40,8 +39,8 @@ async function main() {
 
   const tutor2 = await prisma.user.create({
     data: {
-      name: 'Eng. Mona Zaki',
-      email: 'mona@tutoring.com',
+      name: 'Eng. Ahmed Alaa',
+      email: 'ahmed.alaa@bigherorobotics.com',
       phone: '+201000000003',
       password_hash: passwordHash,
       role: 'TUTOR',
@@ -58,11 +57,11 @@ async function main() {
       role: 'STUDENT',
       wallet: {
         create: {
-          balance: new Prisma.Decimal(1250.00),
+          balance: new Prisma.Decimal(1500.00),
           is_flagged_overdraft: false,
           transactions: {
             create: {
-              amount: new Prisma.Decimal(1250.00),
+              amount: new Prisma.Decimal(1500.00),
               transaction_type: 'ADMIN_DEPOSIT',
               created_by_user_id: admin.id,
             },
@@ -82,11 +81,11 @@ async function main() {
       role: 'STUDENT',
       wallet: {
         create: {
-          balance: new Prisma.Decimal(375.00),
+          balance: new Prisma.Decimal(1500.00),
           is_flagged_overdraft: false,
           transactions: {
             create: {
-              amount: new Prisma.Decimal(375.00),
+              amount: new Prisma.Decimal(1500.00),
               transaction_type: 'ADMIN_DEPOSIT',
               created_by_user_id: admin.id,
             },
@@ -106,17 +105,17 @@ async function main() {
       role: 'STUDENT',
       wallet: {
         create: {
-          balance: new Prisma.Decimal(-125.00), // Credit overdraft
+          balance: new Prisma.Decimal(-375.00), // Credit overdraft
           is_flagged_overdraft: true,
           transactions: {
             create: [
               {
-                amount: new Prisma.Decimal(250.00),
+                amount: new Prisma.Decimal(375.00),
                 transaction_type: 'ADMIN_DEPOSIT',
                 created_by_user_id: admin.id,
               },
               {
-                amount: new Prisma.Decimal(-375.00),
+                amount: new Prisma.Decimal(-750.00),
                 transaction_type: 'SESSION_DEDUCTION',
               },
             ],
@@ -127,80 +126,133 @@ async function main() {
     include: { wallet: true },
   });
 
-  // 4. Sessions
+  const student4 = await prisma.user.create({
+    data: {
+      name: 'Nour El-Din',
+      email: 'nour@student.com',
+      phone: '+201000000007',
+      password_hash: passwordHash,
+      role: 'STUDENT',
+      wallet: {
+        create: {
+          balance: new Prisma.Decimal(1500.00),
+          is_flagged_overdraft: false,
+          transactions: {
+            create: {
+              amount: new Prisma.Decimal(1500.00),
+              transaction_type: 'ADMIN_DEPOSIT',
+              created_by_user_id: admin.id,
+            },
+          },
+        },
+      },
+    },
+    include: { wallet: true },
+  });
+
+  // 4. Curricular Course Sessions (Big Hero Domain Tracks)
   const now = new Date();
 
-  // Active Private Session (1h ago -> deadline in 3h)
-  const session1Start = new Date(now.getTime() - 1 * 60 * 60 * 1000);
-  const session1End = new Date(session1Start.getTime() + 2 * 60 * 60 * 1000);
-  const session1Deadline = new Date(session1Start.getTime() + 4 * 60 * 60 * 1000);
-  const session1Token = '11111111-2222-3333-4444-555555555555';
+  // Session A: Upcoming in 2 hours 15 mins (Closest Session Next Due)
+  const sessionAStart = new Date(now.getTime() + (2 * 3600 + 15 * 60) * 1000);
+  const sessionAEnd = new Date(sessionAStart.getTime() + 2 * 3600 * 1000);
+  const sessionADeadline = new Date(sessionAStart.getTime() + 4 * 3600 * 1000);
+  const sessionAToken = '11111111-2222-3333-4444-555555555555';
 
-  const session1 = await prisma.session.create({
+  const sessionA = await prisma.session.create({
     data: {
-      title: 'Advanced Physics: Electromagnetic Fields',
+      title: 'Electronics Level 1: Arduino & Circuit Logic',
       tutor_id: tutor1.id,
-      session_type: 'PRIVATE',
-      start_time: session1Start,
-      end_time: session1End,
-      deadline: session1Deadline,
-      token: session1Token,
-      status: 'ACTIVE',
-    },
-  });
-
-  // Active Group Session (30m ago -> deadline in 3.5h)
-  const session2Start = new Date(now.getTime() - 30 * 60 * 1000);
-  const session2End = new Date(session2Start.getTime() + 2 * 60 * 60 * 1000);
-  const session2Deadline = new Date(session2Start.getTime() + 4 * 60 * 60 * 1000);
-  const session2Token = '22222222-3333-4444-5555-666666666666';
-
-  const session2 = await prisma.session.create({
-    data: {
-      title: 'Calculus III: Multivariable Integration Workshop',
-      tutor_id: tutor2.id,
       session_type: 'GROUP',
-      start_time: session2Start,
-      end_time: session2End,
-      deadline: session2Deadline,
-      token: session2Token,
+      start_time: sessionAStart,
+      end_time: sessionAEnd,
+      deadline: sessionADeadline,
+      token: sessionAToken,
+      status: 'SCHEDULED',
+    },
+  });
+
+  // Session B: Active Now (Started 30m ago, 4h deadline in 3.5h)
+  const sessionBStart = new Date(now.getTime() - 30 * 60 * 1000);
+  const sessionBEnd = new Date(sessionBStart.getTime() + 2 * 3600 * 1000);
+  const sessionBDeadline = new Date(sessionBStart.getTime() + 4 * 3600 * 1000);
+  const sessionBToken = '22222222-3333-4444-5555-666666666666';
+
+  const sessionB = await prisma.session.create({
+    data: {
+      title: 'PictoBlox Track: Computational Game Design',
+      tutor_id: tutor1.id,
+      session_type: 'GROUP',
+      start_time: sessionBStart,
+      end_time: sessionBEnd,
+      deadline: sessionBDeadline,
+      token: sessionBToken,
       status: 'ACTIVE',
     },
   });
 
-  // Expired Session (started 6 hours ago -> deadline was 2 hours ago)
-  const expiredStart = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-  const expiredEnd = new Date(expiredStart.getTime() + 2 * 60 * 60 * 1000);
-  const expiredDeadline = new Date(expiredStart.getTime() + 4 * 60 * 60 * 1000);
-  const expiredToken = '99999999-8888-7777-6666-555555555555';
+  // Session C: Robotics Level 2 (Sumo & Obstacle Avoidance) - Tomorrow
+  const sessionCStart = new Date(now.getTime() + 26 * 3600 * 1000);
+  const sessionCEnd = new Date(sessionCStart.getTime() + 2 * 3600 * 1000);
+  const sessionCDeadline = new Date(sessionCStart.getTime() + 4 * 3600 * 1000);
+  const sessionCToken = '33333333-4444-5555-6666-777777777777';
 
   await prisma.session.create({
     data: {
-      title: 'Organic Chemistry: Reaction Mechanisms (Archived)',
+      title: 'Robotics Level 2: Sumo Bots & Autonomous Avoidance',
       tutor_id: tutor1.id,
       session_type: 'GROUP',
-      start_time: expiredStart,
-      end_time: expiredEnd,
-      deadline: expiredDeadline,
-      token: expiredToken,
-      status: 'COMPLETED',
+      start_time: sessionCStart,
+      end_time: sessionCEnd,
+      deadline: sessionCDeadline,
+      token: sessionCToken,
+      status: 'SCHEDULED',
     },
   });
 
-  // Seed one attendance
-  await prisma.attendanceRecord.create({
+  // Session D: Private 1-on-1 C++ Mentorship
+  const sessionDStart = new Date(now.getTime() + 48 * 3600 * 1000);
+  const sessionDEnd = new Date(sessionDStart.getTime() + 2 * 3600 * 1000);
+  const sessionDDeadline = new Date(sessionDStart.getTime() + 4 * 3600 * 1000);
+  const sessionDToken = '44444444-5555-6666-7777-888888888888';
+
+  await prisma.session.create({
     data: {
-      session_id: session1.id,
-      student_id: student1.id,
-      attended_at: new Date(session1Start.getTime() + 15 * 60 * 1000),
+      title: 'Private Track: 1-on-1 Embedded C++ Mentorship',
+      tutor_id: tutor1.id,
+      session_type: 'PRIVATE',
+      start_time: sessionDStart,
+      end_time: sessionDEnd,
+      deadline: sessionDDeadline,
+      token: sessionDToken,
+      status: 'SCHEDULED',
     },
   });
 
-  console.log('✅ Seed completed successfully!');
-  console.log('Active Sessions created:');
-  console.log(`- Private: http://localhost:3000/attend/${session1Token}`);
-  console.log(`- Group:   http://localhost:3000/attend/${session2Token}`);
-  console.log(`- Expired: http://localhost:3000/attend/${expiredToken}`);
+  // 5. Seed Attendance Proofs (Students in courses)
+  // 3 students in Session A
+  await prisma.attendanceRecord.createMany({
+    data: [
+      { session_id: sessionA.id, student_id: student1.id },
+      { session_id: sessionA.id, student_id: student2.id },
+      { session_id: sessionA.id, student_id: student3.id },
+    ],
+  });
+
+  // 4 students in Session B (Full group capacity)
+  await prisma.attendanceRecord.createMany({
+    data: [
+      { session_id: sessionB.id, student_id: student1.id },
+      { session_id: sessionB.id, student_id: student2.id },
+      { session_id: sessionB.id, student_id: student3.id },
+      { session_id: sessionB.id, student_id: student4.id },
+    ],
+  });
+
+  console.log('✅ Big Hero Robotics Academy database successfully seeded!');
+  console.log(`- Faculty Tutor: Eng. Omar Ashraf (${tutor1.id})`);
+  console.log(`- Closest Session Next Due: ${sessionA.title} (Starts in ~2h 15m)`);
+  console.log(`- Active Session: ${sessionB.title} (Check-in open)`);
 }
 
 main()

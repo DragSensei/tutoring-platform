@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/shared/components/card';
 import { Badge } from '@/shared/components/badge';
 import { formatEGP } from '@/shared/utils/currency';
+import { formatDateTime } from '@/shared/utils/date-format';
 import { TransactionType } from '@/shared/types';
 
 export interface LedgerItem {
@@ -57,13 +58,7 @@ export function TransactionLedger({ transactions }: TransactionLedgerProps) {
                   return (
                     <tr key={tx.id} className="hover:bg-slate-50/60">
                       <td className="px-4 py-2.5 text-xs text-slate-600">
-                        {new Date(tx.createdAt).toLocaleString([], {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        {formatDateTime(tx.createdAt, { includeYear: true })}
                       </td>
                       <td className="px-4 py-2.5">{getBadge(tx.transactionType)}</td>
                       <td className="px-4 py-2.5 text-xs font-mono text-slate-500">

@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/shared/components/card';
 import { Badge } from '@/shared/components/badge';
 import { formatEGP } from '@/shared/utils/currency';
+import { formatDateTime } from '@/shared/utils/date-format';
 import { CopyTokenButton } from './copy-token-button';
 import { SessionType, SessionStatus } from '@/shared/types';
 
@@ -74,20 +75,10 @@ export function GadwalTable({ sessions, showTutorColumn = true }: GadwalTablePro
                       <span className="block text-xs text-slate-500">{formatEGP(s.price)}</span>
                     </td>
                     <td className="px-4 py-3">
-                      {new Date(s.startTime).toLocaleString([], {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {formatDateTime(s.startTime)}
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-600">
-                      {new Date(s.deadline).toLocaleString([], {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {formatDateTime(s.deadline)}
                     </td>
                     <td className="px-4 py-3 font-medium">{s.attendeeCount}</td>
                     <td className="px-4 py-3">{getStatusBadge(s.status)}</td>

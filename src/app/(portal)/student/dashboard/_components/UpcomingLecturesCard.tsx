@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Calendar, User, Clock, ArrowRight, ShieldCheck } from 'lucide-react';
 import { EmptyState } from '_vault/ui/feedback/empty-state';
 import { formatEGP } from '@/shared/utils/currency';
+import { formatSessionSchedule } from '@/shared/utils/date-format';
 
 export interface ScheduledLecture {
   id: string;
@@ -21,30 +22,6 @@ interface UpcomingLecturesCardProps {
   lecture: ScheduledLecture | null;
 }
 
-function formatDeterministicSchedule(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return 'Time unconfirmed';
-
-  const cairoFormatted = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Africa/Cairo',
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(d);
-
-  const utcFormatted = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'UTC',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(d);
-
-  return `${cairoFormatted} Cairo (${utcFormatted} UTC)`;
-}
 
 export function UpcomingLecturesCard({ lecture }: UpcomingLecturesCardProps) {
   if (!lecture) {
@@ -105,7 +82,7 @@ export function UpcomingLecturesCard({ lecture }: UpcomingLecturesCardProps) {
               Schedule (Cairo / UTC)
             </p>
             <p className="mt-0.5 text-sm font-medium text-stone-800">
-              {formatDeterministicSchedule(lecture.startTime)}
+              {formatSessionSchedule(lecture.startTime)}
             </p>
           </div>
         </div>
