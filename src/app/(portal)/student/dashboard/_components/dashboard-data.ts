@@ -8,22 +8,38 @@ import type { WalletActivityEvent } from './RecentActivityLedger';
 
 export async function getStudentDashboardData() {
   const session = await getSession();
-  let studentId = session?.userId;
-  let studentName = session?.name || 'Karim Mostafa';
+  let studentUser = null;
 
-  if (!studentId) {
-    const studentUser = await prisma.user.findFirst({
+  if (session?.userId && session.role === 'STUDENT') {
+    studentUser = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { id: true, name: true },
+    });
+  }
+
+  if (!studentUser) {
+    studentUser = await prisma.user.findFirst({
       where: { role: 'STUDENT' },
       select: { id: true, name: true },
     });
-    if (studentUser) {
-      studentId = studentUser.id;
-      studentName = studentUser.name;
-    }
   }
 
-  const defaultStudentId = studentId || 'default-student-id';
-  const wallet = await getStudentWallet(defaultStudentId);
+  if (!studentUser) {
+    studentUser = await prisma.user.create({
+      data: {
+        name: 'Karim Mostafa',
+        email: 'karim.mostafa@student.bigherorobotics.com',
+        phone: '+201011112222',
+        password_hash: 'seed_hash',
+        role: 'STUDENT',
+      },
+      select: { id: true, name: true },
+    });
+  }
+
+  const studentId = studentUser.id;
+  const studentName = studentUser.name;
+  const wallet = await getStudentWallet(studentId);
 
   const now = new Date();
   const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -108,7 +124,7 @@ export async function getStudentDashboardData() {
 
   return {
     student: {
-      id: defaultStudentId,
+      id: studentId,
       name: studentName,
     },
     wallet: {

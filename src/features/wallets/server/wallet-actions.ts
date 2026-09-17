@@ -3,6 +3,15 @@ import { Prisma } from '@prisma/client';
 import { AdminDepositInput, RefundInput } from '../schemas';
 
 export async function getStudentWallet(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true },
+  });
+
+  if (!user) {
+    throw new Error(`Cannot retrieve or create wallet: User "${userId}" not found in database.`);
+  }
+
   let wallet = await prisma.wallet.findUnique({
     where: { user_id: userId },
     include: {

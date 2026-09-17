@@ -7,20 +7,18 @@ export const dynamic = 'force-dynamic';
 
 export default async function StudentWalletPage() {
   const session = await getSession();
-  let studentId = session?.userId;
-  let studentName = session?.name || 'Student';
+  let studentUser = session?.userId && session.role === 'STUDENT'
+    ? await prisma.user.findUnique({ where: { id: session.userId }, select: { id: true, name: true } })
+    : null;
 
-  if (!studentId) {
-    const studentUser = await prisma.user.findFirst({
+  if (!studentUser) {
+    studentUser = await prisma.user.findFirst({
       where: { role: 'STUDENT' },
+      select: { id: true, name: true },
     });
-    if (studentUser) {
-      studentId = studentUser.id;
-      studentName = studentUser.name;
-    }
   }
 
-  if (!studentId) {
+  if (!studentUser) {
     return (
       <div className="text-center py-12">
         <h2 className="text-2xl font-bold text-slate-800">No Student Account Available</h2>
@@ -29,6 +27,6 @@ export default async function StudentWalletPage() {
     );
   }
 
-  const wallet = await getStudentWallet(studentId);
-  return <StudentWalletView studentName={studentName} wallet={wallet} />;
+  const wallet = await getStudentWallet(studentUser.id);
+  return <StudentWalletView studentName={studentUser.name} wallet={wallet} />;
 }
