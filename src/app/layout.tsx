@@ -32,7 +32,7 @@ export default function RootLayout({
                 />
               </div>
               <span className="font-extrabold text-base tracking-tight text-slate-900">
-                Big Hero Robotics
+                Big Hero Robotics Online
               </span>
             </Link>
 
