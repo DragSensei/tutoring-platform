@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Clock, Radio, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { formatDateTime } from '@/shared/utils/date-format';
 import { CopyTokenButton } from '@/features/sessions/components/copy-token-button';
 import { computeDueCountdown, ClosestSessionDue, DueCountdown } from './timer-utils';
@@ -50,20 +50,20 @@ export function ClosestSessionTimer({ closestSession }: ClosestSessionTimerProps
     <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center text-center">
       {/* Top Due Status & Name of Nearest Due Session */}
       <div className="space-y-1.5 flex flex-col items-center">
-        <div className="inline-flex items-center gap-2">
-          {isCurrentlyActive ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200">
-              <Radio className="h-3 w-3 animate-pulse text-emerald-600" />
-              Active Now &bull; Check-in Open
+        <div className="flex items-center gap-2 text-xs font-medium text-stone-500">
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                isCurrentlyActive ? 'bg-emerald-500' : 'bg-stone-400'
+              }`}
+            />
+            <span className={isCurrentlyActive ? 'text-emerald-700 font-semibold' : 'text-stone-600'}>
+              {isCurrentlyActive ? 'Session in progress' : 'Next upcoming session'}
             </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 border border-amber-200">
-              <Clock className="h-3 w-3 text-amber-600" />
-              Nearest Due Session
-            </span>
-          )}
-          <span className="rounded-md bg-stone-100 px-2 py-0.5 text-[11px] font-semibold text-stone-600 uppercase">
-            {closestSession.sessionType}
+          </span>
+          <span className="text-stone-300">&bull;</span>
+          <span className="text-stone-500 capitalize">
+            {closestSession.sessionType.toLowerCase()} cohort
           </span>
         </div>
 
@@ -131,13 +131,10 @@ export function ClosestSessionTimer({ closestSession }: ClosestSessionTimerProps
       </div>
 
       {/* Timing and Share Action Below Timer Boxes */}
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-xs text-stone-500">
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-3 text-xs text-stone-500">
         <span>Scheduled: <strong className="font-medium text-stone-700">{formatDateTime(closestSession.startTime)}</strong></span>
-        <span>&bull;</span>
-        <div className="inline-flex items-center gap-2">
-          <span>Token:</span>
-          <CopyTokenButton token={closestSession.token} />
-        </div>
+        <span className="text-stone-300">&bull;</span>
+        <CopyTokenButton token={closestSession.token} />
       </div>
     </div>
   );

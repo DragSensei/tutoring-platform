@@ -1,8 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { BookOpen, ShieldCheck, Users } from 'lucide-react';
-import { SessionCourseCard } from './SessionCourseCard';
+import { Check } from 'lucide-react';
 import { CopyTokenButton } from '@/features/sessions/components/copy-token-button';
 import { formatSessionCode } from '@/shared/utils/session-code';
 import type { GadwalSessionItem } from '@/features/sessions/types';
@@ -16,91 +15,97 @@ export function SessionSelectionGrid({ sessions }: SessionSelectionGridProps) {
     sessions.length > 0 ? sessions[0].id : null
   );
 
-  const selectedSession = sessions.find((s) => s.id === selectedSessionId) || null;
-
   if (sessions.length === 0) {
     return (
-      <div className="rounded-xl border border-stone-200 bg-white p-12 text-center shadow-sm">
-        <BookOpen className="mx-auto h-10 w-10 text-stone-400" />
-        <h3 className="mt-3 text-lg font-semibold text-stone-900">No Course Sessions Found</h3>
-        <p className="mt-1 text-sm text-stone-500">
-          You currently have no course sessions assigned. Check with your platform administrator to allocate your cohorts.
-        </p>
+      <div className="rounded-xl border border-stone-200 bg-white p-10 text-center shadow-xs">
+        <p className="text-sm font-medium text-stone-600">No scheduled course sessions found.</p>
       </div>
     );
   }
 
-  const selectedCode = selectedSession
-    ? selectedSession.sessionCode ||
-      formatSessionCode({
-        title: selectedSession.title,
-        startTime: selectedSession.startTime,
-        endTime: selectedSession.endTime,
-      })
-    : '';
-
-  const selectedStudents = selectedSession?.assignedStudents || [];
-
   return (
-    <section className="space-y-6 pt-4">
-      {/* Selected Session Active Recording Bar */}
-      {selectedSession && (
-        <div className="rounded-xl border border-red-200 bg-red-50/60 p-4 shadow-sm transition-all flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-start sm:items-center gap-3.5">
-            <div className="rounded-lg bg-red-600 p-2.5 text-white flex-shrink-0">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-red-700 font-mono">
-                  Selected Session: {selectedCode}
-                </span>
-                <span className="text-xs text-stone-400">&bull;</span>
-                <span className="text-xs font-medium text-stone-600">
-                  {selectedStudents.length} Students Assigned
-                </span>
-              </div>
-              <h4 className="text-sm font-bold text-stone-900 mt-0.5">
-                {selectedSession.title}
-              </h4>
-              <p className="text-xs text-stone-600 mt-0.5">
-                Students: <strong className="text-stone-800">{selectedStudents.length > 0 ? selectedStudents.join(', ') : 'None assigned yet'}</strong>
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-end sm:self-center flex-shrink-0">
-            <span className="text-xs text-stone-500 hidden sm:inline">Share Token:</span>
-            <CopyTokenButton token={selectedSession.token} />
-          </div>
-        </div>
-      )}
-
-      {/* Section Heading */}
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-stone-900 sm:text-2xl">
-            Pick a Course Session
-          </h2>
-          <p className="text-xs text-stone-500 mt-0.5">
-            Click any session card below to select it and record student attendance.
-          </p>
-        </div>
-        <div className="text-xs font-semibold text-stone-600 bg-stone-100 px-3 py-1.5 rounded-lg self-start sm:self-auto">
-          {sessions.length} {sessions.length === 1 ? 'Session Available' : 'Sessions Available'}
-        </div>
+    <section className="space-y-3 pt-2">
+      <div className="flex items-center justify-between px-1">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-500">
+          Course Sessions
+        </h3>
+        <span className="text-xs text-stone-400">
+          {sessions.length} {sessions.length === 1 ? 'session' : 'sessions'}
+        </span>
       </div>
 
-      {/* Clickable Course Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {sessions.map((session) => (
-          <SessionCourseCard
-            key={session.id}
-            session={session}
-            isSelected={session.id === selectedSessionId}
-            onSelect={(s) => setSelectedSessionId(s.id)}
-          />
-        ))}
+      {/* Rows Container: Stack of rows (not in a table element) */}
+      <div className="rounded-xl border border-stone-200 bg-white divide-y divide-stone-100 overflow-hidden shadow-xs">
+        {sessions.map((session) => {
+          const isSelected = session.id === selectedSessionId;
+          const sessionCode =
+            session.sessionCode ||
+            formatSessionCode({
+              title: session.title,
+              startTime: session.startTime,
+              endTime: session.endTime,
+            });
+          const students = session.assignedStudents || [];
+          const studentCount = students.length > 0 ? students.length : session.attendeeCount || 0;
+
+          return (
+            <div
+              key={session.id}
+              onClick={() => setSelectedSessionId(session.id)}
+              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 cursor-pointer transition-colors ${
+                isSelected
+                  ? 'bg-stone-50/90 ring-1 ring-inset ring-stone-900/10'
+                  : 'hover:bg-stone-50/50'
+              }`}
+            >
+              {/* Left: Session name & little description under it */}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-sm sm:text-base font-bold tracking-tight text-stone-900">
+                    {sessionCode}
+                  </span>
+                  {session.sessionType === 'PRIVATE' && (
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded">
+                      1-on-1
+                    </span>
+                  )}
+                  {isSelected && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-stone-700 bg-stone-200/70 px-2 py-0.5 rounded-full">
+                      <Check className="h-3 w-3 text-stone-700" /> Selected
+                    </span>
+                  )}
+                </div>
+
+                {/* Description under the name in little */}
+                <p className="text-xs text-stone-500 mt-1 line-clamp-1">
+                  <span className="text-stone-700">{session.title}</span>
+                  {students.length > 0 ? (
+                    <span className="text-stone-400">
+                      {' '}
+                      &bull; Students: <strong className="font-medium text-stone-600">{students.join(', ')}</strong>
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+
+              {/* Right: Number of students & Copy Attendance Link button */}
+              <div className="flex items-center gap-4 self-end sm:self-center flex-shrink-0">
+                <div className="text-right">
+                  <div className="text-sm font-semibold text-stone-800 tabular-nums">
+                    {studentCount}
+                    <span className="text-xs font-normal text-stone-400 ml-1">
+                      {studentCount === 1 ? 'student' : 'students'}
+                    </span>
+                  </div>
+                </div>
+
+                <div onClick={(e) => e.stopPropagation()}>
+                  <CopyTokenButton token={session.token} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </section>
   );

@@ -2,11 +2,12 @@
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
 - **Active Branch:** `main`
-- **Last Completed Work:** Streamlined `/tutor/agenda` by removing the secondary expandable timetable and monthly KPI section per user specification:
-  1. Main viewport strictly houses the top-middle live countdown timer (with distinct small boxed units for Hours, Minutes, and Seconds).
-  2. Clickable session cards are rendered directly beneath with standard session codes (`ON-P3-9:42-11:42`, `ON-PV-C-10:12-12:12`, etc.) and textual student rosters.
-  3. Header simplified to faculty portal identity with zero unnecessary toggles.
-  4. Verified across 7 test suites (33/33 tests passing), zero ESLint/token violations, and verified visual perception audit across mobile, tablet, and desktop viewports.
+- **Last Completed Work:** Redesigned tutor dashboard to eliminate AI-slop elements and convert card grid into clean row-based layout:
+  1. Replaced pulsing status pills and chunky badges with an understated, human-crafted indicator dot and calm typography.
+  2. Removed the clunky red alert banner completely.
+  3. Replaced 2-column card grid with a clean stack of interactive rows (div-based, not a table): displays session name, description/students under the name in smaller font, student headcount on the right, and a direct action button.
+  4. Updated button label and copy feedback to "Copy Attendance Link" (and "Attendance Link Copied") with crisp Lucide icons replacing raw emojis.
+  5. Verified across 7 test suites (33/33 tests passing), zero ESLint/token violations, and verified visual perception audit across mobile, tablet, and desktop viewports.
 - **Immediate Next Move:** Implement session student attendance roster management & student recording iteration per tutor selection.
 - **Blockers / Open Decisions:** None.
 
