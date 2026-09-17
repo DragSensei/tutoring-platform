@@ -2,7 +2,12 @@
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
 - **Active Branch:** `main`
-- **Last Completed Work:** Rebuilt Tutor Dashboard (`/tutor/dashboard` with `/tutor` redirect) following exact client specifications: closest session due timer countdown banner, picture-free course selection cards with prominent student headcounts, active session recording bar, and deterministic date formatting. Added unit test suite (`tests/unit/tutor-dashboard.test.ts`), verified 100% test pass (29/29), zero lint/token violations, and passed multi-viewport visual audits (mobile 375px, tablet 768px, desktop 1440px) with zero horizontal spill.
+- **Last Completed Work:** Refined Tutor Dashboard (`/tutor/dashboard` with `/tutor` redirect) strictly adhering to user design specifications:
+  1. Top-middle countdown timer to the nearest due session, featuring individual small boxed units for Hours, Minutes, and Seconds with colon separators and `suppressHydrationWarning` for zero SSR hydration flicker.
+  2. Clickable session cards positioned underneath the timer.
+  3. Structured session code format (e.g. `ON-P3-6:00-8:00` or `ON-E1-12:27-2:27`) derived via centralized generator (`src/shared/utils/session-code.ts`).
+  4. Textual display of assigned student names (e.g., "Karim Mostafa, Salma Hossam, Omar Fathy") on each course card and inside the active selection banner.
+  5. Verified 100% test pass across 7 test suites (33/33 tests), ESLint and token purity clean pass, and 3-viewport visual audit verification (`mobile.png`, `tablet.png`, `desktop.png`).
 - **Immediate Next Move:** Implement session student attendance roster management & student recording iteration per tutor selection.
 - **Blockers / Open Decisions:** None.
 
@@ -20,7 +25,7 @@
 - [x] Connect remote Git repository URL (https://github.com/DragSensei/tutoring-platform.git)
 - [x] Assemble Claude-styled Student Portal Dashboard (`/student/dashboard`) with balance status, lecture agenda & activity ledger
 - [x] Autonomous Bug Triage: Fix React SSR hydration mismatch on `GadwalTable` and `TransactionLedger`
-- [x] Implement Tutor Dashboard Session Picker & Due Timer (`/tutor/dashboard`)
+- [x] Implement Tutor Dashboard Session Picker & Due Timer (`/tutor/dashboard`) with top-middle 3-box countdown timer, clickable cards, session codes (`ON-P3-6:00-8:00`), and assigned student rosters
 - [ ] Deploy to Vercel with Neon connection pooling
 
 ## BUG TRIAGE LOG

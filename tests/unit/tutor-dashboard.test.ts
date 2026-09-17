@@ -84,4 +84,21 @@ describe('Tutor Dashboard Closest Session Due Calculation', () => {
     const closest = findClosestSessionDue([expiredSession], now);
     expect(closest).toBeNull();
   });
+
+  it('propagates sessionCode and assignedStudents when present', () => {
+    const sessionWithDetails: GadwalSessionItem = {
+      ...baseSession,
+      id: 's-details',
+      sessionCode: 'ON-P3-6:00-8:00',
+      assignedStudents: ['Karim Mostafa', 'Salma Hossam'],
+      startTime: '2026-09-17T15:00:00.000Z',
+      deadline: '2026-09-17T19:00:00.000Z',
+    };
+
+    const now = new Date('2026-09-17T12:00:00.000Z');
+    const closest = findClosestSessionDue([sessionWithDetails], now);
+
+    expect(closest?.sessionCode).toBe('ON-P3-6:00-8:00');
+    expect(closest?.assignedStudents).toEqual(['Karim Mostafa', 'Salma Hossam']);
+  });
 });

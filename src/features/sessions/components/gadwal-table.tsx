@@ -21,6 +21,8 @@ export interface GadwalSessionItem {
   status: SessionStatus;
   attendeeCount: number;
   price: number;
+  assignedStudents?: string[];
+  sessionCode?: string;
 }
 
 interface GadwalTableProps {

@@ -1,6 +1,7 @@
 import { prisma } from '@/shared/lib/prisma';
 import { computeSessionDeadline } from '@/shared/utils/deadline';
 import { SESSION_PRICING, SessionType, TutorVolumeKPIs } from '@/shared/types';
+import { formatSessionCode } from '@/shared/utils/session-code';
 import { CreateSessionInput, SessionFilterInput } from '../schemas';
 import crypto from 'crypto';
 
@@ -81,24 +82,40 @@ export async function getTutorSessions(tutorId: string) {
     include: {
       tutor: { select: { id: true, name: true } },
       _count: { select: { attendances: true } },
+      attendances: {
+        include: {
+          student: { select: { id: true, name: true } },
+        },
+      },
     },
     orderBy: { start_time: 'desc' },
   });
 
-  return sessions.map((s) => ({
-    id: s.id,
-    title: s.title,
-    tutorId: s.tutor_id,
-    tutorName: s.tutor.name,
-    sessionType: s.session_type as SessionType,
-    startTime: s.start_time.toISOString(),
-    endTime: s.end_time.toISOString(),
-    deadline: s.deadline.toISOString(),
-    token: s.token,
-    status: s.status,
-    attendeeCount: s._count.attendances,
-    price: SESSION_PRICING[s.session_type as SessionType],
-  }));
+  return sessions.map((s) => {
+    const assignedStudents = s.attendances.map((a) => a.student.name);
+    const sessionCode = formatSessionCode({
+      title: s.title,
+      startTime: s.start_time,
+      endTime: s.end_time,
+    });
+
+    return {
+      id: s.id,
+      title: s.title,
+      sessionCode,
+      tutorId: s.tutor_id,
+      tutorName: s.tutor.name,
+      sessionType: s.session_type as SessionType,
+      startTime: s.start_time.toISOString(),
+      endTime: s.end_time.toISOString(),
+      deadline: s.deadline.toISOString(),
+      token: s.token,
+      status: s.status,
+      attendeeCount: s._count.attendances,
+      assignedStudents,
+      price: SESSION_PRICING[s.session_type as SessionType],
+    };
+  });
 }
 
 export async function getTutorKPIs(tutorId: string): Promise<TutorVolumeKPIs> {

@@ -12,11 +12,13 @@ export interface DueCountdown {
 export interface ClosestSessionDue {
   id: string;
   title: string;
+  sessionCode?: string;
   sessionType: string;
   startTime: string;
   deadline: string;
   token: string;
   attendeeCount: number;
+  assignedStudents?: string[];
   isCurrentlyActive: boolean;
   targetTimestamp: string;
   initialCountdown: DueCountdown;
@@ -93,11 +95,13 @@ export function findClosestSessionDue(
   return {
     id: closest.id,
     title: closest.title,
+    sessionCode: closest.sessionCode,
     sessionType: closest.sessionType,
     startTime: closest.startTime,
     deadline: closest.deadline,
     token: closest.token,
     attendeeCount: closest.attendeeCount,
+    assignedStudents: closest.assignedStudents,
     isCurrentlyActive,
     targetTimestamp: new Date(targetTime).toISOString(),
     initialCountdown,
