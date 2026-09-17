@@ -2,10 +2,10 @@
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
 - **Active Branch:** `main`
-- **Last Completed Work:** Unified the Tutor Dashboard and Agenda routes directly at `/tutor/agenda` (with `/tutor` and `/tutor/dashboard` redirecting cleanly to `/tutor/agenda`):
-  1. Primary view at `http://localhost:3000/tutor/agenda` now renders the top-middle countdown timer with individual small boxes for Hours, Minutes, and Seconds.
-  2. Clickable session cards are rendered directly underneath with standard session codes (`ON-P3-9:42-11:42`, `ON-PV-C-10:12-12:12`, etc.) and textual student rosters.
-  3. Integrated an expandable/collapsible section for the complete tabular Gadwal timetable and tutor KPI metrics at the bottom with quick toggle in the header.
+- **Last Completed Work:** Streamlined `/tutor/agenda` by removing the secondary expandable timetable and monthly KPI section per user specification:
+  1. Main viewport strictly houses the top-middle live countdown timer (with distinct small boxed units for Hours, Minutes, and Seconds).
+  2. Clickable session cards are rendered directly beneath with standard session codes (`ON-P3-9:42-11:42`, `ON-PV-C-10:12-12:12`, etc.) and textual student rosters.
+  3. Header simplified to faculty portal identity with zero unnecessary toggles.
   4. Verified across 7 test suites (33/33 tests passing), zero ESLint/token violations, and verified visual perception audit across mobile, tablet, and desktop viewports.
 - **Immediate Next Move:** Implement session student attendance roster management & student recording iteration per tutor selection.
 - **Blockers / Open Decisions:** None.
