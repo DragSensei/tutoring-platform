@@ -30,6 +30,23 @@ export function formatDateTime(
   }).format(d);
 }
 
+export function formatTime(
+  dateInput: Date | string | number,
+  options?: { timeZone?: string }
+): string {
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '--:--';
+
+  const timeZone = options?.timeZone ?? 'Africa/Cairo';
+
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
 export function formatSessionSchedule(dateInput: Date | string | number): string {
   const d = new Date(dateInput);
   if (isNaN(d.getTime())) return 'Time unconfirmed';

@@ -8,6 +8,7 @@ import { Badge } from '@/shared/components/badge';
 import { formatEGP } from '@/shared/utils/currency';
 import { getRemainingCheckInTime, RemainingTime } from '@/shared/utils/deadline';
 import { SessionType } from '@/shared/types';
+import { formatTime } from '@/shared/utils/date-format';
 
 interface CheckInWidgetProps {
   token: string;
@@ -81,13 +82,13 @@ export function CheckInWidget({ token, session, studentId, initialCheckedIn = fa
 
   return (
     <Card className="w-full max-w-lg mx-auto shadow-xl border-slate-200 overflow-hidden">
-      <div className="h-2 bg-gradient-to-r from-indigo-500 to-purple-600" />
+      <div className="h-2 bg-gradient-to-r from-red-500 to-red-600" />
       <CardHeader>
         <div className="flex items-center justify-between">
           <Badge variant={session.sessionType === 'PRIVATE' ? 'default' : 'secondary'}>
             {session.sessionType} SESSION
           </Badge>
-          <span className="text-sm font-semibold text-indigo-600">
+          <span className="text-sm font-semibold text-red-600 font-mono">
             {formatEGP(session.price)}
           </span>
         </div>
@@ -99,14 +100,14 @@ export function CheckInWidget({ token, session, studentId, initialCheckedIn = fa
         <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg text-sm">
           <div>
             <span className="text-slate-500 block text-xs">Start Time</span>
-            <span className="font-medium text-slate-800">
-              {new Date(session.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            <span className="font-medium text-slate-800 font-mono">
+              {formatTime(session.startTime)}
             </span>
           </div>
           <div>
             <span className="text-slate-500 block text-xs">4h Check-in Deadline</span>
-            <span className="font-medium text-slate-800">
-              {new Date(session.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            <span className="font-medium text-slate-800 font-mono">
+              {formatTime(session.deadline)}
             </span>
           </div>
         </div>
