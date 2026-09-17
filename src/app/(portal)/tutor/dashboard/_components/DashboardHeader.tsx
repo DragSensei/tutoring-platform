@@ -4,9 +4,11 @@ import { Calendar } from 'lucide-react';
 
 interface DashboardHeaderProps {
   tutorName: string;
+  onToggleTable?: () => void;
+  showTable?: boolean;
 }
 
-export function DashboardHeader({ tutorName }: DashboardHeaderProps) {
+export function DashboardHeader({ tutorName, onToggleTable, showTable }: DashboardHeaderProps) {
   return (
     <div className="flex items-center justify-between border-b border-stone-200/80 pb-4">
       <div className="flex items-center gap-2.5">
@@ -18,13 +20,24 @@ export function DashboardHeader({ tutorName }: DashboardHeaderProps) {
         </span>
       </div>
 
-      <Link
-        href="/tutor/agenda"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold text-stone-700 hover:bg-stone-50 transition-colors shadow-xs"
-      >
-        <Calendar className="h-3.5 w-3.5 text-stone-500" />
-        <span>Full Timetable</span>
-      </Link>
+      {onToggleTable ? (
+        <button
+          type="button"
+          onClick={onToggleTable}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold text-stone-700 hover:bg-stone-50 transition-colors shadow-xs cursor-pointer"
+        >
+          <Calendar className="h-3.5 w-3.5 text-stone-500" />
+          <span>{showTable ? 'Hide Timetable' : 'Full Timetable'}</span>
+        </button>
+      ) : (
+        <Link
+          href="/tutor/agenda#timetable"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold text-stone-700 hover:bg-stone-50 transition-colors shadow-xs"
+        >
+          <Calendar className="h-3.5 w-3.5 text-stone-500" />
+          <span>Full Timetable</span>
+        </Link>
+      )}
     </div>
   );
 }

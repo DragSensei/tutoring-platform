@@ -1,7 +1,7 @@
 import { prisma } from '@/shared/lib/prisma';
 import { getSession } from '@/features/auth/server/session';
-import { getTutorSessions } from '@/features/sessions/server/session-actions';
-import type { GadwalSessionItem } from '@/features/sessions/types';
+import { getTutorSessions, getTutorKPIs } from '@/features/sessions/server/session-actions';
+import type { GadwalSessionItem, TutorKPIs } from '@/features/sessions/types';
 import {
   findClosestSessionDue,
   ClosestSessionDue,
@@ -23,6 +23,7 @@ export interface TutorDashboardData {
   };
   closestSession: ClosestSessionDue | null;
   sessions: GadwalSessionItem[];
+  kpis: TutorKPIs;
 }
 
 export async function getTutorDashboardData(): Promise<TutorDashboardData> {
@@ -55,7 +56,10 @@ export async function getTutorDashboardData(): Promise<TutorDashboardData> {
     }
   }
 
-  const sessions = await getTutorSessions(tutorId);
+  const [sessions, kpis] = await Promise.all([
+    getTutorSessions(tutorId),
+    getTutorKPIs(tutorId),
+  ]);
   const closestSession = findClosestSessionDue(sessions);
 
   return {
@@ -65,5 +69,6 @@ export async function getTutorDashboardData(): Promise<TutorDashboardData> {
     },
     closestSession,
     sessions,
+    kpis,
   };
 }
