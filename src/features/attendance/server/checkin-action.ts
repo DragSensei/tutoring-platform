@@ -72,12 +72,29 @@ export async function executeStudentCheckIn({
   }
 
   let policy = null;
-  try {
-    if (prisma.platformPolicy?.findUnique) {
+  if (!prisma.platformPolicy?.findUnique) {
+    console.warn(
+      '[ATTENDANCE_CHECKIN] PlatformPolicy model not defined on Prisma client. Falling back to default platform pricing.'
+    );
+  } else {
+    try {
       policy = await prisma.platformPolicy.findUnique({ where: { id: 'default' } });
+    } catch (error) {
+      if (isTableNotExistError(error)) {
+        console.warn(
+          '[ATTENDANCE_CHECKIN] PlatformPolicy table does not exist in database (migration pending). Falling back to default pricing.',
+          error
+        );
+        policy = null;
+      } else {
+        console.error('[ATTENDANCE_CHECKIN] Failed to retrieve platform policy configuration:', error);
+        return {
+          success: false,
+          statusCode: 500,
+          message: 'Failed to retrieve platform policy configuration due to a database error. Check-in aborted to prevent incorrect billing.',
+        };
+      }
     }
-  } catch {
-    policy = null;
   }
   const defaultPrice = session.session_type === 'PRIVATE' ? 500.00 : 375.00;
   const sessionCost = policy
@@ -217,3 +234,27 @@ export class OverdraftDisallowedError extends Error {
     this.name = 'OverdraftDisallowedError';
   }
 }
+
+/**
+ * Detects whether an error indicates that the PlatformPolicy table/relation does not exist
+ * in the database (e.g. pending migration in current environment).
+ */
+export function isTableNotExistError(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
+    return true;
+  }
+  if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 'P2021') {
+    return true;
+  }
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return (
+      message.includes('p2021') ||
+      message.includes('table does not exist') ||
+      message.includes('no such table') ||
+      (message.includes('relation') && message.includes('does not exist'))
+    );
+  }
+  return false;
+}
+

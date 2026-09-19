@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { executeStudentCheckIn } from '@/features/attendance/server/checkin-action';
+import {
+  executeStudentCheckIn,
+  isTableNotExistError,
+} from '@/features/attendance/server/checkin-action';
 import { prisma } from '@/shared/lib/prisma';
 import { Prisma } from '@prisma/client';
 
@@ -176,5 +179,147 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
     expect(result.success).toBe(false);
     expect(result.statusCode).toBe(500);
     expect(result.message).toContain('rolled back');
+  });
+
+  describe('PlatformPolicy Error Resilience & Billing Safety', () => {
+    it('falls back to default pricing with a logged warning when PlatformPolicy table does not exist (P2021)', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(prisma.session.findUnique).mockResolvedValue(mockSession as any);
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockStudent as any);
+
+      const missingTableError = new Prisma.PrismaClientKnownRequestError(
+        'The table PlatformPolicy does not exist in the current database.',
+        { code: 'P2021', clientVersion: '5.0.0' }
+      );
+      vi.mocked(prisma.platformPolicy.findUnique).mockRejectedValue(missingTableError);
+
+      vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
+        const tx = {
+          attendanceRecord: {
+            findUnique: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({ id: 'att_1' }),
+          },
+          wallet: {
+            update: vi.fn().mockImplementation(({ data }: any) => ({
+              id: mockStudent.wallet.id,
+              balance: data.balance,
+              is_flagged_overdraft: data.is_flagged_overdraft,
+            })),
+          },
+          walletTransaction: {
+            create: vi.fn().mockResolvedValue({ id: 'wtx_1' }),
+          },
+        };
+        return callback(tx);
+      });
+
+      const result = await executeStudentCheckIn({
+        token: mockSession.token,
+        studentId: mockStudent.id,
+        currentTime: new Date('2026-10-01T11:00:00.000Z'),
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.statusCode).toBe(200);
+      expect(result.deductedAmount).toBe(500.0); // Default PRIVATE price fallback
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[ATTENDANCE_CHECKIN] PlatformPolicy table does not exist in database'),
+        missingTableError
+      );
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+
+      warnSpy.mockRestore();
+    });
+
+    it('falls back to default pricing with a logged warning when platformPolicy is not defined on client', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(prisma.session.findUnique).mockResolvedValue(mockSession as any);
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockStudent as any);
+
+      const originalPlatformPolicy = prisma.platformPolicy;
+      (prisma as any).platformPolicy = undefined;
+
+      vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
+        const tx = {
+          attendanceRecord: {
+            findUnique: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({ id: 'att_1' }),
+          },
+          wallet: {
+            update: vi.fn().mockImplementation(({ data }: any) => ({
+              id: mockStudent.wallet.id,
+              balance: data.balance,
+              is_flagged_overdraft: data.is_flagged_overdraft,
+            })),
+          },
+          walletTransaction: {
+            create: vi.fn().mockResolvedValue({ id: 'wtx_1' }),
+          },
+        };
+        return callback(tx);
+      });
+
+      const result = await executeStudentCheckIn({
+        token: mockSession.token,
+        studentId: mockStudent.id,
+        currentTime: new Date('2026-10-01T11:00:00.000Z'),
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.statusCode).toBe(200);
+      expect(result.deductedAmount).toBe(500.0);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[ATTENDANCE_CHECKIN] PlatformPolicy model not defined on Prisma client')
+      );
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+
+      (prisma as any).platformPolicy = originalPlatformPolicy;
+      warnSpy.mockRestore();
+    });
+
+    it('aborts check-in and fails with HTTP 500 when PlatformPolicy query throws a generic database error', async () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.mocked(prisma.session.findUnique).mockResolvedValue(mockSession as any);
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockStudent as any);
+
+      const dbError = new Error('Connection pool exhausted / timeout');
+      vi.mocked(prisma.platformPolicy.findUnique).mockRejectedValue(dbError);
+
+      const result = await executeStudentCheckIn({
+        token: mockSession.token,
+        studentId: mockStudent.id,
+        currentTime: new Date('2026-10-01T11:00:00.000Z'),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.statusCode).toBe(500);
+      expect(result.message).toContain('Failed to retrieve platform policy configuration');
+      // Crucial: No transaction must be executed and no student funds debited!
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[ATTENDANCE_CHECKIN] Failed to retrieve platform policy configuration:'),
+        dbError
+      );
+
+      errorSpy.mockRestore();
+    });
+
+    it('correctly identifies missing table errors in isTableNotExistError helper', () => {
+      const p2021Error = new Prisma.PrismaClientKnownRequestError('Table missing', {
+        code: 'P2021',
+        clientVersion: '5.0.0',
+      });
+      expect(isTableNotExistError(p2021Error)).toBe(true);
+      expect(isTableNotExistError({ code: 'P2021' })).toBe(true);
+      expect(isTableNotExistError(new Error('no such table: PlatformPolicy'))).toBe(true);
+      expect(isTableNotExistError(new Error('relation "PlatformPolicy" does not exist'))).toBe(true);
+
+      // Generic errors must NOT be classified as missing table
+      expect(isTableNotExistError(new Error('Connection timed out'))).toBe(false);
+      expect(isTableNotExistError(new Error('SSL connection closed unexpectedly'))).toBe(false);
+      expect(isTableNotExistError({ code: 'P2002' })).toBe(false);
+      expect(isTableNotExistError(null)).toBe(false);
+      expect(isTableNotExistError(undefined)).toBe(false);
+    });
   });
 });
