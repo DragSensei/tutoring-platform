@@ -7,7 +7,7 @@
   2. Header Baseline Consistency: standardized header block dimensions (`min-h-[92px] pb-5`, `line-clamp-1` subtitles)—0px first card Y-offset difference (exact 179px) between `/admin/gadwal` and `/admin/wallets`.
   3. Active Nav Tab Styling: refined active red sidebar tab to a clean, inset rounded rectangle (`rounded-lg mx-2 px-3 py-2.5`) across expanded, collapsed, and mobile sidebar navigation.
   4. Canvas Contrast: ensured right-hand continuous canvas uses warm neutral `#FBFBF9` (`bg-canvas`) against white dashboard cards.
-  5. Governance Invariants Locked: codified Root Viewport Shell Sovereignty (Law i), Sibling Route Header Baseline (Law j), Unified Canvas Boundary (Law k), and Navigation Item Geometry Standard (Law l) in `_roles/ui-architect.md` and added Check 6 in `01-web-development/AGENTS.md`. Pre-commit meta-audit passed and committed to root repo (`204edb7`).
+  5. Governance Invariants Locked: codified Root Viewport Shell Sovereignty (Law i), Sibling Route Header Baseline (Law j), Unified Canvas Boundary (Law k), and Navigation Item Geometry Standard (Law l) in `_roles/ui-architect.md` and added Sibling Route Consistency checklist in `01-web-development/AGENTS.md`. Pre-commit meta-audit passed and committed to root repo (`204edb7`).
 - **Immediate Next Move:** Final deployment verification or staging preview to Vercel with Neon connection pooling.
 - **Blockers / Open Decisions:** None.
 
