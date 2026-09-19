@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import { usePathname } from 'next/navigation';
+import { motion } from 'motion/react';
 import { AdminSidebar } from './_components/admin-sidebar';
 
 export default function AdminLayout({
@@ -9,6 +11,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const [isCollapsed, setIsCollapsed] = React.useState(false);
+  const pathname = usePathname();
 
   return (
     <div className="flex min-h-screen bg-canvas w-full">
@@ -16,7 +19,7 @@ export default function AdminLayout({
       <aside
         className={`hidden md:flex flex-col ${
           isCollapsed ? 'w-18' : 'w-64'
-        } shrink-0 border-r border-stone-200/80 bg-white min-h-screen sticky top-0 transition-[width] duration-300 ease-in-out`}
+        } shrink-0 border-r border-stone-200/80 bg-white h-screen sticky top-0 transition-[width] duration-300 ease-in-out`}
       >
         <AdminSidebar
           isCollapsed={isCollapsed}
@@ -31,7 +34,15 @@ export default function AdminLayout({
           <AdminSidebar mobileOnly />
         </div>
         <main className="flex-1 min-w-0 p-6 lg:p-10 w-full bg-canvas">
-          {children}
+          <motion.div
+            key={pathname}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            className="w-full min-w-0"
+          >
+            {children}
+          </motion.div>
         </main>
       </div>
     </div>

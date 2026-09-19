@@ -3,6 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { Users, Mail, Phone, CalendarDays, ArrowRight } from 'lucide-react';
+import { motion } from 'motion/react';
 
 export interface MentorItem {
   id: string;
@@ -16,11 +17,38 @@ interface AdminMentorsViewProps {
   mentors: MentorItem[];
 }
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] },
+  },
+};
+
 export function AdminMentorsView({ mentors }: AdminMentorsViewProps) {
   return (
-    <div className="space-y-8">
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-8"
+    >
       {/* Header aligned with Admin baseline */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200/80 pb-5">
+      <motion.div
+        variants={itemVariants}
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200/80 pb-5 min-h-[92px]"
+      >
         <div>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center rounded-md bg-brand-subtle border border-brand-border/60 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-brand-primary">
@@ -31,7 +59,7 @@ export function AdminMentorsView({ mentors }: AdminMentorsViewProps) {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 mt-1">
             Faculty Mentors (هيئة التدريس)
           </h1>
-          <p className="text-xs sm:text-sm text-stone-500 mt-1">
+          <p className="text-xs sm:text-sm text-stone-500 mt-1 line-clamp-1">
             Review certified robotics instructors, assigned teaching cohorts, and timetable pacing.
           </p>
         </div>
@@ -43,13 +71,15 @@ export function AdminMentorsView({ mentors }: AdminMentorsViewProps) {
           <CalendarDays className="h-4 w-4" />
           <span>Assign to Gadwal</span>
         </Link>
-      </div>
+      </motion.div>
 
       {/* Faculty Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {mentors.map((mentor) => (
-          <div
+          <motion.div
             key={mentor.id}
+            variants={itemVariants}
+            whileHover={{ y: -3, transition: { duration: 0.15 } }}
             className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs flex flex-col justify-between space-y-4"
           >
             <div className="flex items-start justify-between">
@@ -91,9 +121,9 @@ export function AdminMentorsView({ mentors }: AdminMentorsViewProps) {
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </div>
-          </div>
+          </motion.div>
         ))}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

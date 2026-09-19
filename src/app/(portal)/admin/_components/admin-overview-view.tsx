@@ -16,7 +16,27 @@ import {
 } from 'lucide-react';
 import { formatDateTime } from '@/shared/utils/date-format';
 import { formatEGP } from '@/shared/utils/currency';
+import { motion } from 'motion/react';
 import type { AdminOverviewData } from './admin-overview-data';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] },
+  },
+};
 
 export function AdminOverviewView({
   kpis,
@@ -24,9 +44,17 @@ export function AdminOverviewView({
   recentSessions,
 }: AdminOverviewData) {
   return (
-    <div className="space-y-8">
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-8"
+    >
       {/* Executive Header & Quick Action Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200/80 pb-5">
+      <motion.div
+        variants={itemVariants}
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200/80 pb-5 min-h-[92px]"
+      >
         <div>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center rounded-md bg-brand-subtle border border-brand-border/60 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-brand-primary">
@@ -60,12 +88,16 @@ export function AdminOverviewView({
             <span>Manage Wallets</span>
           </Link>
         </div>
-      </div>
+      </motion.div>
 
       {/* 4 Core KPI Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Active Sessions */}
-        <div className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs flex flex-col justify-between">
+        <motion.div
+          variants={itemVariants}
+          whileHover={{ y: -3, transition: { duration: 0.15 } }}
+          className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs flex flex-col justify-between"
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
               Active Cohorts
@@ -82,10 +114,14 @@ export function AdminOverviewView({
               <span>{kpis.completedSessionsCount} past sessions archived</span>
             </p>
           </div>
-        </div>
+        </motion.div>
 
         {/* Card 2: Enrolled Students */}
-        <div className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs flex flex-col justify-between">
+        <motion.div
+          variants={itemVariants}
+          whileHover={{ y: -3, transition: { duration: 0.15 } }}
+          className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs flex flex-col justify-between"
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
               Enrolled Students
@@ -102,10 +138,14 @@ export function AdminOverviewView({
               Active robotics & coding learners
             </p>
           </div>
-        </div>
+        </motion.div>
 
         {/* Card 3: Faculty Mentors */}
-        <div className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs flex flex-col justify-between">
+        <motion.div
+          variants={itemVariants}
+          whileHover={{ y: -3, transition: { duration: 0.15 } }}
+          className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs flex flex-col justify-between"
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
               Faculty Mentors
@@ -122,10 +162,14 @@ export function AdminOverviewView({
               Authorized engineering instructors
             </p>
           </div>
-        </div>
+        </motion.div>
 
         {/* Card 4: Total Check-ins */}
-        <div className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs flex flex-col justify-between">
+        <motion.div
+          variants={itemVariants}
+          whileHover={{ y: -3, transition: { duration: 0.15 } }}
+          className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs flex flex-col justify-between"
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
               Verified Attendances
@@ -142,11 +186,11 @@ export function AdminOverviewView({
               Strict 4h validated records
             </p>
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
       {/* Financial Health & Overdraft Sentinel */}
-      <div className="rounded-2xl border border-stone-200/80 bg-white p-6 shadow-xs space-y-4">
+      <motion.div variants={itemVariants} className="rounded-2xl border border-stone-200/80 bg-white p-6 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div
@@ -229,10 +273,10 @@ export function AdminOverviewView({
             </p>
           </div>
         )}
-      </div>
+      </motion.div>
 
       {/* Recent Timetable Schedule Overview */}
-      <div className="rounded-2xl border border-stone-200/80 bg-white p-6 shadow-xs space-y-4">
+      <motion.div variants={itemVariants} className="rounded-2xl border border-stone-200/80 bg-white p-6 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Clock className="h-5 w-5 text-stone-500" />
@@ -303,7 +347,7 @@ export function AdminOverviewView({
             ))}
           </div>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

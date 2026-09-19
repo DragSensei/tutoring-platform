@@ -20,7 +20,7 @@ export async function createSession(input: CreateSessionInput) {
   const deadline = computeSessionDeadline(start, windowHours);
   const token = crypto.randomUUID();
 
-  return prisma.session.create({
+  const session = await prisma.session.create({
     data: {
       title: input.title,
       tutor_id: input.tutorId,

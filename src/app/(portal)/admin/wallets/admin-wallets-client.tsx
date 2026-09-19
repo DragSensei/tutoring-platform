@@ -7,6 +7,7 @@ import { Badge } from '@/shared/components/badge';
 import { formatEGP } from '@/shared/utils/currency';
 import { TopUpModal } from '@/features/wallets/components/top-up-modal';
 import { useRouter } from 'next/navigation';
+import { motion } from 'motion/react';
 
 export interface WalletUserItem {
   id: string;
@@ -24,6 +25,25 @@ export interface WalletUserItem {
 interface AdminWalletsClientProps {
   wallets: WalletUserItem[];
 }
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] },
+  },
+};
 
 export function AdminWalletsClient({ wallets }: AdminWalletsClientProps) {
   const router = useRouter();
@@ -50,8 +70,16 @@ export function AdminWalletsClient({ wallets }: AdminWalletsClientProps) {
   const overdraftCount = wallets.filter((w) => w.isFlaggedOverdraft || w.balance < 0).length;
 
   return (
-    <div className="space-y-8 w-full min-w-0">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-stone-200/80 pb-5 min-h-[92px]">
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-8 w-full min-w-0"
+    >
+      <motion.div
+        variants={itemVariants}
+        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-stone-200/80 pb-5 min-h-[92px]"
+      >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center rounded-md bg-brand-subtle border border-brand-border/60 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-brand-primary">
@@ -72,9 +100,10 @@ export function AdminWalletsClient({ wallets }: AdminWalletsClientProps) {
             <span>⚠️</span> {overdraftCount} Wallet(s) in Overdraft
           </div>
         )}
-      </div>
+      </motion.div>
 
-      <Card className="w-full rounded-2xl border-stone-200/80 bg-white shadow-xs">
+      <motion.div variants={itemVariants}>
+        <Card className="w-full rounded-2xl border-stone-200/80 bg-white shadow-xs">
         <CardHeader>
           <CardTitle className="text-lg">Registered Student Wallets</CardTitle>
         </CardHeader>
@@ -137,6 +166,7 @@ export function AdminWalletsClient({ wallets }: AdminWalletsClientProps) {
           )}
         </CardContent>
       </Card>
+      </motion.div>
 
       <TopUpModal
         isOpen={isModalOpen}
@@ -144,6 +174,6 @@ export function AdminWalletsClient({ wallets }: AdminWalletsClientProps) {
         student={selectedStudent}
         onSuccess={handleDepositSuccess}
       />
-    </div>
+    </motion.div>
   );
 }

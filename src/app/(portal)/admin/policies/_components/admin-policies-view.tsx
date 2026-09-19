@@ -16,10 +16,30 @@ import {
   PlatformPoliciesData,
   updatePlatformPolicies,
 } from '@/features/policies/server/policy-actions';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface AdminPoliciesViewProps {
   initialPolicies: PlatformPoliciesData;
 }
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] },
+  },
+};
 
 export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
   const [policies, setPolicies] = React.useState<PlatformPoliciesData>(initialPolicies);
@@ -62,9 +82,17 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
   };
 
   return (
-    <div className="space-y-8">
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-8"
+    >
       {/* Header aligned with Admin baseline */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200/80 pb-5">
+      <motion.div
+        variants={itemVariants}
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200/80 pb-5 min-h-[92px]"
+      >
         <div>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center rounded-md bg-brand-subtle border border-brand-border/60 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-brand-primary">
@@ -75,7 +103,7 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 mt-1">
             Platform Policies (سياسات المنصة)
           </h1>
-          <p className="text-xs sm:text-sm text-stone-500 mt-1">
+          <p className="text-xs sm:text-sm text-stone-500 mt-1 line-clamp-1">
             Configure live operating laws, session pricing, attendance deadlines, and wallet overdraft sentinels.
           </p>
         </div>
@@ -87,30 +115,36 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
           <span>Back to Overview</span>
           <ArrowRight className="h-4 w-4" />
         </Link>
-      </div>
+      </motion.div>
 
       {/* Notification Toast */}
-      {statusMessage && (
-        <div
-          className={`p-4 rounded-xl border flex items-start gap-3 shadow-xs ${
-            statusMessage.type === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-              : 'bg-red-50 border-red-200 text-red-900'
-          }`}
-        >
-          {statusMessage.type === 'success' ? (
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-          ) : (
-            <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-          )}
-          <p className="text-sm font-medium leading-relaxed">{statusMessage.text}</p>
-        </div>
-      )}
+      <AnimatePresence>
+        {statusMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.98 }}
+            transition={{ duration: 0.2 }}
+            className={`p-4 rounded-xl border flex items-start gap-3 shadow-xs ${
+              statusMessage.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-red-50 border-red-200 text-red-900'
+            }`}
+          >
+            {statusMessage.type === 'success' ? (
+              <CheckCircle2 className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+            ) : (
+              <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+            )}
+            <p className="text-sm font-medium leading-relaxed">{statusMessage.text}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Configurable Policies Form */}
       <form onSubmit={handleSave} className="space-y-6">
         {/* Policy 1: Attendance Check-in Deadline Window */}
-        <div className="rounded-2xl border border-stone-200/80 bg-white p-6 shadow-xs space-y-4">
+        <motion.div variants={itemVariants} className="rounded-2xl border border-stone-200/80 bg-white p-6 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl bg-brand-subtle flex items-center justify-center text-brand-primary shrink-0">
@@ -164,10 +198,10 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
               Sessions scheduled in Gadwal dynamically adopt this window. Once elapsed, all verification endpoints strictly reject check-in requests.
             </p>
           </div>
-        </div>
+        </motion.div>
 
         {/* Policy 2: Unidirectional Pricing Sentinel */}
-        <div className="rounded-2xl border border-stone-200/80 bg-white p-6 shadow-xs space-y-4">
+        <motion.div variants={itemVariants} className="rounded-2xl border border-stone-200/80 bg-white p-6 shadow-xs space-y-4">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
               <Wallet className="h-5 w-5" />
@@ -237,10 +271,10 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
               </span>
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Policy 3: Overdraft Tolerance & Solvency Sentinel */}
-        <div className="rounded-2xl border border-stone-200/80 bg-white p-6 shadow-xs space-y-4">
+        <motion.div variants={itemVariants} className="rounded-2xl border border-stone-200/80 bg-white p-6 shadow-xs space-y-4">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 shrink-0">
               <SlidersHorizontal className="h-5 w-5" />
@@ -278,10 +312,10 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
               </div>
             </label>
           </div>
-        </div>
+        </motion.div>
 
         {/* Action Controls */}
-        <div className="pt-4 border-t border-stone-200 flex flex-col sm:flex-row items-center justify-end gap-3">
+        <motion.div variants={itemVariants} className="pt-4 border-t border-stone-200 flex flex-col sm:flex-row items-center justify-end gap-3">
           <button
             type="button"
             onClick={handleReset}
@@ -295,13 +329,13 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
           <button
             type="submit"
             disabled={isSaving}
-            className="min-h-[44px] w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-brand-primary hover:bg-red-700 transition-all shadow-xs flex items-center justify-center gap-2"
+            className="min-h-[44px] w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-brand-primary hover:bg-brand-hover transition-all shadow-xs flex items-center justify-center gap-2"
           >
             <Save className="h-4 w-4" />
             <span>{isSaving ? 'Saving Policies...' : 'Save Platform Policies'}</span>
           </button>
-        </div>
+        </motion.div>
       </form>
-    </div>
+    </motion.div>
   );
 }
