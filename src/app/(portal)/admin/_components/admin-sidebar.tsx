@@ -8,6 +8,7 @@ import {
   CalendarDays,
   Wallet,
   Users,
+  UserRoundSearch,
   SlidersHorizontal,
   Globe,
   ChevronLeft,
@@ -33,6 +34,7 @@ const NAV_CLUSTERS: NavCluster[] = [
     items: [
       { label: 'Overview', href: '/admin', icon: LayoutDashboard },
       { label: 'Timetable', href: '/admin/gadwal', icon: CalendarDays },
+      { label: 'Accounts', href: '/admin/accounts', icon: UserRoundSearch },
     ],
   },
   {
@@ -191,10 +193,9 @@ export function AdminSidebar({
                 <Link
                   href="/"
                   onClick={() => setIsOpenMobile(false)}
-                  className="min-h-[44px] flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100/70 transition-colors"
+                  className="min-h-[44px] flex items-center px-3 py-2.5 rounded-lg text-sm font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100/70 transition-colors"
                 >
-                  <Globe className="h-4 w-4 shrink-0" />
-                  <span>🌐 Public Site</span>
+                  <span>Public Site</span>
                 </Link>
               </div>
             </div>
@@ -205,7 +206,7 @@ export function AdminSidebar({
   }
 
   return (
-    <div className="flex flex-col h-full min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       {/* Top Header */}
       {!isCollapsed ? (
         <div className="h-16 flex items-center justify-between px-5 border-b border-stone-100 shrink-0">
@@ -239,7 +240,7 @@ export function AdminSidebar({
 
       {/* Clustered Navigation Body */}
       <div
-        className={`flex-1 py-5 space-y-6 ${
+        className={`flex-1 min-h-0 py-5 space-y-6 ${
           isCollapsed ? 'overflow-visible px-2' : 'overflow-y-auto px-1'
         }`}
       >
@@ -251,10 +252,9 @@ export function AdminSidebar({
         <div className="mt-auto p-4 border-t border-stone-100 shrink-0">
           <Link
             href="/"
-            className="min-h-[44px] flex items-center gap-3 px-3 py-2.5 rounded-lg mx-2 text-sm font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100/70 transition-colors"
+            className="min-h-[44px] flex items-center px-3 py-2.5 rounded-lg mx-2 text-sm font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100/70 transition-colors"
           >
-            <Globe className="h-4 w-4 shrink-0" />
-            <span>🌐 Public Site</span>
+            <span>Public Site</span>
           </Link>
         </div>
       ) : (
