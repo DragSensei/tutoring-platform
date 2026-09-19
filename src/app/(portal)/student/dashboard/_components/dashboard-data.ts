@@ -101,6 +101,7 @@ export async function getStudentDashboardData() {
       price,
       sessionType: nextSession.session_type,
       isWithinActiveWindow,
+      isAttended: alreadyCheckedIn,
     };
   }
 

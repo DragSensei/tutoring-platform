@@ -8,6 +8,15 @@ import { formatDateTime } from '@/shared/utils/date-format';
 import { CopyTokenButton } from './copy-token-button';
 import { SessionType, SessionStatus } from '@/shared/types';
 
+export interface SessionStudentAttendee {
+  id: string;
+  name: string;
+  email: string;
+  walletBalance: number;
+  isFlaggedOverdraft: boolean;
+  attended: boolean;
+}
+
 export interface GadwalSessionItem {
   id: string;
   title: string;
@@ -23,6 +32,7 @@ export interface GadwalSessionItem {
   price: number;
   assignedStudents?: string[];
   sessionCode?: string;
+  roster?: SessionStudentAttendee[];
 }
 
 interface GadwalTableProps {

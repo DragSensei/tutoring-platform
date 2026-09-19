@@ -50,20 +50,26 @@ export function AdminWalletsClient({ wallets }: AdminWalletsClientProps) {
   const overdraftCount = wallets.filter((w) => w.isFlaggedOverdraft || w.balance < 0).length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-stone-200/80 pb-5">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center rounded-md bg-brand-subtle border border-brand-border/60 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-brand-primary">
+              Admin Console
+            </span>
+            <span className="text-xs font-semibold text-stone-500">Wallets & Financials</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 mt-1">
             Student Wallets & Overdraft Ledger
           </h1>
-          <p className="text-slate-500 text-sm mt-1">
+          <p className="text-xs sm:text-sm text-stone-500 mt-1">
             Review student balances, credit/post-paid sessions, and execute admin top-up deposits.
           </p>
         </div>
 
         {overdraftCount > 0 && (
-          <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-2 flex items-center gap-2 text-rose-700 text-sm font-semibold">
-            <span>⚠️</span> {overdraftCount} Wallet(s) in Overdraft (Flagged for Review)
+          <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-2.5 flex items-center gap-2 text-rose-700 text-sm font-semibold self-start sm:self-auto">
+            <span>⚠️</span> {overdraftCount} Wallet(s) in Overdraft
           </div>
         )}
       </div>
@@ -116,8 +122,8 @@ export function AdminWalletsClient({ wallets }: AdminWalletsClientProps) {
                         <td className="px-4 py-3 text-right">
                           <Button
                             variant="outline"
-                            size="sm"
                             onClick={() => openTopUp(w)}
+                            className="min-h-[44px] text-sm px-3.5 font-medium"
                           >
                             Top Up Funds
                           </Button>

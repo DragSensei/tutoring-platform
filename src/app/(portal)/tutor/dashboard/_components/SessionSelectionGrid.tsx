@@ -1,19 +1,28 @@
 'use client';
 
 import * as React from 'react';
-import { Check } from 'lucide-react';
+import { Check, ShieldCheck } from 'lucide-react';
 import { CopyTokenButton } from '@/features/sessions/components/copy-token-button';
 import { formatSessionCode } from '@/shared/utils/session-code';
 import type { GadwalSessionItem } from '@/features/sessions/types';
 
 interface SessionSelectionGridProps {
   sessions: GadwalSessionItem[];
+  selectedSessionId?: string | null;
+  onSelectSession?: (session: GadwalSessionItem) => void;
 }
 
-export function SessionSelectionGrid({ sessions }: SessionSelectionGridProps) {
-  const [selectedSessionId, setSelectedSessionId] = React.useState<string | null>(
+export function SessionSelectionGrid({
+  sessions,
+  selectedSessionId: controlledSelectedId,
+  onSelectSession,
+}: SessionSelectionGridProps) {
+  const [internalSelectedId, setInternalSelectedId] = React.useState<string | null>(
     sessions.length > 0 ? sessions[0].id : null
   );
+
+  const selectedSessionId =
+    controlledSelectedId !== undefined ? controlledSelectedId : internalSelectedId;
 
   if (sessions.length === 0) {
     return (
@@ -22,6 +31,11 @@ export function SessionSelectionGrid({ sessions }: SessionSelectionGridProps) {
       </div>
     );
   }
+
+  const handleRowClick = (session: GadwalSessionItem) => {
+    setInternalSelectedId(session.id);
+    onSelectSession?.(session);
+  };
 
   return (
     <section className="space-y-3 pt-2">
@@ -34,7 +48,7 @@ export function SessionSelectionGrid({ sessions }: SessionSelectionGridProps) {
         </span>
       </div>
 
-      {/* Rows Container: Stack of rows (not in a table element) */}
+      {/* Rows Container: Stack of rows */}
       <div className="rounded-xl border border-stone-200 bg-white divide-y divide-stone-100 overflow-hidden shadow-xs">
         {sessions.map((session) => {
           const isSelected = session.id === selectedSessionId;
@@ -51,17 +65,17 @@ export function SessionSelectionGrid({ sessions }: SessionSelectionGridProps) {
           return (
             <div
               key={session.id}
-              onClick={() => setSelectedSessionId(session.id)}
+              onClick={() => handleRowClick(session)}
               className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 cursor-pointer transition-colors ${
                 isSelected
-                  ? 'bg-stone-50/90 ring-1 ring-inset ring-stone-900/10'
+                  ? 'bg-brand-subtle/30 ring-1 ring-inset ring-brand-border/60 border-l-4 border-l-brand-primary'
                   : 'hover:bg-stone-50/50'
               }`}
             >
               {/* Left: Session name & little description under it */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm sm:text-base font-bold tracking-tight text-stone-900">
+                  <span className={`font-mono text-sm sm:text-base font-bold tracking-tight ${isSelected ? 'text-brand-primary' : 'text-stone-900'}`}>
                     {sessionCode}
                   </span>
                   {session.sessionType === 'PRIVATE' && (
@@ -70,8 +84,8 @@ export function SessionSelectionGrid({ sessions }: SessionSelectionGridProps) {
                     </span>
                   )}
                   {isSelected && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-stone-700 bg-stone-200/70 px-2 py-0.5 rounded-full">
-                      <Check className="h-3 w-3 text-stone-700" /> Selected
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-primary bg-brand-subtle border border-brand-border/70 px-2 py-0.5 rounded-full">
+                      <Check className="h-3 w-3 text-brand-primary stroke-[3]" /> Selected
                     </span>
                   )}
                 </div>
@@ -88,8 +102,8 @@ export function SessionSelectionGrid({ sessions }: SessionSelectionGridProps) {
                 </p>
               </div>
 
-              {/* Right: Number of students & Copy Attendance Link button */}
-              <div className="flex items-center gap-4 self-end sm:self-center flex-shrink-0">
+              {/* Right: Actions, Student Count & Buttons */}
+              <div className="flex items-center gap-3 sm:gap-4 self-end sm:self-center flex-shrink-0">
                 <div className="text-right">
                   <div className="text-sm font-semibold text-stone-800 tabular-nums">
                     {studentCount}
@@ -98,6 +112,18 @@ export function SessionSelectionGrid({ sessions }: SessionSelectionGridProps) {
                     </span>
                   </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRowClick(session);
+                  }}
+                  className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-brand-primary hover:bg-brand-hover text-white transition-all active:scale-95 shadow-xs"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  <span>Record Attendance</span>
+                </button>
 
                 <div onClick={(e) => e.stopPropagation()}>
                   <CopyTokenButton token={session.token} />

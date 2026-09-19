@@ -82,13 +82,13 @@ export function CheckInWidget({ token, session, studentId, initialCheckedIn = fa
 
   return (
     <Card className="w-full max-w-lg mx-auto shadow-xl border-slate-200 overflow-hidden">
-      <div className="h-2 bg-gradient-to-r from-red-500 to-red-600" />
+      <div className="h-2 bg-gradient-to-r from-brand-primary to-brand-hover" />
       <CardHeader>
         <div className="flex items-center justify-between">
           <Badge variant={session.sessionType === 'PRIVATE' ? 'default' : 'secondary'}>
             {session.sessionType} SESSION
           </Badge>
-          <span className="text-sm font-semibold text-red-600 font-mono">
+          <span className="text-sm font-semibold text-brand-primary font-mono">
             {formatEGP(session.price)}
           </span>
         </div>

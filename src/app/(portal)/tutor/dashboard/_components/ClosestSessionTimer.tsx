@@ -80,10 +80,10 @@ export function ClosestSessionTimer({ closestSession }: ClosestSessionTimerProps
       <div suppressHydrationWarning className="flex items-center justify-center gap-2 sm:gap-3.5 mt-5">
         {/* Hours Box */}
         <div className="flex flex-col items-center">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white border-2 border-stone-200/90 shadow-sm flex items-center justify-center transition-transform hover:scale-105">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white border-2 border-brand-border/80 hover:border-brand-primary shadow-xs flex items-center justify-center transition-all hover:scale-105">
             <span
               suppressHydrationWarning
-              className="font-mono text-2xl sm:text-3xl font-extrabold text-stone-900 tabular-nums"
+              className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary tabular-nums"
             >
               {countdown.hours.toString().padStart(2, '0')}
             </span>
@@ -94,14 +94,14 @@ export function ClosestSessionTimer({ closestSession }: ClosestSessionTimerProps
         </div>
 
         {/* Separator */}
-        <span className="text-xl sm:text-2xl font-bold text-stone-300 pb-5">:</span>
+        <span className="text-xl sm:text-2xl font-bold text-brand-border pb-5">:</span>
 
         {/* Minutes Box */}
         <div className="flex flex-col items-center">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white border-2 border-stone-200/90 shadow-sm flex items-center justify-center transition-transform hover:scale-105">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white border-2 border-brand-border/80 hover:border-brand-primary shadow-xs flex items-center justify-center transition-all hover:scale-105">
             <span
               suppressHydrationWarning
-              className="font-mono text-2xl sm:text-3xl font-extrabold text-stone-900 tabular-nums"
+              className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary tabular-nums"
             >
               {countdown.minutes.toString().padStart(2, '0')}
             </span>
@@ -112,14 +112,14 @@ export function ClosestSessionTimer({ closestSession }: ClosestSessionTimerProps
         </div>
 
         {/* Separator */}
-        <span className="text-xl sm:text-2xl font-bold text-stone-300 pb-5">:</span>
+        <span className="text-xl sm:text-2xl font-bold text-brand-border pb-5">:</span>
 
         {/* Seconds Box */}
         <div className="flex flex-col items-center">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white border-2 border-stone-200/90 shadow-sm flex items-center justify-center transition-transform hover:scale-105">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white border-2 border-brand-border/80 hover:border-brand-primary shadow-xs flex items-center justify-center transition-all hover:scale-105">
             <span
               suppressHydrationWarning
-              className="font-mono text-2xl sm:text-3xl font-extrabold text-stone-900 tabular-nums"
+              className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary tabular-nums"
             >
               {countdown.seconds.toString().padStart(2, '0')}
             </span>

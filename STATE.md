@@ -2,13 +2,13 @@
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
 - **Active Branch:** `main`
-- **Last Completed Work:** Fixed student dashboard HTTP 500 error (`Wallet_user_id_fkey` foreign key violation) and runtime undefined variable:
-  1. Added user existence verification inside `getStudentWallet(userId: string)` to prevent creating orphaned wallet rows with invalid foreign keys.
-  2. Hardened student identity resolution in `getStudentDashboardData` and `StudentWalletPage` to query `prisma.user` for valid `STUDENT` accounts and avoid passing unverified session IDs.
-  3. Fixed variable binding in `getStudentDashboardData` return payload (`defaultStudentId` -> `studentId`).
-  4. Added regression test suite `tests/unit/wallet-resilience.test.ts` (35/35 tests passing project-wide).
-  5. Verified multi-viewport visual audit across mobile (375px), tablet (768px), and desktop (1440px) with HTTP 200 and zero layout/runtime errors.
-- **Immediate Next Move:** Implement session student attendance roster management & student recording iteration per tutor selection.
+- **Last Completed Work:** Eliminated Admin Sidebar vertical layout shift across all admin routes:
+  1. Enforced single shared component architecture: `<AdminSidebar />` rendered strictly in `src/app/(portal)/admin/layout.tsx`.
+  2. Stripped outer `aside` and `sticky` classes from `admin-sidebar.tsx`; positioning encapsulated in `layout.tsx` (`aside` with `w-64 shrink-0 md:sticky md:top-20`).
+  3. Removed `justify-center` from root layout `<main>` in `src/app/layout.tsx` (the root cause of shorter pages shifting down).
+  4. Verified exact bounding box measurement via Playwright across all 5 admin routes (`/admin`, `/admin/wallets`, `/admin/gadwal`, `/admin/mentors`, `/admin/policies`): exact match at x=136, y=88, width=256, height=429 (0px vertical shift).
+  5. Multi-viewport visual audit passing 100% (touch targets >= 44px, font scale >= 14px, zero horizontal spill), Vitest 50/50 passing, ESLint and token purity lints green.
+- **Immediate Next Move:** Execute next milestone from `## FUTURE ROADMAP & UPCOMING BACKLOG` (Admin Dashboard Design Alignment for `/admin/gadwal` & `/admin/wallets` to warm neutral `#FBFBF9`).
 - **Blockers / Open Decisions:** None.
 
 ## Milestone Checklist
@@ -27,7 +27,16 @@
 - [x] Autonomous Bug Triage: Fix React SSR hydration mismatch on `GadwalTable` and `TransactionLedger`
 - [x] Implement Tutor Dashboard Session Picker & Due Timer (`/tutor/dashboard`) with top-middle 3-box countdown timer, clickable cards, session codes (`ON-P3-6:00-8:00`), and assigned student rosters
 - [x] Autonomous Bug Triage: Resolve Student Dashboard HTTP 500 (`Wallet_user_id_fkey`) and harden student identity resolution
+- [x] Implement Admin Landing Overview (`/admin`) and persistent responsive Admin Sidebar
 - [ ] Deploy to Vercel with Neon connection pooling
+
+## FUTURE ROADMAP & UPCOMING BACKLOG
+- [ ] **Admin Dashboard Design Alignment:** Refactor Admin portal (`/admin/gadwal`, `/admin/wallets`) to follow our Claude-style design pattern (warm neutral `#FBFBF9` palette, crisp typography, strict token purity).
+- [x] **Admin Landing "Overview" Page:** Created central landing overview page (`/admin`) displaying active cohort KPIs, daily check-in volume, pending overdrafts, and quick action shortcuts.
+- [x] **Admin Dashboard Sidebar:** Implemented persistent, responsive navigation sidebar organizing core administrative functions (Overview, Timetable / Gadwal, Wallets & Financials, Faculty Mentors, Platform Settings).
+- [ ] **Custom Modern Combobox Primitive:** Build a custom searchable Combobox component from scratch using native HTML/Tailwind tokens without bloated third-party dependencies, adhering to our design system.
+- [x] **Tutor Agenda Mobile Ergonomics & Accessibility:** Resolved 11 touch-target (<44px) and 9 font-scale (<14px) defects across header navigation tabs, timer copy triggers, and course session action buttons on `/tutor/agenda` (44/44 unit tests passing, 100% token and architecture lints green).
+- [ ] **Tutor & Student Red Brand Depth:** Further enrich both Tutor and Student dashboards with additional crimson brand red (`brand.primary: #DC2626`, `brand.subtle: #FEF2F2`, `brand.border: #FECACA`) across interactive states, card rims, and focal indicators.
 
 ## BUG TRIAGE LOG
 - **Bug 1:** `Warning: Text content did not match. Server: "16 Sept, 02:03" Client: "Sep 16, 02:03 AM"` and `Image with src "/logo.png" has "fill" but is missing "sizes" prop`.

@@ -16,14 +16,15 @@ export function StudentBalanceBanner({ studentName, balance }: StudentBalanceBan
   return (
     <section
       aria-label="Student Balance Overview"
-      className="rounded-xl border border-stone-200/90 bg-white p-6 shadow-[0_1px_2px_rgba(25,24,23,0.04)]"
+      className="rounded-xl border border-stone-200/90 bg-white p-6 shadow-[0_1px_2px_rgba(25,24,23,0.04)] overflow-hidden"
     >
+      <div className="h-1.5 w-[calc(100%+3rem)] bg-gradient-to-r from-brand-primary to-brand-hover -mt-6 -mx-6 mb-6" />
       <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wider text-stone-500">
+          <span className="inline-flex items-center rounded-md bg-brand-subtle border border-brand-border/60 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-brand-primary">
             Student Portal
-          </p>
-          <h1 className="font-serif text-2xl font-medium text-stone-900 sm:text-3xl">
+          </span>
+          <h1 className="font-serif text-2xl font-medium text-stone-900 sm:text-3xl pt-1">
             Welcome back, {studentName}
           </h1>
           <p className="text-xs text-stone-500">
@@ -34,10 +35,10 @@ export function StudentBalanceBanner({ studentName, balance }: StudentBalanceBan
         <div className="flex flex-wrap items-center gap-3 sm:justify-end">
           <Link
             href="/student/wallet"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3.5 py-2 text-xs font-semibold text-stone-700 shadow-sm transition hover:bg-stone-50 hover:text-stone-900 active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-border bg-brand-subtle/60 px-3.5 py-2 text-xs font-semibold text-brand-primary shadow-xs transition hover:bg-brand-subtle hover:border-brand-primary active:scale-95"
           >
-            <span>View Full Ledger</span>
-            <ArrowUpRight className="h-3.5 w-3.5 text-stone-400" />
+            <span>Payment History</span>
+            <ArrowUpRight className="h-3.5 w-3.5 text-brand-primary" />
           </Link>
         </div>
       </div>

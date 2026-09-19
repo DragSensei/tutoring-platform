@@ -101,7 +101,7 @@ export function ScheduleSessionCard({ tutors }: ScheduleSessionCardProps) {
           <div className="md:col-span-3 flex justify-end">
             <button
               type="submit"
-              className="px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors shadow-sm"
+              className="min-h-[44px] px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors shadow-sm"
             >
               Generate Session & Token
             </button>

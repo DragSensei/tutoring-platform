@@ -39,9 +39,8 @@ export function CopyTokenButton({ token, baseUrl, className }: CopyTokenButtonPr
   return (
     <Button
       variant={copied ? 'secondary' : 'outline'}
-      size="sm"
       onClick={handleCopy}
-      className={`relative overflow-hidden text-xs ${className || ''}`}
+      className={`min-h-[44px] px-3.5 text-sm relative overflow-hidden font-medium ${className || ''}`}
     >
       <AnimatePresence mode="wait" initial={false}>
         {copied ? (
@@ -51,9 +50,9 @@ export function CopyTokenButton({ token, baseUrl, className }: CopyTokenButtonPr
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.15 }}
-            className="flex items-center gap-1.5 text-emerald-600 font-medium"
+            className="flex items-center gap-1.5 text-emerald-600 font-medium text-sm"
           >
-            <Check className="h-3.5 w-3.5" />
+            <Check className="h-4 w-4" />
             <span>Attendance Link Copied</span>
           </motion.span>
         ) : (
@@ -63,9 +62,9 @@ export function CopyTokenButton({ token, baseUrl, className }: CopyTokenButtonPr
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
             transition={{ duration: 0.15 }}
-            className="flex items-center gap-1.5 text-stone-700 font-medium"
+            className="flex items-center gap-1.5 text-stone-700 font-medium text-sm"
           >
-            <Link2 className="h-3.5 w-3.5 text-stone-400" />
+            <Link2 className="h-4 w-4 text-stone-400" />
             <span>Copy Attendance Link</span>
           </motion.span>
         )}

@@ -37,16 +37,16 @@ export default function RootLayout({
             </Link>
 
             {/* Navigation Links */}
-            <nav className="flex items-center gap-6 text-sm font-medium text-slate-600">
-              <Link href="/about" className="hover:text-red-600 transition-colors">
+            <nav className="flex items-center gap-4 text-sm font-medium text-slate-600">
+              <Link href="/about" className="min-h-[44px] min-w-[44px] inline-flex items-center hover:text-red-600 transition-colors">
                 About Us
               </Link>
-              <Link href="/contact" className="hover:text-red-600 transition-colors">
+              <Link href="/contact" className="min-h-[44px] min-w-[44px] inline-flex items-center hover:text-red-600 transition-colors">
                 Contact Us
               </Link>
               <Link
                 href="/login"
-                className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-sm ml-2"
+                className="min-h-[44px] inline-flex items-center px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-sm ml-2"
               >
                 Sign In
               </Link>
@@ -55,7 +55,7 @@ export default function RootLayout({
         </header>
 
         {/* Main Viewport Container */}
-        <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 flex flex-col justify-center">
+        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 flex flex-col">
           {children}
         </main>
 
@@ -66,12 +66,12 @@ export default function RootLayout({
               <span className="font-semibold text-slate-700">Big Hero Robotics Academy</span> &bull; &copy; {new Date().getFullYear()}
             </div>
 
-            <div className="flex items-center gap-4 text-slate-500">
-              <Link href="/about" className="hover:text-slate-800 transition-colors">
+            <div className="flex items-center gap-3 text-slate-500">
+              <Link href="/about" className="min-h-[44px] min-w-[44px] inline-flex items-center hover:text-slate-800 transition-colors">
                 About Us
               </Link>
               <span>&bull;</span>
-              <Link href="/contact" className="hover:text-slate-800 transition-colors">
+              <Link href="/contact" className="min-h-[44px] min-w-[44px] inline-flex items-center hover:text-slate-800 transition-colors">
                 Contact Us
               </Link>
               <span>&bull;</span>

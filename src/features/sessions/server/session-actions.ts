@@ -77,27 +77,51 @@ export async function getGadwalSessions(filter?: SessionFilterInput) {
 }
 
 export async function getTutorSessions(tutorId: string) {
-  const sessions = await prisma.session.findMany({
-    where: { tutor_id: tutorId },
-    include: {
-      tutor: { select: { id: true, name: true } },
-      _count: { select: { attendances: true } },
-      attendances: {
-        include: {
-          student: { select: { id: true, name: true } },
+  const [sessions, allStudents] = await Promise.all([
+    prisma.session.findMany({
+      where: { tutor_id: tutorId },
+      include: {
+        tutor: { select: { id: true, name: true } },
+        _count: { select: { attendances: true } },
+        attendances: {
+          include: {
+            student: { select: { id: true, name: true, email: true } },
+          },
         },
       },
-    },
-    orderBy: { start_time: 'desc' },
-  });
+      orderBy: { start_time: 'desc' },
+    }),
+    prisma.user.findMany({
+      where: { role: 'STUDENT' },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        wallet: { select: { balance: true, is_flagged_overdraft: true } },
+      },
+      orderBy: { name: 'asc' },
+    }),
+  ]);
 
   return sessions.map((s) => {
+    const attendedIds = new Set(s.attendances.map((a) => a.student.id));
     const assignedStudents = s.attendances.map((a) => a.student.name);
     const sessionCode = formatSessionCode({
       title: s.title,
       startTime: s.start_time,
       endTime: s.end_time,
     });
+
+    const cohortPool =
+      s.session_type === 'PRIVATE' ? allStudents.slice(0, 1) : allStudents.slice(0, 4);
+    const roster = cohortPool.map((student) => ({
+      id: student.id,
+      name: student.name,
+      email: student.email,
+      walletBalance: Number(student.wallet?.balance || 0),
+      isFlaggedOverdraft: Boolean(student.wallet?.is_flagged_overdraft),
+      attended: attendedIds.has(student.id),
+    }));
 
     return {
       id: s.id,
@@ -113,6 +137,7 @@ export async function getTutorSessions(tutorId: string) {
       status: s.status,
       attendeeCount: s._count.attendances,
       assignedStudents,
+      roster,
       price: SESSION_PRICING[s.session_type as SessionType],
     };
   });
