@@ -35,7 +35,7 @@ export function StudentBalanceBanner({ studentName, balance }: StudentBalanceBan
         <div className="flex flex-wrap items-center gap-3 sm:justify-end">
           <Link
             href="/student/wallet"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-border bg-brand-subtle/60 px-3.5 py-2 text-xs font-semibold text-brand-primary shadow-xs transition hover:bg-brand-subtle hover:border-brand-primary active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-border bg-brand-subtle/60 px-3.5 py-2.5 min-h-[44px] text-xs font-semibold text-brand-primary shadow-xs transition hover:bg-brand-subtle hover:border-brand-primary active:scale-95"
           >
             <span>Payment History</span>
             <ArrowUpRight className="h-3.5 w-3.5 text-brand-primary" />
@@ -69,10 +69,10 @@ export function StudentBalanceBanner({ studentName, balance }: StudentBalanceBan
 
             {isOverdraft && (
               <div className="flex flex-col items-start gap-1 sm:items-end">
-                <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-800">
+                <span className="inline-flex items-center rounded-full border border-brand-border bg-brand-subtle px-3 py-1 text-xs font-semibold text-brand-primary">
                   Post-Paid Credit Active
                 </span>
-                <span className="text-[11px] text-rose-600">
+                <span className="text-[11px] text-brand-primary font-medium">
                   Overdraft protection active (Policy limit: -1,000.00 EGP)
                 </span>
               </div>

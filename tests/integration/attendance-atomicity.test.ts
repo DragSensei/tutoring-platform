@@ -22,6 +22,9 @@ vi.mock('@/shared/lib/prisma', () => ({
     walletTransaction: {
       create: vi.fn(),
     },
+    platformPolicy: {
+      findUnique: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }));
@@ -53,6 +56,7 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.platformPolicy.findUnique).mockResolvedValue(null);
   });
 
   it('rejects with HTTP 404 when session token does not exist', async () => {

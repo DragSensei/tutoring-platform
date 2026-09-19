@@ -55,15 +55,15 @@ export function GadwalTable({ sessions, showTutorColumn = true }: GadwalTablePro
   };
 
   return (
-    <Card className="w-full">
+    <Card className="w-full min-w-0 max-w-full rounded-2xl border-stone-200/80 bg-white shadow-xs overflow-hidden">
       <CardHeader>
         <CardTitle className="text-xl">Gadwal Timetable (جدول الحصص)</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-w-0 max-w-full">
         {sessions.length === 0 ? (
           <div className="text-center py-10 text-slate-500">No sessions scheduled.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto min-w-0 max-w-full">
             <table className="w-full text-left text-sm text-slate-700">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500 border-b border-slate-200">
                 <tr>

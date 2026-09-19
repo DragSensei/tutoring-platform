@@ -116,3 +116,14 @@ model WalletTransaction {
   @@index([session_id])
   @@index([created_at])
 }
+
+model PlatformPolicy {
+  id                    String   @id @default("default")
+  check_in_window_hours Int      @default(4)
+  group_session_price   Decimal  @default(375.00) @db.Decimal(10, 2)
+  private_session_price Decimal  @default(500.00) @db.Decimal(10, 2)
+  allow_overdraft       Boolean  @default(true)
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+}
+

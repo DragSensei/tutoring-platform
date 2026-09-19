@@ -91,7 +91,7 @@ export function RecentActivityLedger({ events, currentBalance }: RecentActivityL
 
         <Link
           href="/student/wallet"
-          className="inline-flex items-center gap-1 text-xs font-semibold text-brand-primary hover:text-brand-hover transition"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-brand-primary hover:text-brand-hover transition min-h-[44px] px-2 py-2"
         >
           <span>View All History</span>
           <ArrowUpRight className="h-3.5 w-3.5" />

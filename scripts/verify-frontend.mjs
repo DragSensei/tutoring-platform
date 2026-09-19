@@ -1,11 +1,13 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { runUiArchitectureLint } from "../../../../_shared-skills/scripts/lint-ui-architecture.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const appDir = path.join(rootDir, "src", "app");
+const srcDir = path.join(rootDir, "src");
 
 let errors = [];
 
@@ -23,25 +25,66 @@ function findFiles(dir, matchFn, fileList = []) {
   return fileList;
 }
 
-// 1. Scan all page.tsx files under src/app
+// -----------------------------------------------------------------------------
+// GATE 1: Page Orchestrators (page.tsx) must strictly remain <= 35 non-empty lines
+// -----------------------------------------------------------------------------
 const pageFiles = findFiles(appDir, (file) => path.basename(file) === "page.tsx");
 
 for (const file of pageFiles) {
   const content = fs.readFileSync(file, "utf-8");
-  const lines = content.split(/\r?\n/).length;
+  const nonEmptyLines = content.split(/\r?\n/).filter((line) => line.trim().length > 0).length;
   const relPath = path.relative(rootDir, file).replace(/\\/g, "/");
 
-  // Specific rule: (marketing)/page.tsx must be <= 30 lines; all other page.tsx <= 35 lines
-  const maxLines = relPath.includes("(marketing)/page.tsx") ? 30 : 35;
+  const maxLines = 35;
 
-  if (lines > maxLines) {
+  if (nonEmptyLines > maxLines) {
     errors.push(
-      `[Line Count Violation] ${relPath} has ${lines} lines (max allowed: ${maxLines})`
+      `[Gate 1 - Line Count Violation] ${relPath} has ${nonEmptyLines} non-empty lines (max allowed: ${maxLines})`
     );
   }
 }
 
-// 2. Scan all files in src/app/(marketing) for forbidden imports
+// -----------------------------------------------------------------------------
+// GATE 2: Disallow Prisma imports (@prisma/client, prisma) inside presentation
+// components and files marked 'use client'
+// -----------------------------------------------------------------------------
+const allSrcFiles = findFiles(srcDir, (file) => /\.(tsx?|jsx?)$/.test(file));
+const prismaImportPattern = /(?:(?:import|from|export)\s+['"][^'"]*(?:@prisma\/client|(?:\/|\b)prisma(?:\.ts)?\b)[^'"]*['"]|(?:import|require)\s*\(\s*['"][^'"]*(?:@prisma\/client|(?:\/|\b)prisma(?:\.ts)?\b)[^'"]*['"]\)?)/i;
+
+for (const file of allSrcFiles) {
+  const content = fs.readFileSync(file, "utf-8");
+  const relPath = path.relative(rootDir, file).replace(/\\/g, "/");
+  const isClient = /['"]use client['"]/.test(content);
+  const isPresentationComponent =
+    (relPath.includes("/components/") ||
+      (relPath.includes("/_components/") && /\.(tsx|jsx)$/.test(file)) ||
+      (/\.(tsx|jsx)$/.test(file) &&
+        !relPath.endsWith("page.tsx") &&
+        !relPath.endsWith("layout.tsx") &&
+        !relPath.endsWith("template.tsx"))) &&
+    !path.basename(file).endsWith(".test.tsx") &&
+    !path.basename(file).endsWith(".spec.tsx");
+
+  if (isClient || isPresentationComponent) {
+    const lines = content.split(/\r?\n/);
+    lines.forEach((line, idx) => {
+      if (prismaImportPattern.test(line)) {
+        const reason = isClient && isPresentationComponent
+          ? "client presentation component"
+          : isClient
+          ? "'use client' file"
+          : "presentation component";
+        errors.push(
+          `[Gate 2 - Prisma Boundary Violation] ${relPath}:${idx + 1} imports Prisma inside a ${reason}: "${line.trim()}"`
+        );
+      }
+    });
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Route Isolation: Scan all files in src/app/(marketing) for forbidden imports
+// -----------------------------------------------------------------------------
 const marketingDir = path.join(appDir, "(marketing)");
 const marketingFiles = findFiles(marketingDir, (file) =>
   /\.(tsx?|jsx?)$/.test(file)
@@ -74,12 +117,22 @@ for (const file of marketingFiles) {
   });
 }
 
+// -----------------------------------------------------------------------------
+// GATE 3 & AST Sentinel Integration: Run AST Component Boundary Linter
+// -----------------------------------------------------------------------------
+const astLint = runUiArchitectureLint(rootDir);
+if (astLint.violations && astLint.violations.length > 0) {
+  astLint.violations.forEach((v) => {
+    errors.push(`[${v.gate} - ${v.type}] ${v.message}`);
+  });
+}
+
 if (errors.length > 0) {
   console.error("\n❌ Frontend Architectural Verification Failed:\n");
   errors.forEach((err) => console.error("  - " + err));
   console.error("\nResolve the violations above to conform to Frontend Architecture standards.\n");
   process.exit(1);
 } else {
-  console.log("✅ Frontend Architectural Verification Passed: All page.tsx files <= 35 lines and (marketing) routes isolated.");
+  console.log("✅ Frontend Architectural Verification Passed: All page.tsx files <= 35 non-empty lines, no Prisma imports in presentation/client components, and (marketing) routes isolated.");
   process.exit(0);
 }

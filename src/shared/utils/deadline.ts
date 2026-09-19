@@ -6,12 +6,15 @@
 export const CHECKIN_WINDOW_HOURS = 4;
 export const CHECKIN_WINDOW_MS = CHECKIN_WINDOW_HOURS * 60 * 60 * 1000; // 14,400,000 ms
 
-export function computeSessionDeadline(startTime: Date | string | number): Date {
+export function computeSessionDeadline(
+  startTime: Date | string | number,
+  windowHours: number = CHECKIN_WINDOW_HOURS
+): Date {
   const start = new Date(startTime);
   if (isNaN(start.getTime())) {
     throw new Error('Invalid start_time provided for deadline calculation');
   }
-  return new Date(start.getTime() + CHECKIN_WINDOW_MS);
+  return new Date(start.getTime() + windowHours * 60 * 60 * 1000);
 }
 
 export function isCheckInExpired(

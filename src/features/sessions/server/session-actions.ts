@@ -3,6 +3,7 @@ import { computeSessionDeadline } from '@/shared/utils/deadline';
 import { SESSION_PRICING, SessionType, TutorVolumeKPIs } from '@/shared/types';
 import { formatSessionCode } from '@/shared/utils/session-code';
 import { CreateSessionInput, SessionFilterInput } from '../schemas';
+import { revalidatePath } from 'next/cache';
 import crypto from 'crypto';
 
 export async function createSession(input: CreateSessionInput) {
@@ -13,8 +14,10 @@ export async function createSession(input: CreateSessionInput) {
     throw new Error('End time must be strictly after start time');
   }
 
-  // 4-Hour deadline invariant
-  const deadline = computeSessionDeadline(start);
+  // Configurable deadline invariant
+  const policy = await prisma.platformPolicy.findUnique({ where: { id: 'default' } });
+  const windowHours = policy?.check_in_window_hours ?? 4;
+  const deadline = computeSessionDeadline(start, windowHours);
   const token = crypto.randomUUID();
 
   return prisma.session.create({
@@ -34,6 +37,12 @@ export async function createSession(input: CreateSessionInput) {
       },
     },
   });
+
+  try {
+    revalidatePath('/admin/gadwal');
+  } catch {}
+
+  return session;
 }
 
 export async function getGadwalSessions(filter?: SessionFilterInput) {

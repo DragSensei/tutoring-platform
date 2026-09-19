@@ -45,8 +45,8 @@ export function SessionCourseCard({
       }}
       className={`group relative flex flex-col justify-between rounded-xl border p-5 sm:p-6 text-left transition-all cursor-pointer ${
         isSelected
-          ? 'border-red-600 bg-white shadow-md ring-2 ring-red-600/20 scale-[1.01]'
-          : 'border-stone-200 bg-white shadow-sm hover:border-stone-300 hover:shadow-md hover:scale-[1.005]'
+          ? 'border-brand-primary bg-white shadow-md ring-2 ring-brand-primary/20 scale-[1.01]'
+          : 'border-stone-200 bg-white shadow-xs hover:border-brand-border hover:shadow-sm hover:scale-[1.005]'
       }`}
     >
       <div>
@@ -68,7 +68,7 @@ export function SessionCourseCard({
 
         {/* Name of Session (e.g., ON-P3-6:00-8:00) */}
         <div className="space-y-1">
-          <h3 className="font-mono text-xl font-extrabold tracking-tight text-stone-900 group-hover:text-red-700 transition-colors">
+          <h3 className="font-mono text-xl font-extrabold tracking-tight text-stone-900 group-hover:text-brand-primary transition-colors">
             {sessionCode}
           </h3>
           <p className="text-xs sm:text-sm font-medium text-stone-600 line-clamp-1">

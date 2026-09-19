@@ -13,8 +13,20 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      spacing: {
+        18: '4.5rem',
+      },
       colors: {
         brand: projectTheme.brand,
+        text: {
+          primary: '#191817',
+          muted: '#6B685B',
+          subtle: '#9E9B8F',
+        },
+        border: {
+          subtle: '#E7E5DE',
+          strong: '#D1CEBD',
+        },
         canvas: {
           DEFAULT: '#FBFBF9',
           subtle: '#F4F3EE',

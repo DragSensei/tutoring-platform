@@ -50,19 +50,19 @@ export function AdminWalletsClient({ wallets }: AdminWalletsClientProps) {
   const overdraftCount = wallets.filter((w) => w.isFlaggedOverdraft || w.balance < 0).length;
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-stone-200/80 pb-5">
-        <div>
+    <div className="space-y-8 w-full min-w-0">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-stone-200/80 pb-5 min-h-[92px]">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center rounded-md bg-brand-subtle border border-brand-border/60 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-brand-primary">
               Admin Console
             </span>
             <span className="text-xs font-semibold text-stone-500">Wallets & Financials</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 mt-1 truncate">
             Student Wallets & Overdraft Ledger
           </h1>
-          <p className="text-xs sm:text-sm text-stone-500 mt-1">
+          <p className="text-xs sm:text-sm text-stone-500 mt-1 line-clamp-1">
             Review student balances, credit/post-paid sessions, and execute admin top-up deposits.
           </p>
         </div>
@@ -74,7 +74,7 @@ export function AdminWalletsClient({ wallets }: AdminWalletsClientProps) {
         )}
       </div>
 
-      <Card>
+      <Card className="w-full rounded-2xl border-stone-200/80 bg-white shadow-xs">
         <CardHeader>
           <CardTitle className="text-lg">Registered Student Wallets</CardTitle>
         </CardHeader>

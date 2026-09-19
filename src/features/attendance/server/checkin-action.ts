@@ -71,7 +71,19 @@ export async function executeStudentCheckIn({
     };
   }
 
-  const sessionCost = SESSION_PRICING[session.session_type] ?? 375.00;
+  let policy = null;
+  try {
+    if (prisma.platformPolicy?.findUnique) {
+      policy = await prisma.platformPolicy.findUnique({ where: { id: 'default' } });
+    }
+  } catch {
+    policy = null;
+  }
+  const defaultPrice = session.session_type === 'PRIVATE' ? 500.00 : 375.00;
+  const sessionCost = policy
+    ? (session.session_type === 'PRIVATE' ? Number(policy.private_session_price) : Number(policy.group_session_price))
+    : (SESSION_PRICING[session.session_type] ?? defaultPrice);
+  const allowOverdraft = policy ? policy.allow_overdraft : true;
 
   try {
     // Step 4: Atomic Verification & Deduction Transaction
@@ -117,6 +129,10 @@ export async function executeStudentCheckIn({
       const newBalance = currentBalance.sub(deductionAmount);
       const isOverdraft = newBalance.isNegative();
 
+      if (!allowOverdraft && isOverdraft) {
+        throw new OverdraftDisallowedError('Insufficient balance: Platform policy prohibits negative account balance');
+      }
+
       // Update wallet balance & overdraft flag
       const updatedWallet = await tx.wallet.update({
         where: { id: wallet.id },
@@ -126,7 +142,7 @@ export async function executeStudentCheckIn({
         },
       });
 
-      // 4e: Append immutable transaction record to WalletTransactions
+      // 4e: Create immutable ledger audit record
       await tx.walletTransaction.create({
         data: {
           wallet_id: updatedWallet.id,
@@ -163,6 +179,14 @@ export async function executeStudentCheckIn({
       };
     }
 
+    if (error instanceof OverdraftDisallowedError) {
+      return {
+        success: false,
+        statusCode: 402,
+        message: error.message,
+      };
+    }
+
     // Prisma unique constraint violation code
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return {
@@ -184,5 +208,12 @@ export class DuplicateAttendanceError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'DuplicateAttendanceError';
+  }
+}
+
+export class OverdraftDisallowedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OverdraftDisallowedError';
   }
 }
