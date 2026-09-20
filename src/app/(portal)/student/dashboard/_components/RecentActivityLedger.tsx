@@ -1,8 +1,12 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 import { TabularLedger, type LedgerRow } from '_vault/ui/data/tabular-ledger';
 import { formatEGP } from '@/shared/utils/currency';
+import { TableToolbar } from '@/shared/components/table-toolbar';
+import { matchesTableSearch } from '@/shared/utils/table-search';
 
 export interface WalletActivityEvent {
   id: string;
@@ -18,6 +22,12 @@ interface RecentActivityLedgerProps {
   currentBalance: number;
 }
 
+const ACTIVITY_TYPE_OPTIONS = [
+  { value: 'ADMIN_DEPOSIT', label: 'admin deposit' },
+  { value: 'SESSION_DEDUCTION', label: 'session deduction' },
+  { value: 'REFUND', label: 'refund' },
+];
+
 function formatUtcTimestamp(dateStr: string): string {
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return '—';
@@ -30,7 +40,7 @@ function formatUtcTimestamp(dateStr: string): string {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-  }).format(d) + ' UTC';
+  }).format(d);
 }
 
 function formatAbsoluteAmount(val: number): string {
@@ -42,9 +52,11 @@ function formatAbsoluteAmount(val: number): string {
 }
 
 export function RecentActivityLedger({ events, currentBalance }: RecentActivityLedgerProps) {
+  const [search, setSearch] = React.useState('');
+  const [typeFilter, setTypeFilter] = React.useState('');
   // Compute resulting balance backwards from current balance if not provided
   let running = currentBalance;
-  const rows: LedgerRow[] = events.map((ev, index) => {
+  const allRows: LedgerRow[] = events.map((ev, index) => {
     let balanceForThisRow = ev.balanceAfter;
     if (balanceForThisRow === undefined) {
       balanceForThisRow = running;
@@ -76,10 +88,15 @@ export function RecentActivityLedger({ events, currentBalance }: RecentActivityL
       balanceAfter: formatEGP(balanceForThisRow),
     };
   });
+  const rows = allRows.filter((_, index) => {
+    const event = events[index];
+    return matchesTableSearch([event.transactionType, event.sessionTitle, event.createdAt, event.amount], search) &&
+      (!typeFilter || event.transactionType === typeFilter);
+  });
 
   return (
-    <section aria-label="Recent Activity" className="space-y-4">
-      <div className="flex items-center justify-between">
+    <section aria-label="Recent Activity" className="min-w-0 space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-serif text-xl font-medium text-stone-900">
             Recent Wallet Activity
@@ -99,8 +116,16 @@ export function RecentActivityLedger({ events, currentBalance }: RecentActivityL
       </div>
 
       <TabularLedger
+        toolbar={<TableToolbar
+          searchValue={search}
+          onSearchChange={setSearch}
+          resultCount={rows.length}
+          onClear={() => { setSearch(''); setTypeFilter(''); }}
+          searchPlaceholder="Search activity or session"
+          filters={[{ id: 'activity-type', label: 'type', value: typeFilter, onChange: setTypeFilter, options: ACTIVITY_TYPE_OPTIONS }]}
+        />}
         rows={rows}
-        emptyMessage="No wallet activity recorded yet. Deposits and session deductions will appear here."
+        emptyMessage={events.length === 0 ? 'No wallet activity recorded yet. Deposits and session deductions will appear here.' : 'No wallet activity matches these filters.'}
       />
     </section>
   );

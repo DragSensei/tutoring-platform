@@ -2,15 +2,9 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ShieldCheck, Edit3, ArrowLeft, CheckCircle2, Users, Calendar } from 'lucide-react';
-import { DashboardHeader } from '../../dashboard/_components/DashboardHeader';
-import { AttendanceRecordingDrawer } from '../../dashboard/_components/attendance-drawer';
-import {
-  getStoredSessions,
-  saveStoredSessions,
-} from '../../dashboard/_components/session-storage';
+import { Edit3, ArrowLeft, CheckCircle2, Users, Calendar } from 'lucide-react';
+import { getStoredSessions } from '../../dashboard/_components/session-storage';
 import { formatSessionCode } from '@/shared/utils/session-code';
-import { formatEGP } from '@/shared/utils/currency';
 import { formatDateTime } from '@/shared/utils/date-format';
 import type { TutorDashboardData } from '../../dashboard/_components/dashboard-data';
 import type { GadwalSessionItem } from '@/features/sessions/types';
@@ -20,9 +14,6 @@ export function TutorHistoryView({
   sessions: initialSessions,
 }: TutorDashboardData) {
   const [allSessions, setAllSessions] = React.useState<GadwalSessionItem[]>(initialSessions);
-  const [drawerSession, setDrawerSession] = React.useState<GadwalSessionItem | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
-  const [feedbackNotice, setFeedbackNotice] = React.useState<string | null>(null);
 
   // Sync client-persisted sessions on mount
   React.useEffect(() => {
@@ -30,70 +21,20 @@ export function TutorHistoryView({
     setAllSessions(stored);
   }, [initialSessions]);
 
-  const activeSessions = allSessions.filter((s) => s.status !== 'COMPLETED');
   const completedSessions = allSessions.filter((s) => s.status === 'COMPLETED');
-
-  const handleOpenEdit = (session: GadwalSessionItem) => {
-    setDrawerSession(session);
-    setIsDrawerOpen(true);
-  };
-
-  const handleSaveAttendance = (sessionId: string, presentStudentIds: string[]) => {
-    const updated = allSessions.map((session) => {
-      if (session.id !== sessionId) return session;
-
-      const updatedRoster = (session.roster || []).map((student) => {
-        const isPresent = presentStudentIds.includes(student.id);
-        const deduction = isPresent ? session.price : 0;
-        return {
-          ...student,
-          attended: isPresent,
-          walletBalance: student.walletBalance - deduction,
-        };
-      });
-
-      const attendedNames = updatedRoster
-        .filter((st) => st.attended)
-        .map((st) => st.name);
-
-      return {
-        ...session,
-        roster: updatedRoster,
-        assignedStudents: attendedNames,
-        attendeeCount: attendedNames.length,
-      };
-    });
-
-    setAllSessions(updated);
-    saveStoredSessions(updated);
-    setFeedbackNotice('Attendance adjustments saved successfully.');
-  };
 
   return (
     <div className="space-y-8">
-      {/* Faculty Identity Bar & Navigation */}
-      <DashboardHeader
-        tutorName={tutor.name}
-        activeTab="history"
-        activeCount={activeSessions.length}
-        historyCount={completedSessions.length}
-      />
-
-      {feedbackNotice && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 flex-shrink-0" />
-            <p className="text-sm font-semibold text-emerald-900">{feedbackNotice}</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setFeedbackNotice(null)}
-            className="text-xs text-emerald-700 hover:text-emerald-900 font-semibold"
-          >
-            Dismiss
-          </button>
+      <header className="flex flex-col gap-4 border-b border-stone-200/80 pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <span className="inline-flex rounded-md border border-brand-border/60 bg-brand-subtle px-2 py-1 text-xs font-semibold text-brand-primary">Faculty portal</span>
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl">Session history</h1>
+          <p className="mt-1 text-sm text-stone-500">Review {tutor.name}&apos;s locally completed attendance workflows.</p>
         </div>
-      )}
+        <Link href="/tutor/agenda" className="inline-flex min-h-[44px] w-fit items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-700 hover:bg-stone-50">
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to agenda
+        </Link>
+      </header>
 
       {/* Main Section */}
       <section className="space-y-4">
@@ -107,13 +48,6 @@ export function TutorHistoryView({
             </p>
           </div>
 
-          <Link
-            href="/tutor/agenda"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-600 hover:text-stone-900 transition-colors"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Back to Agenda</span>
-          </Link>
         </div>
 
         {completedSessions.length === 0 ? (
@@ -128,7 +62,7 @@ export function TutorHistoryView({
             <div className="pt-2">
               <Link
                 href="/tutor/agenda"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-brand-primary text-white hover:bg-brand-hover transition-all shadow-xs"
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg bg-brand-primary px-4 py-2.5 text-sm font-bold text-white shadow-xs transition-colors hover:bg-brand-hover"
               >
                 <span>Go to Active Agenda</span>
               </Link>
@@ -198,25 +132,15 @@ export function TutorHistoryView({
                     </div>
                   </div>
 
-                  {/* Right side: Fee & Edit Action */}
+                  {/* Right side: Edit Action */}
                   <div className="flex items-center gap-4 self-end md:self-center flex-shrink-0">
-                    <div className="text-right">
-                      <p className="text-[11px] text-stone-400 font-medium uppercase tracking-wider">
-                        Batch Total
-                      </p>
-                      <p className="font-mono text-sm font-bold text-stone-900">
-                        {formatEGP(attendedCount * session.price)}
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEdit(session)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border border-stone-300 bg-white hover:bg-stone-50 text-stone-800 shadow-xs transition-all active:scale-95"
+                    <Link
+                      href={`/tutor/attendance/${session.id}`}
+                      className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3.5 py-2 text-sm font-semibold text-stone-800 shadow-xs transition-colors hover:bg-stone-50"
                     >
                       <Edit3 className="h-3.5 w-3.5 text-stone-500" />
                       <span>Edit Attendance</span>
-                    </button>
+                    </Link>
                   </div>
                 </div>
               );
@@ -225,14 +149,6 @@ export function TutorHistoryView({
         )}
       </section>
 
-      {/* Re-usable Attendance Drawer in Edit Mode */}
-      <AttendanceRecordingDrawer
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        session={drawerSession}
-        isEditMode={true}
-        onSubmitBatch={handleSaveAttendance}
-      />
     </div>
   );
 }

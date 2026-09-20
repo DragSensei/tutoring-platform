@@ -245,4 +245,20 @@ export interface PlatformPolicyContract {
 - `getPlatformPolicies()`: Fetches active system policy singleton, seeding defaults (`check_in_window_hours: 4`, `group_session_price: 375`, `private_session_price: 500`, `allow_overdraft: true`) if non-existent.
 - `updatePlatformPolicies(data)`: Validates input with `updatePolicySchema` (`zod`), persists to DB, and executes `revalidatePath` across `/admin/policies`, `/admin/gadwal`, and `/tutor/agenda`.
 
+## 5. Client Table Pagination Contract
+
+```typescript
+export const TABLE_PAGE_SIZE = 12;
+
+export interface TablePaginationResult<T> {
+  page: number; // one-indexed, clamped to 1..pageCount
+  pageCount: number; // at least 1, including an empty table
+  pageItems: T[]; // at most TABLE_PAGE_SIZE items
+}
+```
+
+- Pagination is local view state over data already authorized and loaded by the existing route.
+- No API, database, auth, or persistence contract changes.
+- `page` is clamped when data changes; controls are omitted when `pageCount` is one.
+- Bounds: deriving a page is O(12) time and O(12) output space; page-count calculation is O(1).
 

@@ -2,139 +2,111 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2 } from 'lucide-react';
-import { DashboardHeader } from '../../dashboard/_components/DashboardHeader';
+import { useSearchParams } from 'next/navigation';
+import { CheckCircle2 } from 'lucide-react';
 import { ClosestSessionTimer } from '../../dashboard/_components/ClosestSessionTimer';
 import { SessionSelectionGrid } from '../../dashboard/_components/SessionSelectionGrid';
-import { AttendanceRecordingDrawer } from '../../dashboard/_components/attendance-drawer';
 import {
+  getStoredScheduleExceptions,
   getStoredSessions,
-  saveStoredSessions,
+  saveStoredScheduleExceptions,
 } from '../../dashboard/_components/session-storage';
 import { findClosestSessionDue } from '../../dashboard/_components/timer-utils';
+import { SessionRescheduleDialog } from '@/features/sessions/components/session-reschedule-dialog';
+import type { LocalScheduleException, WeeklyScheduleSession } from '@/features/sessions/components/weekly-session-schedule';
 import type { TutorDashboardData } from '../../dashboard/_components/dashboard-data';
-import type { GadwalSessionItem } from '@/features/sessions/types';
+import {
+  NeedsAttention,
+  RecentSessionSummary,
+  SchedulePreview,
+} from './agenda-sections';
 
-export function TutorAgendaView({
-  tutor,
-  closestSession: initialClosestSession,
-  sessions: initialSessions,
-}: TutorDashboardData) {
-  const [allSessions, setAllSessions] = React.useState<GadwalSessionItem[]>(initialSessions);
-  const [drawerSession, setDrawerSession] = React.useState<GadwalSessionItem | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
-  const [successNotice, setSuccessNotice] = React.useState<{
-    title: string;
-    count: number;
-  } | null>(null);
+export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashboardData) {
+  const searchParams = useSearchParams();
+  const [allSessions, setAllSessions] = React.useState(initialSessions);
+  const [exceptions, setExceptions] = React.useState<Record<string, LocalScheduleException>>({});
+  const [rescheduleSession, setRescheduleSession] = React.useState<WeeklyScheduleSession | null>(null);
 
-  // Sync client-persisted sessions on mount
   React.useEffect(() => {
-    const stored = getStoredSessions(initialSessions);
-    setAllSessions(stored);
+    setAllSessions(getStoredSessions(initialSessions));
+    setExceptions(getStoredScheduleExceptions());
   }, [initialSessions]);
 
-  const activeSessions = allSessions.filter((s) => s.status !== 'COMPLETED');
-  const completedSessions = allSessions.filter((s) => s.status === 'COMPLETED');
+  const activeSessions = React.useMemo(
+    () => allSessions
+      .filter((session) => session.status !== 'COMPLETED' && session.status !== 'CANCELLED')
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+    [allSessions]
+  );
+  const completedSessions = allSessions.filter((session) => session.status === 'COMPLETED');
+  const closestSession = React.useMemo(
+    () => findClosestSessionDue(activeSessions, new Date(), exceptions),
+    [activeSessions, exceptions]
+  );
+  const nextSession = closestSession
+    ? activeSessions.find((session) => session.id === closestSession.id) || null
+    : null;
+  const completedId = searchParams.get('completed');
+  const completedSession = completedId
+    ? allSessions.find((session) => session.id === completedId)
+    : null;
+  const presentCount = Number(searchParams.get('present') || 0);
 
-  // Compute live closest active session
-  const closestSession = React.useMemo(() => {
-    return findClosestSessionDue(activeSessions) || initialClosestSession;
-  }, [activeSessions, initialClosestSession]);
-
-  const handleOpenAttendance = (session: GadwalSessionItem) => {
-    setDrawerSession(session);
-    setIsDrawerOpen(true);
-  };
-
-  const handleBatchSubmit = (sessionId: string, presentStudentIds: string[]) => {
-    const updated = allSessions.map((session) => {
-      if (session.id !== sessionId) return session;
-
-      const updatedRoster = (session.roster || []).map((student) => {
-        const isPresent = presentStudentIds.includes(student.id);
-        const deduction = isPresent ? session.price : 0;
-        return {
-          ...student,
-          attended: isPresent,
-          walletBalance: student.walletBalance - deduction,
-        };
-      });
-
-      const attendedNames = updatedRoster
-        .filter((st) => st.attended)
-        .map((st) => st.name);
-
-      return {
-        ...session,
-        status: 'COMPLETED' as const,
-        roster: updatedRoster,
-        assignedStudents: attendedNames,
-        attendeeCount: attendedNames.length,
-      };
-    });
-
-    setAllSessions(updated);
-    saveStoredSessions(updated);
-
-    const targetSession = allSessions.find((s) => s.id === sessionId);
-    setSuccessNotice({
-      title: targetSession?.title || 'Session',
-      count: presentStudentIds.length,
+  const saveException = (sessionId: string, exception: LocalScheduleException) => {
+    setExceptions((current) => {
+      const next = { ...current, [sessionId]: exception };
+      saveStoredScheduleExceptions(next);
+      return next;
     });
   };
 
   return (
-    <div className="space-y-8">
-      {/* Faculty Identity Bar & Sub-Nav Tabs */}
-      <DashboardHeader
-        tutorName={tutor.name}
-        activeTab="agenda"
-        activeCount={activeSessions.length}
-        historyCount={completedSessions.length}
-      />
+    <div className="min-w-0 space-y-8">
+      <header className="flex flex-col gap-4 border-b border-stone-200/80 pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <span className="inline-flex rounded-md border border-brand-border/60 bg-brand-subtle px-2 py-1 text-xs font-semibold text-brand-primary">Faculty portal</span>
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl">Agenda</h1>
+          <p className="mt-1 text-sm text-stone-500">Welcome back, {tutor.name}. Prioritize the next session and anything still awaiting documentation.</p>
+        </div>
+        <Link href="/tutor/timetable" className="inline-flex min-h-[44px] w-fit items-center rounded-lg border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-700 hover:bg-stone-50">
+          Open timetable
+        </Link>
+      </header>
 
-      {/* Success Notification Banner after moving session to Past */}
-      {successNotice && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-center gap-2.5">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-bold text-emerald-900">
-                Attendance Recorded &bull; Session Completed!
-              </p>
-              <p className="text-xs text-emerald-700">
-                {successNotice.count} student(s) marked. &quot;{successNotice.title}&quot; has been moved to Past Sessions.
-              </p>
-            </div>
-          </div>
-
-          <Link
-            href="/tutor/history"
-            className="inline-flex items-center gap-1.5 min-h-[44px] px-3.5 py-2.5 rounded-lg text-sm font-semibold bg-emerald-700 hover:bg-emerald-800 text-white transition-all self-start sm:self-auto shadow-xs"
-          >
-            <span>View in Past Sessions</span>
-            <ArrowRight className="h-4 w-4" />
-          </Link>
+      {completedSession && (
+        <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-center gap-2 text-sm font-medium text-emerald-900">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
+            {completedSession.title} completed locally with {presentCount} present.
+          </p>
+          <Link href="/tutor/history" className="inline-flex min-h-[44px] items-center px-2 text-sm font-semibold text-emerald-800 hover:text-emerald-900">View history</Link>
         </div>
       )}
 
-      {/* Top Middle: Live countdown timer with separate boxed units */}
-      <ClosestSessionTimer closestSession={closestSession} />
+      <div className="grid min-w-0 items-start gap-8 xl:grid-cols-12">
+        <div className="min-w-0 space-y-8 xl:col-span-8">
+          <section className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs sm:p-7" aria-label="Next or current session">
+            <ClosestSessionTimer
+              closestSession={closestSession}
+              attendanceHref={nextSession ? `/tutor/attendance/${nextSession.id}` : undefined}
+              onPostpone={nextSession ? () => setRescheduleSession(nextSession) : undefined}
+            />
+          </section>
+          <NeedsAttention sessions={activeSessions} />
+          <SessionSelectionGrid sessions={activeSessions} />
+        </div>
 
-      {/* Active Course Sessions with Drawer Trigger */}
-      <SessionSelectionGrid
-        sessions={activeSessions}
-        onSelectSession={handleOpenAttendance}
-      />
+        <div className="min-w-0 space-y-6 xl:col-span-4">
+          <SchedulePreview sessions={allSessions} exceptions={exceptions} />
+          <RecentSessionSummary sessions={completedSessions} />
+        </div>
+      </div>
 
-      {/* Interactive Attendance Recording Drawer */}
-      <AttendanceRecordingDrawer
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        session={drawerSession}
-        isEditMode={false}
-        onSubmitBatch={handleBatchSubmit}
+      <SessionRescheduleDialog
+        session={rescheduleSession}
+        existingException={rescheduleSession ? exceptions[rescheduleSession.id] : undefined}
+        onClose={() => setRescheduleSession(null)}
+        onSave={saveException}
       />
     </div>
   );

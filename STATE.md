@@ -2,20 +2,32 @@
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
 - **Active Branch:** `main`
-- **Last Completed Work:** Standardized Admin Portal layout alignment, header baseline consistency, and active nav tab styling:
-  1. Card Width Alignment: standardized main content canvas and card bounds (`w-full min-w-0 max-w-full rounded-2xl`) across `/admin/gadwal` and `/admin/wallets`—0px width difference, 0px right edge difference on both 1440px and 1920px viewports.
-  2. Header Baseline Consistency: standardized header block dimensions (`min-h-[92px] pb-5`, `line-clamp-1` subtitles)—0px first card Y-offset difference (exact 179px) between `/admin/gadwal` and `/admin/wallets`.
-  3. Active Nav Tab Styling: refined active red sidebar tab to a clean, inset rounded rectangle (`rounded-lg mx-2 px-3 py-2.5`) across expanded, collapsed, and mobile sidebar navigation.
-  4. Canvas Contrast: ensured right-hand continuous canvas uses warm neutral `#FBFBF9` (`bg-canvas`) against white dashboard cards.
-  5. Governance Invariants Locked: codified Root Viewport Shell Sovereignty (Law i), Sibling Route Header Baseline (Law j), Unified Canvas Boundary (Law k), and Navigation Item Geometry Standard (Law l) in `_roles/ui-architect.md` and added Sibling Route Consistency checklist in `01-web-development/AGENTS.md`. Pre-commit meta-audit passed and committed to root repo (`204edb7`).
+- **Latest Completed Task:** Re-architected the existing tutor frontend around a responsive portal shell, dedicated attendance workspace, timetable route, and naturally scrolling agenda while preserving local-only documentation and recurrence semantics.
+- **Last Completed Work:** Animated all pages across the Admin Dashboard and clarified "Cohorts" domain semantics:
+  1. Route-Level Page Transitions: Wrapped `AdminLayout` content canvas in `motion.div` keyed by `pathname` for smooth fade/elevation transitions between sibling routes.
+  2. Overview (`/admin`): Staggered entry for executive header, 4 KPI cards with micro-elevation hover interactions, Wallet Solvency Sentinel, and recent sessions list.
+  3. Gadwal Timetable (`/admin/gadwal`): Extracted `AdminGadwalView` client orchestrator with staggered entry across header, `ScheduleSessionCard`, and `GadwalTable` (reduced page orchestrator to 11 lines).
+  4. Faculty Mentors (`/admin/mentors`): Staggered cascade for mentor cards with interactive hover lift, displaying certified mentors and their assigned session cohort counts.
+  5. Platform Policies (`/admin/policies`): Staggered policy forms with `AnimatePresence` toast notifications and token-compliant brand styling.
+  6. Wallets & Financials (`/admin/wallets`): Animated header, overdraft warning indicator, and student ledger card.
 - **Immediate Next Move:** Final deployment verification or staging preview to Vercel with Neon connection pooling.
 - **Blockers / Open Decisions:** None.
 
 ## Tier 2 Verification
-- **Security:** Audited checkin-action.ts and policy resolution; verified parameterized queries, role validation, and loud HTTP 500 rejection on database connectivity errors preventing unauthorized overdraft or pricing bypass.
-- **Performance:** Verified indexed lookup on session token and PlatformPolicy singleton (`id: 'default'`); confirmed no blocking event loop operations or memory leaks.
-- **Tests:** Ran full Vitest suite (60/60 tests passing across 13 test files), including explicit tests for missing policy table fallback (P2021) and generic database failure 500 error result.
-- **Revisor:** Surgical diff in checkin-action.ts; extracted isTableNotExistError helper, cyclomatic complexity <= 6, zero dead code or arbitrary type assertions.
+- **Tutor Workspace UI:** The tutor shell now owns desktop/mobile navigation for Agenda, Timetable, and History. `/tutor/attendance/[sessionId]` owns the full attendance workflow, and the obsolete drawer was removed. The existing nearest-session timer still selects by effective start/end time rather than by attendance deadline; shared countdown functions now live in `src/shared/utils/session-timing.ts`.
+- **Frontend-only boundaries:** Screenshot evidence is browser-compressed and stays local; notes and one-off reschedule exceptions are visibly local-only. No server action, schema, API, authentication, or production session data contract changed.
+- **Search and responsive UI:** Shared client table toolbar covers Gadwal, transaction ledger, admin wallets, account directory, and student activity ledger. Tutor agenda and student dashboard viewport audits pass at 375px, 768px, and 1440px (agent-reviewed); desktop page canvas and mobile touch targets are clean.
+- **Tests:** Vitest 78/78 passing (machine-verified): all-absent review state, shared session timing, effective reschedules, image validation/scaling, pagination, and table search boundaries are covered.
+- **Twelve-Row Table Pagination:** Added shared local pagination to Gadwal timetable, transaction ledger, admin wallets, and admin accounts. Each page shows at most 12 rows, omits controls for one-page datasets, and clamps the current page if the dataset shrinks.
+- **Security:** Repository secret and environment sentinel clean (machine-verified); authorization remains unchanged and was agent-reviewed.
+- **Performance:** Static frontend architecture checks pass (machine-verified); the public viewport audit passes at 375px, 768px, and 1440px (agent-reviewed). Protected table screenshots require an authenticated browser session and correctly reject unauthenticated requests; runtime latency is not-verified.
+- **Tests:** Vitest 65/65 passing (machine-verified), including empty, partial, exact, multi-page, and clamped pagination boundaries.
+- **Revisor:** Token purity and route isolation pass (machine-verified); the shared, dependency-free pagination pattern is YAGNI-reviewed.
+- **Tutor Wallet Privacy:** Tutor session queries no longer select wallet records; tutor attendance views render no wallet, balance, overdraft, total-deduction, or batch-total details. Vitest: 60/60 passing; ESLint, frontend architecture, UI architecture, token purity, Impeccable detector, and interactive viewport audits pass.
+- **Security:** Audited animation components and route transitions; zero database exposure or unescaped state rendering; all client components remain decoupled from direct Prisma queries.
+- **Performance:** Hardware-accelerated GPU transforms (`opacity`, `y`, `scale`) using `motion/react`; zero layout shifts (CLS = 0); verified 100% mobile ergonomics compliance (tap targets >= 44px) across all 5 admin views.
+- **Tests:** Full Vitest suite passing (60/60 tests); multi-viewport Playwright visual audit verified across mobile (375px), tablet (768px), and desktop (1440px) with zero horizontal spill.
+- **Revisor:** Standardized animation curves (`[0.22, 1, 0.36, 1]`), extracted `AdminGadwalView` keeping all page orchestrators <= 35 lines, and maintained 100% design token purity.
 
 ## Milestone Checklist
 - [x] Scaffold Feature-Driven Unidirectional directory tree

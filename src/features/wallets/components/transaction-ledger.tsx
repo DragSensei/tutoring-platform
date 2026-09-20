@@ -5,6 +5,10 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/shared/components/ca
 import { Badge } from '@/shared/components/badge';
 import { formatEGP } from '@/shared/utils/currency';
 import { formatDateTime } from '@/shared/utils/date-format';
+import { TablePagination } from '@/shared/components/table-pagination';
+import { useTablePagination } from '@/shared/hooks/use-table-pagination';
+import { TableToolbar } from '@/shared/components/table-toolbar';
+import { matchesTableSearch } from '@/shared/utils/table-search';
 import { TransactionType } from '@/shared/types';
 
 export interface LedgerItem {
@@ -19,7 +23,20 @@ interface TransactionLedgerProps {
   transactions: LedgerItem[];
 }
 
+const TRANSACTION_TYPE_OPTIONS = [
+  { value: 'ADMIN_DEPOSIT', label: 'admin deposit' },
+  { value: 'SESSION_DEDUCTION', label: 'session deduction' },
+  { value: 'REFUND', label: 'refund' },
+];
+
 export function TransactionLedger({ transactions }: TransactionLedgerProps) {
+  const [search, setSearch] = React.useState('');
+  const [typeFilter, setTypeFilter] = React.useState('');
+  const filteredTransactions = transactions.filter((transaction) =>
+    matchesTableSearch([transaction.transactionType, transaction.sessionId, transaction.createdAt, transaction.amount], search) &&
+    (!typeFilter || transaction.transactionType === typeFilter)
+  );
+  const pagination = useTablePagination(filteredTransactions);
   const getBadge = (type: TransactionType) => {
     switch (type) {
       case 'ADMIN_DEPOSIT':
@@ -42,8 +59,21 @@ export function TransactionLedger({ transactions }: TransactionLedgerProps) {
             No transactions recorded yet.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-700">
+          <>
+            <TableToolbar
+              searchValue={search}
+              onSearchChange={setSearch}
+              resultCount={filteredTransactions.length}
+              onClear={() => { setSearch(''); setTypeFilter(''); }}
+              searchPlaceholder="Search transactions or references"
+              filters={[{ id: 'type', label: 'type', value: typeFilter, onChange: setTypeFilter, options: TRANSACTION_TYPE_OPTIONS }]}
+            />
+            {filteredTransactions.length === 0 ? (
+              <div className="px-4 py-10 text-center text-sm text-stone-500">No transactions match these filters.</div>
+            ) : (
+            <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-slate-700">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-2.5">Date & Time</th>
@@ -53,7 +83,7 @@ export function TransactionLedger({ transactions }: TransactionLedgerProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {transactions.map((tx) => {
+                {pagination.items.map((tx) => {
                   const isPositive = tx.amount > 0;
                   return (
                     <tr key={tx.id} className="hover:bg-slate-50/60">
@@ -75,8 +105,18 @@ export function TransactionLedger({ transactions }: TransactionLedgerProps) {
                   );
                 })}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+            <TablePagination
+              itemCount={filteredTransactions.length}
+              page={pagination.page}
+              pageCount={pagination.pageCount}
+              pageSize={pagination.pageSize}
+              onPageChange={pagination.setPage}
+            />
+            </>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

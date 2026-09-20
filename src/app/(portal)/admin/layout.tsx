@@ -16,16 +16,10 @@ export default function AdminLayout({
   return (
     <div className="flex min-h-screen bg-canvas w-full">
       {/* Left Fixed Enterprise Column */}
-      <aside
-        className={`hidden md:flex flex-col ${
-          isCollapsed ? 'w-18' : 'w-64'
-        } shrink-0 border-r border-stone-200/80 bg-white h-screen sticky top-0 transition-[width] duration-300 ease-in-out`}
-      >
-        <AdminSidebar
-          isCollapsed={isCollapsed}
-          onToggleCollapse={() => setIsCollapsed((prev) => !prev)}
-        />
-      </aside>
+      <AdminSidebar
+        isCollapsed={isCollapsed}
+        onToggleCollapse={() => setIsCollapsed((prev) => !prev)}
+      />
 
       {/* Right Continuous Content Canvas */}
       <div className="flex-1 min-w-0 flex flex-col transition-all duration-300 ease-in-out bg-canvas">

@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import type { KeyboardEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -7,6 +8,10 @@ import { ArrowRight, UserRoundSearch } from 'lucide-react';
 import { Badge, type BadgeProps } from '@/shared/components/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/card';
 import { formatDateTime } from '@/shared/utils/date-format';
+import { TablePagination } from '@/shared/components/table-pagination';
+import { useTablePagination } from '@/shared/hooks/use-table-pagination';
+import { TableToolbar } from '@/shared/components/table-toolbar';
+import { matchesTableSearch } from '@/shared/utils/table-search';
 import type { AccountListItem } from './accounts-data';
 
 interface AccountsViewProps {
@@ -21,6 +26,13 @@ function getRoleBadgeVariant(role: AccountListItem['role']): BadgeProps['variant
 
 export function AccountsView({ accounts }: AccountsViewProps) {
   const router = useRouter();
+  const [search, setSearch] = React.useState('');
+  const [roleFilter, setRoleFilter] = React.useState('');
+  const filteredAccounts = accounts.filter((account) =>
+    matchesTableSearch([account.name, account.email, account.phone, account.roleLabel], search) &&
+    (!roleFilter || account.role === roleFilter)
+  );
+  const pagination = useTablePagination(filteredAccounts);
 
   const openAccount = (id: string) => router.push(`/admin/accounts/${id}`);
   const handleRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>, id: string) => {
@@ -69,6 +81,18 @@ export function AccountsView({ accounts }: AccountsViewProps) {
             <CardTitle className="text-lg">Account Directory</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            <TableToolbar
+              searchValue={search}
+              onSearchChange={setSearch}
+              resultCount={filteredAccounts.length}
+              onClear={() => { setSearch(''); setRoleFilter(''); }}
+              searchPlaceholder="Search accounts, email, or phone"
+              filters={[{ id: 'role', label: 'role', value: roleFilter, onChange: setRoleFilter, options: [{ value: 'ADMIN', label: 'Admin' }, { value: 'TUTOR', label: 'Faculty mentor' }, { value: 'STUDENT', label: 'Student' }] }]}
+            />
+            {filteredAccounts.length === 0 ? (
+              <div className="px-4 py-10 text-center text-sm text-stone-500">No accounts match these filters.</div>
+            ) : (
+              <>
             <div className="hidden overflow-x-auto xl:block">
               <table className="w-full min-w-[760px] text-left text-sm text-stone-700">
                 <thead className="border-b border-stone-200 bg-stone-50 text-xs uppercase text-stone-500">
@@ -83,7 +107,7 @@ export function AccountsView({ accounts }: AccountsViewProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
-                  {accounts.map((account) => (
+                  {pagination.items.map((account) => (
                     <tr
                       key={account.id}
                       role="link"
@@ -114,7 +138,7 @@ export function AccountsView({ accounts }: AccountsViewProps) {
             </div>
 
             <div className="divide-y divide-stone-100 xl:hidden">
-              {accounts.map((account) => (
+              {pagination.items.map((account) => (
                 <Link
                   key={account.id}
                   href={`/admin/accounts/${account.id}`}
@@ -134,6 +158,15 @@ export function AccountsView({ accounts }: AccountsViewProps) {
                 </Link>
               ))}
             </div>
+            <TablePagination
+              itemCount={filteredAccounts.length}
+              page={pagination.page}
+              pageCount={pagination.pageCount}
+              pageSize={pagination.pageSize}
+              onPageChange={pagination.setPage}
+            />
+              </>
+            )}
           </CardContent>
         </Card>
       )}

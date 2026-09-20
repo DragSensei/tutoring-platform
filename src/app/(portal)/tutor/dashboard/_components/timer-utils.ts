@@ -1,13 +1,9 @@
 import type { GadwalSessionItem } from '@/features/sessions/types';
-
-export interface DueCountdown {
-  isPast: boolean;
-  totalMs: number;
-  hours: number;
-  minutes: number;
-  seconds: number;
-  formatted: string;
-}
+import {
+  computeSessionCountdown,
+  resolveEffectiveSessionTiming,
+  type SessionCountdown,
+} from '@/shared/utils/session-timing';
 
 export interface ClosestSessionDue {
   id: string;
@@ -15,94 +11,80 @@ export interface ClosestSessionDue {
   sessionCode?: string;
   sessionType: string;
   startTime: string;
+  endTime: string;
+  baseStartTime: string;
   deadline: string;
   token: string;
   attendeeCount: number;
   assignedStudents?: string[];
   isCurrentlyActive: boolean;
+  isRescheduled: boolean;
+  rescheduleReason?: string;
   targetTimestamp: string;
-  initialCountdown: DueCountdown;
+  initialCountdown: SessionCountdown;
 }
 
-export function computeDueCountdown(
-  targetTime: Date | string | number,
-  currentTime: Date | string | number = new Date()
-): DueCountdown {
-  const targetMs = new Date(targetTime).getTime();
-  const currentMs = new Date(currentTime).getTime();
-  const diffMs = targetMs - currentMs;
-
-  if (diffMs <= 0) {
-    return {
-      isPast: true,
-      totalMs: 0,
-      hours: 0,
-      minutes: 0,
-      seconds: 0,
-      formatted: '00:00:00',
-    };
-  }
-
-  const hours = Math.floor(diffMs / (1000 * 60 * 60));
-  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-  const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  const formatted = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-
-  return {
-    isPast: false,
-    totalMs: diffMs,
-    hours,
-    minutes,
-    seconds,
-    formatted,
-  };
+export interface SessionTimingOverride {
+  effectiveStartTime: string;
+  reason: string;
 }
 
 export function findClosestSessionDue(
   sessions: GadwalSessionItem[],
-  currentTime: Date | string | number = new Date()
+  currentTime: Date | string | number = new Date(),
+  overrides: Record<string, SessionTimingOverride> = {}
 ): ClosestSessionDue | null {
   const now = new Date(currentTime);
   const nowMs = now.getTime();
 
-  // Valid candidates: sessions whose check-in window (deadline) has not passed yet
-  const unexpiredSessions = sessions.filter(
-    (s) => new Date(s.deadline).getTime() >= nowMs && s.status !== 'CANCELLED'
-  );
+  // Timing is intentionally independent from the 4-hour attendance deadline.
+  const candidates = sessions
+    .filter((session) => session.status !== 'CANCELLED' && session.status !== 'COMPLETED')
+    .map((session) => {
+      const override = overrides[session.id];
+      const effectiveTiming = resolveEffectiveSessionTiming(
+        session.startTime,
+        session.endTime,
+        override?.effectiveStartTime
+      );
+      const effectiveStartMs = new Date(effectiveTiming.startTime).getTime();
+      const effectiveEndMs = new Date(effectiveTiming.endTime).getTime();
 
-  if (unexpiredSessions.length === 0) {
+      return { session, override, effectiveStartMs, effectiveEndMs };
+    })
+    .filter(({ effectiveStartMs, effectiveEndMs }) =>
+      Number.isFinite(effectiveStartMs) && Number.isFinite(effectiveEndMs) && effectiveEndMs >= nowMs
+    );
+
+  if (candidates.length === 0) {
     return null;
   }
 
-  // Sort candidate sessions by start time ascending
-  unexpiredSessions.sort(
-    (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-  );
+  candidates.sort((a, b) => a.effectiveStartMs - b.effectiveStartMs);
 
-  const closest = unexpiredSessions[0];
-  const startMs = new Date(closest.startTime).getTime();
-  const deadlineMs = new Date(closest.deadline).getTime();
+  const closest = candidates[0];
+  const isCurrentlyActive = nowMs >= closest.effectiveStartMs && nowMs <= closest.effectiveEndMs;
+  const targetTime = isCurrentlyActive ? closest.effectiveEndMs : closest.effectiveStartMs;
+  const initialCountdown = computeSessionCountdown(targetTime, now);
 
-  // If already started and within deadline -> it is currently active
-  const isCurrentlyActive = nowMs >= startMs && nowMs <= deadlineMs;
-
-  // Target timestamp: if active, count down to deadline; if upcoming, count down to start time
-  const targetTime = isCurrentlyActive ? closest.deadline : closest.startTime;
-  const initialCountdown = computeDueCountdown(targetTime, now);
+  const effectiveStartTime = new Date(closest.effectiveStartMs).toISOString();
+  const effectiveEndTime = new Date(closest.effectiveEndMs).toISOString();
 
   return {
-    id: closest.id,
-    title: closest.title,
-    sessionCode: closest.sessionCode,
-    sessionType: closest.sessionType,
-    startTime: closest.startTime,
-    deadline: closest.deadline,
-    token: closest.token,
-    attendeeCount: closest.attendeeCount,
-    assignedStudents: closest.assignedStudents,
+    id: closest.session.id,
+    title: closest.session.title,
+    sessionCode: closest.session.sessionCode,
+    sessionType: closest.session.sessionType,
+    startTime: effectiveStartTime,
+    endTime: effectiveEndTime,
+    baseStartTime: closest.session.startTime,
+    deadline: closest.session.deadline,
+    token: closest.session.token,
+    attendeeCount: closest.session.attendeeCount,
+    assignedStudents: closest.session.assignedStudents,
     isCurrentlyActive,
+    isRescheduled: Boolean(closest.override),
+    rescheduleReason: closest.override?.reason,
     targetTimestamp: new Date(targetTime).toISOString(),
     initialCountdown,
   };

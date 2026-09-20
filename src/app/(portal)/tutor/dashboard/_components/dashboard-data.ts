@@ -4,17 +4,8 @@ import { getTutorSessions } from '@/features/sessions/server/session-actions';
 import type { GadwalSessionItem } from '@/features/sessions/types';
 import {
   findClosestSessionDue,
-  ClosestSessionDue,
-  DueCountdown,
-  computeDueCountdown,
-} from './timer-utils';
-
-export {
-  findClosestSessionDue,
-  computeDueCountdown,
   type ClosestSessionDue,
-  type DueCountdown,
-};
+} from './timer-utils';
 
 export interface TutorDashboardData {
   tutor: {

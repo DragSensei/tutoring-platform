@@ -1,27 +1,34 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { CheckCircle2 } from 'lucide-react';
 import { formatDateTime } from '@/shared/utils/date-format';
 import { CopyTokenButton } from '@/features/sessions/components/copy-token-button';
-import { computeDueCountdown, ClosestSessionDue, DueCountdown } from './timer-utils';
+import { type ClosestSessionDue } from './timer-utils';
+import { computeSessionCountdown, type SessionCountdown } from '@/shared/utils/session-timing';
+import { Button } from '@/shared/components/button';
 
 interface ClosestSessionTimerProps {
   closestSession: ClosestSessionDue | null;
+  attendanceHref?: string;
+  onPostpone?: () => void;
 }
 
-export function ClosestSessionTimer({ closestSession }: ClosestSessionTimerProps) {
-  const [countdown, setCountdown] = React.useState<DueCountdown>(() =>
+export function ClosestSessionTimer({ closestSession, attendanceHref, onPostpone }: ClosestSessionTimerProps) {
+  const [countdown, setCountdown] = React.useState<SessionCountdown>(() =>
     closestSession
-      ? computeDueCountdown(closestSession.targetTimestamp)
+      ? computeSessionCountdown(closestSession.targetTimestamp)
       : { isPast: true, totalMs: 0, hours: 0, minutes: 0, seconds: 0, formatted: '00:00:00' }
   );
 
   React.useEffect(() => {
     if (!closestSession) return;
 
+    setCountdown(computeSessionCountdown(closestSession.targetTimestamp));
+
     const timer = setInterval(() => {
-      setCountdown(computeDueCountdown(closestSession.targetTimestamp));
+      setCountdown(computeSessionCountdown(closestSession.targetTimestamp));
     }, 1000);
 
     return () => clearInterval(timer);
@@ -34,9 +41,9 @@ export function ClosestSessionTimer({ closestSession }: ClosestSessionTimerProps
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-500">
             <CheckCircle2 className="h-5 w-5" />
           </div>
-          <h2 className="text-base font-semibold text-stone-900">No Immediate Sessions Due</h2>
+          <h2 className="text-base font-semibold text-stone-900">No Upcoming Sessions</h2>
           <p className="text-xs text-stone-500 max-w-sm">
-            All scheduled courses are completed or outside the active window. Check the timetable agenda for future cohorts.
+            There are no future or in-progress sessions in your current schedule.
           </p>
         </div>
       </div>
@@ -58,7 +65,7 @@ export function ClosestSessionTimer({ closestSession }: ClosestSessionTimerProps
               }`}
             />
             <span className={isCurrentlyActive ? 'text-emerald-700 font-semibold' : 'text-stone-600'}>
-              {isCurrentlyActive ? 'Session in progress' : 'Next upcoming session'}
+              {isCurrentlyActive ? 'Session in progress' : 'Next session in'}
             </span>
           </span>
           <span className="text-stone-300">&bull;</span>
@@ -74,6 +81,12 @@ export function ClosestSessionTimer({ closestSession }: ClosestSessionTimerProps
         <p className="text-xs sm:text-sm text-stone-500 max-w-md">
           {closestSession.title}
         </p>
+        <p className="text-xs text-stone-500 tabular-nums">{closestSession.assignedStudents?.length || closestSession.attendeeCount} student{(closestSession.assignedStudents?.length || closestSession.attendeeCount) === 1 ? '' : 's'} in this cohort</p>
+        {closestSession.isRescheduled && (
+          <span className="inline-flex max-w-md items-center rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
+            Rescheduled occurrence{closestSession.rescheduleReason ? ` · ${closestSession.rescheduleReason}` : ''}
+          </span>
+        )}
       </div>
 
       {/* Timer Display: Each unit (hours, minutes, seconds) in its own small box */}
@@ -132,10 +145,23 @@ export function ClosestSessionTimer({ closestSession }: ClosestSessionTimerProps
 
       {/* Timing and Share Action Below Timer Boxes */}
       <div className="mt-5 flex flex-wrap items-center justify-center gap-3 text-xs text-stone-500">
-        <span>Scheduled: <strong className="font-medium text-stone-700">{formatDateTime(closestSession.startTime)}</strong></span>
+        <span>{closestSession.isRescheduled ? 'This week:' : 'Scheduled:'} <strong className="font-medium text-stone-700">{formatDateTime(closestSession.startTime)}</strong></span>
+        {closestSession.isRescheduled && (
+          <span>Recurring: <strong className="font-medium text-stone-700">{formatDateTime(closestSession.baseStartTime)}</strong></span>
+        )}
         <span className="text-stone-300">&bull;</span>
         <CopyTokenButton token={closestSession.token} />
       </div>
+      {(attendanceHref || onPostpone) && (
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          {attendanceHref && (
+            <Link href={attendanceHref} className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-brand-primary px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2">
+              Record attendance
+            </Link>
+          )}
+          {onPostpone && <Button type="button" variant="outline" className="min-h-[44px]" onClick={onPostpone}>Postpone occurrence</Button>}
+        </div>
+      )}
     </div>
   );
 }

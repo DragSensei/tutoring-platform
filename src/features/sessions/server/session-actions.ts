@@ -106,7 +106,6 @@ export async function getTutorSessions(tutorId: string) {
         id: true,
         name: true,
         email: true,
-        wallet: { select: { balance: true, is_flagged_overdraft: true } },
       },
       orderBy: { name: 'asc' },
     }),
@@ -127,8 +126,6 @@ export async function getTutorSessions(tutorId: string) {
       id: student.id,
       name: student.name,
       email: student.email,
-      walletBalance: Number(student.wallet?.balance || 0),
-      isFlaggedOverdraft: Boolean(student.wallet?.is_flagged_overdraft),
       attended: attendedIds.has(student.id),
     }));
 

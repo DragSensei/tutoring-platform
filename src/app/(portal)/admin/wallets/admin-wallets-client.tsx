@@ -8,6 +8,10 @@ import { formatEGP } from '@/shared/utils/currency';
 import { TopUpModal } from '@/features/wallets/components/top-up-modal';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
+import { TablePagination } from '@/shared/components/table-pagination';
+import { useTablePagination } from '@/shared/hooks/use-table-pagination';
+import { TableToolbar } from '@/shared/components/table-toolbar';
+import { matchesTableSearch } from '@/shared/utils/table-search';
 
 export interface WalletUserItem {
   id: string;
@@ -47,6 +51,14 @@ const itemVariants = {
 
 export function AdminWalletsClient({ wallets }: AdminWalletsClientProps) {
   const router = useRouter();
+  const [search, setSearch] = React.useState('');
+  const [statusFilter, setStatusFilter] = React.useState('');
+  const filteredWallets = wallets.filter((wallet) => {
+    const status = wallet.isFlaggedOverdraft || wallet.balance < 0 ? 'OVERDRAFT' : 'GOOD_STANDING';
+    return matchesTableSearch([wallet.userName, wallet.userEmail, wallet.userPhone, wallet.role, status], search) &&
+      (!statusFilter || status === statusFilter);
+  });
+  const pagination = useTablePagination(filteredWallets);
   const [selectedStudent, setSelectedStudent] = React.useState<{
     id: string;
     name: string;
@@ -111,8 +123,21 @@ export function AdminWalletsClient({ wallets }: AdminWalletsClientProps) {
           {wallets.length === 0 ? (
             <div className="text-center py-8 text-slate-500">No wallets found.</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-700">
+            <>
+              <TableToolbar
+                searchValue={search}
+                onSearchChange={setSearch}
+                resultCount={filteredWallets.length}
+                onClear={() => { setSearch(''); setStatusFilter(''); }}
+                searchPlaceholder="Search students, contact, or status"
+                filters={[{ id: 'wallet-status', label: 'status', value: statusFilter, onChange: setStatusFilter, options: [{ value: 'GOOD_STANDING', label: 'Good standing' }, { value: 'OVERDRAFT', label: 'Overdraft' }] }]}
+              />
+              {filteredWallets.length === 0 ? (
+                <div className="px-4 py-10 text-center text-sm text-stone-500">No student wallets match these filters.</div>
+              ) : (
+              <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm text-slate-700">
                 <thead className="bg-slate-50 text-xs uppercase text-slate-500 border-b border-slate-200">
                   <tr>
                     <th className="px-4 py-3">Student Name</th>
@@ -124,7 +149,7 @@ export function AdminWalletsClient({ wallets }: AdminWalletsClientProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {wallets.map((w) => {
+                  {pagination.items.map((w) => {
                     const isOverdraft = w.isFlaggedOverdraft || w.balance < 0;
                     return (
                       <tr key={w.id} className="hover:bg-slate-50/70 transition-colors">
@@ -161,8 +186,18 @@ export function AdminWalletsClient({ wallets }: AdminWalletsClientProps) {
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
+                </table>
+              </div>
+              <TablePagination
+                itemCount={filteredWallets.length}
+                page={pagination.page}
+                pageCount={pagination.pageCount}
+                pageSize={pagination.pageSize}
+                onPageChange={pagination.setPage}
+              />
+              </>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
