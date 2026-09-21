@@ -21,7 +21,7 @@
 - **Visual:** Authenticated Attendance, Agenda, History, and Timetable audits pass at 375px, 768px, and 1440px with HTTP 200, zero horizontal spill, and compliant touch targets/form text (agent-reviewed from captured snapshots).
 - **Revisor:** Token purity, route isolation, and UI architecture pass (machine-verified); the implementation reuses `AttendanceRecord`, the existing roster contract, auth helper, and route loaders without a new provider or persistence layer.
 - **Deferred/local-only:** Screenshot evidence remains browser-local and excluded from the server payload; timetable/reschedule exceptions remain in local storage.
-- **Checkpoint:** Verification completed on `001-backend-attendance-persistence` at `2026-09-21T13:36:17+03:00`; commit SHA pending checkpoint commit.
+- **Checkpoint:** Feature commit `be20aa4` on `001-backend-attendance-persistence` at `2026-09-21T13:39:15+03:00`.
 
 ## Milestone Checklist
 - [x] Scaffold Feature-Driven Unidirectional directory tree
