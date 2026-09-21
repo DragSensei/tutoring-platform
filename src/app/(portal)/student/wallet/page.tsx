@@ -1,22 +1,16 @@
 import { prisma } from '@/shared/lib/prisma';
-import { getSession } from '@/features/auth/server/session';
+import { requireAuth } from '@/features/auth/server/session';
 import { getStudentWallet } from '@/features/wallets/server/wallet-actions';
 import { StudentWalletView } from './_components/student-wallet-view';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StudentWalletPage() {
-  const session = await getSession();
-  let studentUser = session?.userId && session.role === 'STUDENT'
-    ? await prisma.user.findUnique({ where: { id: session.userId }, select: { id: true, name: true } })
-    : null;
-
-  if (!studentUser) {
-    studentUser = await prisma.user.findFirst({
-      where: { role: 'STUDENT' },
-      select: { id: true, name: true },
-    });
-  }
+  const session = await requireAuth(['STUDENT']);
+  const studentUser = await prisma.user.findFirst({
+    where: { id: session.userId, role: 'STUDENT' },
+    select: { id: true, name: true },
+  });
 
   if (!studentUser) {
     return (

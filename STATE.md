@@ -2,7 +2,7 @@
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
 - **Active Branch:** `001-backend-attendance-persistence`
-- **Latest Completed Task:** Iteration 001 now uses durable SessionParticipant rosters and shared serializable attendance/financial reconciliation for Student check-in and Tutor finalization while preserving local-only screenshot evidence and timetable exceptions.
+- **Latest Completed Task:** Iteration 001 now includes real database-backed role authentication, exact role portal guards, and secure Student/Admin backend boundaries alongside durable attendance and financial reconciliation.
 - **Last Completed Work:** Animated all pages across the Admin Dashboard and clarified "Cohorts" domain semantics:
   1. Route-Level Page Transitions: Wrapped `AdminLayout` content canvas in `motion.div` keyed by `pathname` for smooth fade/elevation transitions between sibling routes.
   2. Overview (`/admin`): Staggered entry for executive header, 4 KPI cards with micro-elevation hover interactions, Wallet Solvency Sentinel, and recent sessions list.
@@ -10,18 +10,18 @@
   4. Faculty Mentors (`/admin/mentors`): Staggered cascade for mentor cards with interactive hover lift, displaying certified mentors and their assigned session cohort counts.
   5. Platform Policies (`/admin/policies`): Staggered policy forms with `AnimatePresence` toast notifications and token-compliant brand styling.
   6. Wallets & Financials (`/admin/wallets`): Animated header, overdraft warning indicator, and student ledger card.
-- **Immediate Next Move:** Complete checkpoint verification and review the correction diff before committing branch `001-backend-attendance-persistence`.
+- **Immediate Next Move:** Commit and push the verified authentication correction on branch `001-backend-attendance-persistence`.
 - **Blockers / Open Decisions:** None for Iteration 001; screenshot evidence remains intentionally local/deferred.
 
 ## Tier 2 Verification
-- **Security:** Repository secret/env sentinel clean (machine-verified); Tutor role enforcement, session ownership/IDOR resistance, durable roster membership, Zod bounds, and generic authorization failures agent-reviewed (grade A).
+- **Security:** Repository secret/env sentinel clean (machine-verified); bcrypt password verification, signed HttpOnly sessions, production AUTH_SECRET fail-closed behavior, exact portal role guards, Admin wallet authorization, Tutor ownership/IDOR resistance, durable roster membership, and generic authentication failures agent-reviewed.
 - **Persistence:** `Session.attendance_notes` and durable `SessionParticipant` membership are applied to the local PostgreSQL schema. Attendance replacement, notes, final `COMPLETED` status, and immutable wallet reconciliation commit in one serializable Prisma transaction; an explicitly reviewed empty present list remains valid.
 - **Performance:** Frontend static architecture checks pass (machine-verified); the mutation performs bounded per-participant reconciliation (`R <= 4`) with no unbounded work. Runtime latency is not-verified at this tier.
-- **Tests:** Full Vitest suite passing (105/105, machine-verified), including PRIVATE/GROUP rosters, explicit session assignment, foreign membership, ownership, cancellation, all-absent, mixed attendance, check-in reconciliation with Admin-refund provenance, repeat saves, finalized-session check-in rejection, PRESENT→ABSENT→PRESENT net-charge invariants, Admin-only session creation, authenticated token check-in, and serializable concurrent Student/Tutor finalization attempts.
+- **Tests:** Full Vitest suite passing (119/119, machine-verified), including PRIVATE/GROUP rosters, explicit session assignment, financial reconciliation, serializable concurrency, real password/session authentication, generic credential failures, role redirects, exact portal middleware guards, logout, Student identity fail-closed behavior, and Admin wallet authorization.
 - **Visual:** Authenticated Attendance, Agenda, History, and Timetable audits pass at 375px, 768px, and 1440px with HTTP 200, zero horizontal spill, and compliant touch targets/form text (agent-reviewed from captured snapshots).
 - **Revisor:** Token purity, route isolation, and UI architecture pass (machine-verified); the implementation reuses `AttendanceRecord`, the durable roster relation, `created_by_user_id` ledger provenance, the auth helper, and route loaders without a new provider or persistence layer.
 - **Deferred/local-only:** Screenshot evidence remains browser-local and excluded from the server payload; timetable/reschedule exceptions remain in local storage.
-- **Checkpoint:** Verification refreshed on `001-backend-attendance-persistence`; correction remains staged and uncommitted by request.
+- **Checkpoint:** Verification refreshed on `001-backend-attendance-persistence`; real authentication correction is ready for normal commit and push.
 
 ## Milestone Checklist
 - [x] Scaffold Feature-Driven Unidirectional directory tree

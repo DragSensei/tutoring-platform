@@ -244,16 +244,20 @@ Direct administrative wallet credit top-up.
 ```
 
 ### `POST /api/auth/login`
-Authentication login route for tutors and students.
+Authentication login route for Admin, Tutor, and Student accounts. The
+`identifier` may be the stored email or phone number; the server resolves the
+database User and verifies its stored password hash. Successful sessions route
+to `/admin`, `/tutor/agenda`, or `/student/dashboard` from the authenticated
+database role. Invalid credentials always return the same generic failure.
 - **Status:** `200 OK`
 ```json
 {
   "success": true,
   "user": {
-    "id": "usr-mock-001",
+    "userId": "usr-mock-001",
     "name": "Eng. Omar Ashraf",
-    "role": "TUTOR",
-    "phone": "+201000000001"
+    "email": "omar.ashraf@bigherorobotics.com",
+    "role": "TUTOR"
   }
 }
 ```

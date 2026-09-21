@@ -3,9 +3,7 @@ import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
 const SESSION_COOKIE_NAME = 'tp_session_token';
-const SECRET_KEY = new TextEncoder().encode(
-  process.env.AUTH_SECRET || 'fallback-super-secret-key-that-is-at-least-32-chars!'
-);
+const DEVELOPMENT_AUTH_SECRET = 'fallback-super-secret-key-that-is-at-least-32-chars!';
 
 interface SessionPayload {
   userId: string;
@@ -28,29 +26,30 @@ export async function middleware(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
 
   if (!token) {
-    // If accessing in development demo mode without cookies, allow through or redirect to login
-    // In production, strictly redirect to /login
-    if (process.env.NODE_ENV === 'production') {
-      const loginUrl = new URL('/login', req.url);
-      loginUrl.searchParams.set('from', pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-    return NextResponse.next();
+    return redirectToLogin(req, pathname);
   }
 
   try {
-    const { payload } = await jwtVerify(token, SECRET_KEY);
+    const configuredSecret = process.env.AUTH_SECRET?.trim();
+    if (process.env.NODE_ENV === 'production' && (!configuredSecret || configuredSecret.length < 32)) {
+      return redirectToLogin(req, pathname, 'auth_unavailable');
+    }
+
+    const { payload } = await jwtVerify(
+      token,
+      new TextEncoder().encode(configuredSecret || DEVELOPMENT_AUTH_SECRET)
+    );
     const role = (payload as unknown as SessionPayload).role;
 
     if (isAdminRoute && role !== 'ADMIN') {
       return NextResponse.redirect(new URL('/login?error=admin_required', req.url));
     }
 
-    if (isTutorRoute && role !== 'TUTOR' && role !== 'ADMIN') {
+    if (isTutorRoute && role !== 'TUTOR') {
       return NextResponse.redirect(new URL('/login?error=tutor_required', req.url));
     }
 
-    if (isStudentRoute && role !== 'STUDENT' && role !== 'ADMIN') {
+    if (isStudentRoute && role !== 'STUDENT') {
       return NextResponse.redirect(new URL('/login?error=student_required', req.url));
     }
 
@@ -60,6 +59,13 @@ export async function middleware(req: NextRequest) {
     loginUrl.searchParams.set('from', pathname);
     return NextResponse.redirect(loginUrl);
   }
+}
+
+function redirectToLogin(req: NextRequest, pathname: string, error?: string) {
+  const loginUrl = new URL('/login', req.url);
+  loginUrl.searchParams.set('from', pathname);
+  if (error) loginUrl.searchParams.set('error', error);
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {

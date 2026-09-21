@@ -6,14 +6,11 @@ import { motion } from 'motion/react';
 import { Button } from '@/shared/components/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/shared/components/card';
 import { loginSchema } from '../schemas';
+import { getRoleRedirectPath } from '../role-redirect';
 
-interface LoginFormProps {
-  onSuccessRedirect?: string;
-}
-
-export function LoginForm({ onSuccessRedirect }: LoginFormProps) {
+export function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = React.useState('');
+  const [identifier, setIdentifier] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -22,7 +19,7 @@ export function LoginForm({ onSuccessRedirect }: LoginFormProps) {
     e.preventDefault();
     setError(null);
 
-    const validation = loginSchema.safeParse({ email, password });
+    const validation = loginSchema.safeParse({ identifier, password });
     if (!validation.success) {
       setError(validation.error.errors[0]?.message || 'Validation failed');
       return;
@@ -33,7 +30,7 @@ export function LoginForm({ onSuccessRedirect }: LoginFormProps) {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       });
 
       const data = await res.json();
@@ -43,13 +40,7 @@ export function LoginForm({ onSuccessRedirect }: LoginFormProps) {
         return;
       }
 
-      const redirectPath =
-        onSuccessRedirect ||
-        (data.user.role === 'ADMIN'
-          ? '/admin/gadwal'
-          : data.user.role === 'TUTOR'
-          ? '/tutor/agenda'
-          : '/student/wallet');
+      const redirectPath = getRoleRedirectPath(data.user.role);
 
       router.push(redirectPath);
       router.refresh();
@@ -78,17 +69,17 @@ export function LoginForm({ onSuccessRedirect }: LoginFormProps) {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1" htmlFor="email">
-              Email Address
+            <label className="block text-sm font-medium text-slate-700 mb-1" htmlFor="identifier">
+              Email or Phone Number
             </label>
             <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              id="identifier"
+              type="text"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               required
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="you@example.com"
+              placeholder="you@example.com or +201..."
             />
           </div>
 

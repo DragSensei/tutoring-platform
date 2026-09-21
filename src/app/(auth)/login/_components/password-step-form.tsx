@@ -3,21 +3,54 @@
 import * as React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import { motion } from 'motion/react';
 import { Eye, EyeOff } from 'lucide-react';
+import { loginSchema } from '@/features/auth/schemas';
+import { getRoleRedirectPath } from '@/features/auth/role-redirect';
 
 export function PasswordStepForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const rawNumber = searchParams.get('number') || searchParams.get('phone') || '';
-  const [phoneNumber] = React.useState(rawNumber || 'No number provided');
+  const [identifier] = React.useState(rawNumber);
   const [password, setPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
-  const [submitted, setSubmitted] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setError(null);
+
+    const validation = loginSchema.safeParse({ identifier, password });
+    if (!validation.success) {
+      setError(validation.error.errors[0]?.message || 'Invalid credentials');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validation.data),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.user?.role) {
+        setError(data.error || 'Invalid credentials');
+        setLoading(false);
+        return;
+      }
+
+      router.replace(getRoleRedirectPath(data.user.role));
+      router.refresh();
+    } catch {
+      setError('Unable to sign in right now. Please try again.');
+      setLoading(false);
+    }
   };
 
   return (
@@ -53,12 +86,12 @@ export function PasswordStepForm() {
                 Account Number
               </span>
               <span className="text-sm font-bold text-slate-900 font-mono">
-                {phoneNumber}
+                {identifier || 'No account identifier provided'}
               </span>
             </div>
             <Link
               href="/login"
-              className="text-xs font-semibold text-red-600 hover:text-red-700 transition-colors"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-xs font-semibold text-red-600 hover:text-red-700 transition-colors"
             >
               Change
             </Link>
@@ -83,7 +116,7 @@ export function PasswordStepForm() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 focus:outline-none p-0.5"
+                  className="absolute right-1 top-1/2 flex min-h-[44px] min-w-[44px] -translate-y-1/2 items-center justify-center text-slate-400 hover:text-slate-700 focus:outline-none"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? (
@@ -95,29 +128,30 @@ export function PasswordStepForm() {
               </div>
             </div>
 
-            {submitted && (
+            {error && (
               <motion.div
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="p-2.5 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg text-center font-medium"
+                className="p-2.5 text-xs text-red-800 bg-red-50 border border-red-200 rounded-lg text-center font-medium"
               >
-                Frontend demo: Password verified for {phoneNumber}.
+                {error}
               </motion.div>
             )}
 
             <button
               type="submit"
-              className="w-full py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-md shadow-red-500/20 transition-all hover:scale-[1.01] active:scale-[0.99]"
+              disabled={loading}
+              className="min-h-[44px] w-full px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-md shadow-red-500/20 transition-all hover:scale-[1.01] active:scale-[0.99]"
             >
-              Login
+              {loading ? 'Signing in...' : 'Login'}
             </button>
           </form>
         </div>
 
         <div className="text-center pt-1">
-          <Link
-            href="/login"
-            className="text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors"
+        <Link
+          href="/login"
+          className="inline-flex min-h-[44px] items-center justify-center px-3 text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors"
           >
             &larr; Back to phone entry
           </Link>

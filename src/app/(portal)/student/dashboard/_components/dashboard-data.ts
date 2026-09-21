@@ -1,5 +1,5 @@
 import { prisma } from '@/shared/lib/prisma';
-import { getSession } from '@/features/auth/server/session';
+import { requireAuth } from '@/features/auth/server/session';
 import { getStudentWallet } from '@/features/wallets/server/wallet-actions';
 import { isCheckInExpired } from '@/shared/utils/deadline';
 import { SESSION_PRICING, SessionType } from '@/shared/types';
@@ -7,35 +7,13 @@ import type { ScheduledLecture } from './UpcomingLecturesCard';
 import type { WalletActivityEvent } from './RecentActivityLedger';
 
 export async function getStudentDashboardData() {
-  const session = await getSession();
-  let studentUser = null;
+  const session = await requireAuth(['STUDENT']);
+  const studentUser = await prisma.user.findFirst({
+    where: { id: session.userId, role: 'STUDENT' },
+    select: { id: true, name: true },
+  });
 
-  if (session?.userId && session.role === 'STUDENT') {
-    studentUser = await prisma.user.findUnique({
-      where: { id: session.userId },
-      select: { id: true, name: true },
-    });
-  }
-
-  if (!studentUser) {
-    studentUser = await prisma.user.findFirst({
-      where: { role: 'STUDENT' },
-      select: { id: true, name: true },
-    });
-  }
-
-  if (!studentUser) {
-    studentUser = await prisma.user.create({
-      data: {
-        name: 'Karim Mostafa',
-        email: 'karim.mostafa@student.bigherorobotics.com',
-        phone: '+201011112222',
-        password_hash: 'seed_hash',
-        role: 'STUDENT',
-      },
-      select: { id: true, name: true },
-    });
-  }
+  if (!studentUser) throw new Error('Authenticated Student account is unavailable');
 
   const studentId = studentUser.id;
   const studentName = studentUser.name;

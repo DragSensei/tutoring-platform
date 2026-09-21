@@ -6,9 +6,16 @@ import { Role } from '@/shared/types';
 import { LoginInput } from '../schemas';
 
 const SESSION_COOKIE_NAME = 'tp_session_token';
-const SECRET_KEY = new TextEncoder().encode(
-  process.env.AUTH_SECRET || 'fallback-super-secret-key-that-is-at-least-32-chars!'
-);
+const DEVELOPMENT_AUTH_SECRET = 'fallback-super-secret-key-that-is-at-least-32-chars!';
+
+function getSessionSecret(): Uint8Array {
+  const configuredSecret = process.env.AUTH_SECRET?.trim();
+  if (process.env.NODE_ENV === 'production' && (!configuredSecret || configuredSecret.length < 32)) {
+    throw new Error('AUTH_SECRET must be configured with at least 32 characters in production');
+  }
+
+  return new TextEncoder().encode(configuredSecret || DEVELOPMENT_AUTH_SECRET);
+}
 
 export interface SessionPayload {
   userId: string;
@@ -31,12 +38,12 @@ export async function signSessionToken(payload: SessionPayload): Promise<string>
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
-    .sign(SECRET_KEY);
+    .sign(getSessionSecret());
 }
 
 export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, SECRET_KEY);
+    const { payload } = await jwtVerify(token, getSessionSecret());
     return {
       userId: payload.userId as string,
       email: payload.email as string,
@@ -77,8 +84,14 @@ export async function authenticateUser(input: LoginInput): Promise<{
   user?: SessionPayload;
   error?: string;
 }> {
-  const user = await prisma.user.findUnique({
-    where: { email: input.email.toLowerCase().trim() },
+  const identifier = input.identifier.trim();
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { email: identifier.toLowerCase() },
+        { phone: identifier },
+      ],
+    },
   });
 
   if (!user) {

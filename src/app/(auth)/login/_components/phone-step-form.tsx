@@ -42,7 +42,7 @@ export function PhoneStepForm() {
           Sign In to Academy
         </h1>
         <p className="text-xs text-slate-500">
-          Enter your registered phone number or student ID to continue
+          Enter your registered email or phone number to continue
         </p>
       </div>
 
@@ -60,17 +60,17 @@ export function PhoneStepForm() {
 
           <div className="space-y-1.5 text-left">
             <label htmlFor="phoneNumber" className="block text-xs font-bold text-slate-700">
-              Phone Number / Student ID
+              Email or Phone Number
             </label>
             <input
               id="phoneNumber"
-              type="tel"
+              type="text"
               value={phoneNumber}
               onChange={(e) => {
                 setPhoneNumber(e.target.value);
                 if (error) setError(null);
               }}
-              placeholder="e.g. 010 1234 5678"
+              placeholder="e.g. you@example.com or +201..."
               autoFocus
               required
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all"
@@ -79,7 +79,7 @@ export function PhoneStepForm() {
 
           <button
             type="submit"
-            className="w-full py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-md shadow-red-500/20 transition-all hover:scale-[1.01] active:scale-[0.99]"
+            className="min-h-[44px] w-full px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-md shadow-red-500/20 transition-all hover:scale-[1.01] active:scale-[0.99]"
           >
             Login &rarr;
           </button>
@@ -89,7 +89,7 @@ export function PhoneStepForm() {
       <div className="text-center pt-1">
         <Link
           href="/"
-          className="text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors"
+          className="inline-flex min-h-[44px] items-center justify-center px-3 text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors"
         >
           &larr; Back to Home
         </Link>

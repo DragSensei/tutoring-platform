@@ -78,10 +78,11 @@ describe('Domain Zod Schemas Validation', () => {
   });
 
   describe('loginSchema & registerSchema', () => {
-    it('validates email format and password length', () => {
-      expect(loginSchema.safeParse({ email: 'test@example.com', password: 'password123' }).success).toBe(true);
-      expect(loginSchema.safeParse({ email: 'bad-email', password: 'password123' }).success).toBe(false);
-      expect(loginSchema.safeParse({ email: 'test@example.com', password: '123' }).success).toBe(false);
+    it('validates an email or phone identifier and password length', () => {
+      expect(loginSchema.safeParse({ identifier: 'test@example.com', password: 'password123' }).success).toBe(true);
+      expect(loginSchema.safeParse({ identifier: '+201000000001', password: 'password123' }).success).toBe(true);
+      expect(loginSchema.safeParse({ identifier: '', password: 'password123' }).success).toBe(false);
+      expect(loginSchema.safeParse({ identifier: 'test@example.com', password: '123' }).success).toBe(false);
     });
   });
 });
