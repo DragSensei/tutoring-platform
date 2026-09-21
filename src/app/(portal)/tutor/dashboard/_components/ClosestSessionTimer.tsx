@@ -54,7 +54,7 @@ export function ClosestSessionTimer({ closestSession, attendanceHref, onPostpone
   const sessionCode = closestSession.sessionCode || 'ON-SESSION';
 
   return (
-    <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center text-center">
+    <div className={`w-full max-w-2xl mx-auto flex flex-col items-center justify-center rounded-2xl border p-5 text-center sm:p-7 ${isCurrentlyActive ? 'border-emerald-200 bg-emerald-50/60' : 'border-transparent'}`}>
       {/* Top Due Status & Name of Nearest Due Session */}
       <div className="space-y-1.5 flex flex-col items-center">
         <div className="flex items-center gap-2 text-xs font-medium text-stone-500">
@@ -64,8 +64,8 @@ export function ClosestSessionTimer({ closestSession, attendanceHref, onPostpone
                 isCurrentlyActive ? 'bg-emerald-500' : 'bg-stone-400'
               }`}
             />
-            <span className={isCurrentlyActive ? 'text-emerald-700 font-semibold' : 'text-stone-600'}>
-              {isCurrentlyActive ? 'Session in progress' : 'Next session in'}
+            <span className={isCurrentlyActive ? 'font-bold uppercase tracking-wide text-emerald-700' : 'text-stone-600'}>
+              {isCurrentlyActive ? 'LIVE NOW' : 'Next session in'}
             </span>
           </span>
           <span className="text-stone-300">&bull;</span>
@@ -156,7 +156,7 @@ export function ClosestSessionTimer({ closestSession, attendanceHref, onPostpone
         <div className="mt-5 flex flex-wrap justify-center gap-2">
           {attendanceHref && (
             <Link href={attendanceHref} className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-brand-primary px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2">
-              Record attendance
+              {isCurrentlyActive ? 'Open Attendance' : 'Record attendance'}
             </Link>
           )}
           {onPostpone && <Button type="button" variant="outline" className="min-h-[44px]" onClick={onPostpone}>Postpone occurrence</Button>}

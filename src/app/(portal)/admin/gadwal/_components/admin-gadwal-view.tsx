@@ -2,7 +2,9 @@
 
 import * as React from 'react';
 import { motion } from 'motion/react';
-import { ScheduleSessionCard } from './schedule-session-card';
+import Link from 'next/link';
+import { Plus } from 'lucide-react';
+import { cancelAdminSession, deleteAdminSession } from '../actions';
 import {
   GadwalTable,
   type GadwalSessionItem,
@@ -10,8 +12,6 @@ import {
 
 interface AdminGadwalViewProps {
   sessions: GadwalSessionItem[];
-  tutors: { id: string; name: string; email: string }[];
-  students: { id: string; name: string; email: string }[];
 }
 
 const containerVariants = {
@@ -33,7 +33,7 @@ const itemVariants = {
   },
 };
 
-export function AdminGadwalView({ sessions, tutors, students }: AdminGadwalViewProps) {
+export function AdminGadwalView({ sessions }: AdminGadwalViewProps) {
   return (
     <motion.div
       variants={containerVariants}
@@ -43,7 +43,7 @@ export function AdminGadwalView({ sessions, tutors, students }: AdminGadwalViewP
     >
       <motion.div
         variants={itemVariants}
-        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200/80 pb-5 min-h-[92px]"
+        className="flex flex-col gap-4 border-b border-stone-200/80 pb-5 sm:flex-row sm:items-center sm:justify-between"
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -55,18 +55,18 @@ export function AdminGadwalView({ sessions, tutors, students }: AdminGadwalViewP
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 mt-1 truncate">
             Admin Gadwal Management (إدارة الجدول)
           </h1>
-          <p className="text-xs sm:text-sm text-stone-500 mt-1 line-clamp-1">
-            Schedule private and group tutoring sessions. Check-in deadlines are strictly set to 4 hours from start time.
+          <p className="text-xs sm:text-sm text-stone-500 mt-1 line-clamp-2">
+            Schedule private and group tutoring sessions with policy-controlled pricing and persisted rosters.
           </p>
         </div>
+        <Link href="/admin/gadwal/new" className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-lg bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2">
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          New Session
+        </Link>
       </motion.div>
 
       <motion.div variants={itemVariants}>
-        <ScheduleSessionCard tutors={tutors} students={students} />
-      </motion.div>
-
-      <motion.div variants={itemVariants}>
-        <GadwalTable sessions={sessions} />
+        <GadwalTable sessions={sessions} showAdminActions onDeleteSession={deleteAdminSession} onCancelSession={cancelAdminSession} />
       </motion.div>
     </motion.div>
   );

@@ -21,6 +21,19 @@ export interface ComboboxProps {
   className?: string;
 }
 
+export interface MultiComboboxProps {
+  options: ComboboxOption[];
+  values: string[];
+  onChange: (values: string[]) => void;
+  maxSelections?: number;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  emptyMessage?: string;
+  name?: string;
+  disabled?: boolean;
+  className?: string;
+}
+
 export function Combobox({
   options,
   value,
@@ -218,6 +231,142 @@ export function Combobox({
               })
             )}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function MultiCombobox({
+  options,
+  values,
+  onChange,
+  maxSelections = 4,
+  placeholder = 'Select options...',
+  searchPlaceholder = 'Search...',
+  emptyMessage = 'No matching options found.',
+  name,
+  disabled = false,
+  className = '',
+}: MultiComboboxProps) {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [highlightedIndex, setHighlightedIndex] = React.useState(0);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const selectedOptions = options.filter((option) => values.includes(option.value));
+  const filteredOptions = React.useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return options;
+    return options.filter((option) => option.label.toLowerCase().includes(query) || option.sublabel?.toLowerCase().includes(query));
+  }, [options, searchQuery]);
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+        setSearchQuery('');
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  function toggleValue(value: string) {
+    if (values.includes(value)) {
+      onChange(values.filter((current) => current !== value));
+    } else if (values.length < maxSelections) {
+      onChange([...values, value]);
+    }
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent) {
+    if (disabled) return;
+    if (!isOpen) {
+      if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        setIsOpen(true);
+        setTimeout(() => inputRef.current?.focus(), 50);
+      }
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setIsOpen(false);
+      setSearchQuery('');
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setHighlightedIndex((current) => current < filteredOptions.length - 1 ? current + 1 : 0);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setHighlightedIndex((current) => current > 0 ? current - 1 : filteredOptions.length - 1);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const option = filteredOptions[highlightedIndex];
+      if (option) toggleValue(option.value);
+    }
+  }
+
+  return (
+    <div ref={containerRef} className={`relative w-full ${className}`}>
+      {name && values.map((value) => <input key={value} type="hidden" name={name} value={value} />)}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => { setIsOpen((current) => !current); setTimeout(() => inputRef.current?.focus(), 50); }}
+        onKeyDown={handleKeyDown}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        className={`min-h-[44px] w-full rounded-lg border bg-white px-3 py-2 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/20 ${disabled ? 'cursor-not-allowed border-stone-200 bg-stone-100 text-stone-400' : 'border-stone-200 hover:border-stone-300'}`}
+      >
+        <span className="flex min-h-[24px] flex-wrap items-center gap-1.5 pr-6">
+          {selectedOptions.length === 0 ? <span className="text-sm text-stone-400">{placeholder}</span> : selectedOptions.map((option) => (
+            <span key={option.value} className="inline-flex max-w-full items-center gap-1 rounded-md bg-brand-subtle px-2 py-1 text-xs font-semibold text-brand-primary">
+              <span className="truncate">{option.label}</span>
+              <span className="sr-only">selected</span>
+            </span>
+          ))}
+        </span>
+        <ChevronDown className={`absolute right-3 top-3.5 h-4 w-4 text-stone-400 transition-transform ${isOpen ? 'rotate-180 text-brand-primary' : ''}`} aria-hidden="true" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1.5 w-full overflow-hidden rounded-xl border border-stone-200 bg-white py-1 shadow-lg">
+          <div className="flex items-center gap-2 border-b border-stone-100 px-2.5 py-1.5">
+            <Search className="h-4 w-4 shrink-0 text-stone-400" aria-hidden="true" />
+            <input
+              ref={inputRef}
+              value={searchQuery}
+              onChange={(event) => { setSearchQuery(event.target.value); setHighlightedIndex(0); }}
+              onKeyDown={handleKeyDown}
+              placeholder={searchPlaceholder}
+              className="min-h-[36px] w-full bg-transparent text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none"
+              aria-label={searchPlaceholder}
+            />
+            {searchQuery && <button type="button" onClick={() => setSearchQuery('')} className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center rounded text-stone-400 hover:text-stone-700" aria-label="Clear student search"><X className="h-3.5 w-3.5" aria-hidden="true" /></button>}
+          </div>
+          <div className="max-h-64 overflow-y-auto py-1" role="listbox" aria-multiselectable="true">
+            {filteredOptions.length === 0 ? <div className="px-4 py-3 text-center text-xs text-stone-500">{emptyMessage}</div> : filteredOptions.map((option, index) => {
+              const isSelected = values.includes(option.value);
+              const isAtCapacity = !isSelected && values.length >= maxSelections;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  disabled={isAtCapacity}
+                  onClick={() => toggleValue(option.value)}
+                  onMouseEnter={() => setHighlightedIndex(index)}
+                  className={`flex min-h-[44px] w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors ${isAtCapacity ? 'cursor-not-allowed text-stone-300' : index === highlightedIndex ? 'bg-brand-subtle text-brand-primary' : 'text-stone-700 hover:bg-stone-50'}`}
+                >
+                  <span className="min-w-0 truncate"><span className="block truncate font-medium">{option.label}</span>{option.sublabel && <span className="block truncate text-xs text-stone-500">{option.sublabel}</span>}</span>
+                  {isSelected && <Check className="h-4 w-4 shrink-0 text-brand-primary" aria-hidden="true" />}
+                </button>
+              );
+            })}
+          </div>
+          <div className="border-t border-stone-100 px-3 py-2 text-xs text-stone-500">{values.length} of {maxSelections} selected</div>
         </div>
       )}
     </div>

@@ -63,9 +63,9 @@ describe('Portal Sidebar Architectural Primitive', () => {
       expect(classes).not.toContain('w-64');
     });
 
-    it('applies top-16 and h-[calc(100vh-4rem)] when hasGlobalHeader is true (Tutor / Student)', () => {
-      const classes = getPortalSidebarAsideClasses({ hasGlobalHeader: true, isCollapsed: false });
-      expect(classes).toContain('sticky top-16 h-[calc(100vh-4rem)]');
+    it('keeps the same full-height shell behavior for every portal role', () => {
+      const classes = getPortalSidebarAsideClasses({ hasGlobalHeader: false, isCollapsed: false });
+      expect(classes).toContain('sticky top-0 h-screen');
       expect(classes).toContain('w-64');
       expect(classes).toContain('hidden md:flex');
       expect(classes).toContain('border-r border-stone-200/80 bg-white');
@@ -99,7 +99,7 @@ describe('Portal Sidebar Architectural Primitive', () => {
       expect(tutorNavigation.roleTitle).toBe('Big Hero Tutor');
       expect(tutorNavigation.roleSubtitle).toBe('Faculty portal');
       expect(tutorNavigation.portalRoot).toBe('/tutor');
-      expect(tutorNavigation.hasGlobalHeader).toBe(true);
+      expect(tutorNavigation.hasGlobalHeader).toBe(false);
       expect(tutorNavigation.bottomActionLabel).toBe('Public Site');
       expect(tutorNavigation.bottomActionHref).toBe('/');
       expect(tutorNavigation.clusters).toHaveLength(1);
@@ -114,7 +114,7 @@ describe('Portal Sidebar Architectural Primitive', () => {
       expect(studentNavigation.roleTitle).toBe('Big Hero Student');
       expect(studentNavigation.roleSubtitle).toBe('Student portal');
       expect(studentNavigation.portalRoot).toBe('/student');
-      expect(studentNavigation.hasGlobalHeader).toBe(true);
+      expect(studentNavigation.hasGlobalHeader).toBe(false);
       expect(studentNavigation.bottomActionLabel).toBe('Public Site');
       expect(studentNavigation.bottomActionHref).toBe('/');
       expect(studentNavigation.clusters).toHaveLength(1);

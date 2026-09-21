@@ -4,15 +4,20 @@ import * as React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
+import { getRoleRedirectPath } from '@/features/auth/role-redirect';
+import type { SessionPayload } from '@/features/auth/server/session';
 
-export function RootShell({ children }: { children: React.ReactNode }) {
+export function RootShell({ children, session }: { children: React.ReactNode; session: SessionPayload | null }) {
   const pathname = usePathname();
   const isAdmin = pathname?.startsWith('/admin');
   const isPortal = pathname?.startsWith('/tutor') || pathname?.startsWith('/student');
 
-  if (isAdmin) {
+  if (isAdmin || isPortal) {
     return <div className="flex-1 w-full flex flex-col">{children}</div>;
   }
+
+  const primaryHref = session ? getRoleRedirectPath(session.role) : '/login';
+  const primaryLabel = session ? 'Dashboard' : 'Sign In';
 
   const publicHeader = (
     <header className="border-b border-slate-200 bg-white/95 backdrop-blur-sm sticky top-0 z-50 h-16">
@@ -43,26 +48,15 @@ export function RootShell({ children }: { children: React.ReactNode }) {
             Contact Us
           </Link>
           <Link
-            href="/login"
+            href={primaryHref}
             className="min-h-[44px] inline-flex items-center px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-sm ml-2"
           >
-            Sign In
+            {primaryLabel}
           </Link>
         </nav>
       </div>
     </header>
   );
-
-  if (isPortal) {
-    return (
-      <>
-        {publicHeader}
-        <div className="flex-1 w-full flex flex-col min-h-[calc(100vh-4rem)]">
-          {children}
-        </div>
-      </>
-    );
-  }
 
   return (
     <>

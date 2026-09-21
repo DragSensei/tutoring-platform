@@ -1,5 +1,6 @@
 import { prisma } from '@/shared/lib/prisma';
-import { SESSION_PRICING, SessionType } from '@/shared/types';
+import type { SessionType } from '@/shared/types';
+import { getPlatformPolicies } from '@/features/policies/server/policy-actions';
 import { getSession } from '@/features/auth/server/session';
 
 export async function getAttendSessionData(token: string) {
@@ -11,6 +12,8 @@ export async function getAttendSessionData(token: string) {
   });
 
   if (!session) return null;
+
+  const policy = await getPlatformPolicies();
 
   const userSession = await getSession();
   let alreadyCheckedIn = false;
@@ -43,7 +46,7 @@ export async function getAttendSessionData(token: string) {
       sessionType: session.session_type as SessionType,
       startTime: session.start_time.toISOString(),
       deadline: session.deadline.toISOString(),
-      price: SESSION_PRICING[session.session_type as SessionType],
+      price: session.session_type === 'PRIVATE' ? policy.privateSessionPrice : policy.groupSessionPrice,
       tutorName: session.tutor.name,
     },
     userId: userSession?.userId,

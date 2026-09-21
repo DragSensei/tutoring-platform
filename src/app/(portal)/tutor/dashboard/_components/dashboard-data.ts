@@ -1,4 +1,5 @@
 import { requireAuth } from '@/features/auth/server/session';
+import { getPlatformPolicies } from '@/features/policies/server/policy-actions';
 import { getTutorSessions } from '@/features/sessions/server/session-actions';
 import type { GadwalSessionItem } from '@/features/sessions/types';
 import {
@@ -20,7 +21,7 @@ export async function getTutorDashboardData(): Promise<TutorDashboardData> {
   const tutorId = authSession.userId;
   const tutorName = authSession.name;
 
-  const sessions = await getTutorSessions(tutorId);
+  const sessions = await getTutorSessions(tutorId, await getPlatformPolicies());
   const closestSession = findClosestSessionDue(sessions);
 
   return {

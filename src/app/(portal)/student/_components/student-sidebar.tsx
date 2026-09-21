@@ -7,6 +7,8 @@ import {
 
 export interface StudentSidebarProps {
   mobileOnly?: boolean;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
   asAside?: boolean;
 }
 

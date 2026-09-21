@@ -2,6 +2,7 @@
 
 import { Search, X } from 'lucide-react';
 import { Button } from '@/shared/components/button';
+import { Combobox } from '@/shared/components/combobox';
 
 export interface TableToolbarFilter {
   id: string;
@@ -41,10 +42,14 @@ export function TableToolbar({
         {filters.map((filter) => (
           <label key={filter.id} className="min-w-0">
             <span className="sr-only">Filter by {filter.label}</span>
-            <select value={filter.value} onChange={(event) => filter.onChange(event.target.value)} className="min-h-[44px] w-full rounded-lg border border-stone-300 bg-white px-3 text-sm text-stone-700 focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 sm:w-auto">
-              <option value="">All {filter.label}</option>
-              {filter.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
+            <Combobox
+              options={filter.options}
+              value={filter.value}
+              onChange={filter.onChange}
+              placeholder={`All ${filter.label}`}
+              searchPlaceholder={`Search ${filter.label}`}
+              className="sm:min-w-[140px]"
+            />
           </label>
         ))}
       </div>

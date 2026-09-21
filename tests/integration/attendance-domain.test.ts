@@ -1,8 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 
-process.env.DATABASE_URL ||= 'postgresql://postgres:postgres@localhost:5432/tutoring_platform_db?schema=public';
-process.env.DIRECT_URL ||= process.env.DATABASE_URL;
+const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
+if (!testDatabaseUrl) {
+  throw new Error('TEST_DATABASE_URL is required for database-backed integration tests');
+}
+process.env.DATABASE_URL = testDatabaseUrl;
+process.env.DIRECT_URL = process.env.TEST_DIRECT_DATABASE_URL?.trim() || testDatabaseUrl;
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/features/auth/server/session', () => ({ requireAuth: vi.fn() }));
@@ -12,12 +16,36 @@ const { requireAuth } = await import('@/features/auth/server/session');
 const { executeStudentCheckIn } = await import('@/features/attendance/server/checkin-action');
 const { saveTutorAttendance } = await import('@/app/(portal)/tutor/attendance/actions');
 const { createAdminSession } = await import('@/app/(portal)/admin/gadwal/actions');
-const { createSession, getTutorSessions } = await import('@/features/sessions/server/session-actions');
+const { getTutorSessions } = await import('@/features/sessions/server/session-actions');
+const { getPlatformPolicies } = await import('@/features/policies/server/policy-actions');
 const { adminRefund } = await import('@/features/wallets/server/wallet-actions');
 
-const marker = `domain-${Date.now()}`;
+const fixturePrefix = 'test-fixture-domain-';
+const marker = `${fixturePrefix}${process.pid}-${Date.now()}`;
 let fixtureCounter = 0;
 let originalPolicy: Awaited<ReturnType<typeof prisma.platformPolicy.findUnique>>;
+
+async function cleanupFixtureResidue() {
+  const users = await prisma.user.findMany({
+    where: { email: { startsWith: fixturePrefix } },
+    select: { id: true },
+  });
+  const sessions = await prisma.session.findMany({
+    where: { title: { contains: fixturePrefix } },
+    select: { id: true },
+  });
+
+  // This prefix is reserved exclusively for this integration suite, so its
+  // sessions and test-only ledger history are safe to remove after interruption.
+  await prisma.$transaction(async (tx) => {
+    if (sessions.length > 0) {
+      await tx.session.deleteMany({ where: { id: { in: sessions.map((session) => session.id) } } });
+    }
+    if (users.length > 0) {
+      await tx.user.deleteMany({ where: { id: { in: users.map((user) => user.id) } } });
+    }
+  });
+}
 
 async function createFixture(participantCount = 3, sessionType: 'PRIVATE' | 'GROUP' = 'GROUP') {
   const fixtureMarker = `${marker}-${fixtureCounter++}`;
@@ -71,6 +99,8 @@ async function walletState(studentId: string, sessionId: string) {
 
 describe('durable attendance domain invariants', () => {
   beforeAll(async () => {
+    // The reserved prefix makes interrupted local runs recoverable on the next run.
+    await cleanupFixtureResidue();
     originalPolicy = await prisma.platformPolicy.findUnique({ where: { id: 'default' } });
     await prisma.platformPolicy.upsert({
       where: { id: 'default' },
@@ -89,16 +119,7 @@ describe('durable attendance domain invariants', () => {
   });
 
   afterAll(async () => {
-    await prisma.session.deleteMany({
-      where: {
-        OR: [
-          { title: { startsWith: `Domain session ${marker}` } },
-          { title: { startsWith: `Created session ${marker}` } },
-          { title: { startsWith: `Authorized session ${marker}` } },
-        ],
-      },
-    });
-    await prisma.user.deleteMany({ where: { email: { startsWith: marker } } });
+    await cleanupFixtureResidue();
     if (originalPolicy) {
       await prisma.platformPolicy.update({
         where: { id: 'default' },
@@ -118,8 +139,9 @@ describe('durable attendance domain invariants', () => {
   it('uses durable PRIVATE/GROUP participants as the Tutor roster', async () => {
     const groupFixture = await createFixture(3, 'GROUP');
     const privateFixture = await createFixture(1, 'PRIVATE');
-    const groupSessions = await getTutorSessions(groupFixture.tutor.id);
-    const privateSessions = await getTutorSessions(privateFixture.tutor.id);
+    const currentPolicy = await getPlatformPolicies();
+    const groupSessions = await getTutorSessions(groupFixture.tutor.id, currentPolicy);
+    const privateSessions = await getTutorSessions(privateFixture.tutor.id, currentPolicy);
     const groupSession = groupSessions.find((item) => item.id === groupFixture.session.id);
     const privateSession = privateSessions.find((item) => item.id === privateFixture.session.id);
 
@@ -133,7 +155,13 @@ describe('durable attendance domain invariants', () => {
 
   it('requires explicit Student assignments when creating a session', async () => {
     const fixture = await createFixture(2);
-    const created = await createSession({
+    vi.mocked(requireAuth).mockResolvedValue({
+      userId: 'admin-fixture',
+      email: 'admin-fixture@example.com',
+      name: 'Admin Fixture',
+      role: 'ADMIN',
+    });
+    const created = await createAdminSession({
       title: `Created session ${marker}`,
       tutorId: fixture.tutor.id,
       sessionType: 'GROUP',
@@ -149,7 +177,7 @@ describe('durable attendance domain invariants', () => {
       [...fixture.students.map((student) => student.id)].sort()
     );
     await expect(
-      createSession({
+      createAdminSession({
         title: `Invalid session ${marker}`,
         tutorId: fixture.tutor.id,
         sessionType: 'PRIVATE',

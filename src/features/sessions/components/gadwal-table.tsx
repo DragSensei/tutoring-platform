@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
+import { Ban, Edit3, Loader2, Trash2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/shared/components/card';
 import { Badge } from '@/shared/components/badge';
 import { formatEGP } from '@/shared/utils/currency';
@@ -31,6 +33,8 @@ export interface GadwalSessionItem {
   token: string;
   status: SessionStatus;
   attendeeCount: number;
+  participantCount?: number;
+  transactionCount?: number;
   attendanceNotes?: string | null;
   price: number;
   assignedStudents?: string[];
@@ -41,6 +45,9 @@ export interface GadwalSessionItem {
 interface GadwalTableProps {
   sessions: GadwalSessionItem[];
   showTutorColumn?: boolean;
+  showAdminActions?: boolean;
+  onDeleteSession?: (sessionId: string) => Promise<unknown>;
+  onCancelSession?: (sessionId: string) => Promise<unknown>;
 }
 
 const SESSION_STATUS_OPTIONS = [
@@ -55,16 +62,35 @@ const SESSION_TYPE_OPTIONS = [
   { value: 'PRIVATE', label: 'private' },
 ];
 
-export function GadwalTable({ sessions, showTutorColumn = true }: GadwalTableProps) {
+export function GadwalTable({ sessions, showTutorColumn = true, showAdminActions = false, onDeleteSession, onCancelSession }: GadwalTableProps) {
   const [search, setSearch] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState('');
   const [typeFilter, setTypeFilter] = React.useState('');
+  const [pendingAction, setPendingAction] = React.useState<string | null>(null);
+  const [actionError, setActionError] = React.useState<string | null>(null);
   const filteredSessions = sessions.filter((session) =>
     matchesTableSearch([session.title, session.tutorName, session.sessionType, session.status, session.token], search) &&
     (!statusFilter || session.status === statusFilter) &&
     (!typeFilter || session.sessionType === typeFilter)
   );
   const pagination = useTablePagination(filteredSessions);
+  async function handleMutation(session: GadwalSessionItem, mode: 'delete' | 'cancel') {
+    const confirmation = mode === 'delete'
+      ? `Delete ${session.title}? This will remove the unstarted session.`
+      : `Cancel ${session.title}? Its history will be preserved.`;
+    if (!window.confirm(confirmation)) return;
+    setPendingAction(`${mode}:${session.id}`);
+    setActionError(null);
+    try {
+      if (mode === 'delete') await onDeleteSession?.(session.id);
+      else await onCancelSession?.(session.id);
+      window.location.reload();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to update this session');
+    } finally {
+      setPendingAction(null);
+    }
+  }
   const getStatusBadge = (status: SessionStatus) => {
     switch (status) {
       case 'SCHEDULED':
@@ -115,6 +141,7 @@ export function GadwalTable({ sessions, showTutorColumn = true }: GadwalTablePro
                   <th className="px-4 py-3">Attendees</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Attendance Token</th>
+                  {showAdminActions && <th className="px-4 py-3 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -137,11 +164,28 @@ export function GadwalTable({ sessions, showTutorColumn = true }: GadwalTablePro
                     <td className="px-4 py-3 text-right">
                       <CopyTokenButton token={s.token} />
                     </td>
+                    {showAdminActions && <td className="px-4 py-3 text-right">
+                      <div className="flex min-w-[180px] items-center justify-end gap-2">
+                        {s.status !== 'COMPLETED' && s.status !== 'CANCELLED' && <Link href={`/admin/gadwal/${s.id}/edit`} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-stone-200 px-3 text-xs font-semibold text-stone-700 hover:bg-stone-50" title="Edit session">
+                          <Edit3 className="h-3.5 w-3.5" aria-hidden="true" /> Edit
+                        </Link>}
+                        {s.status !== 'COMPLETED' && s.status !== 'CANCELLED' && (() => {
+                          const canDelete = s.status === 'SCHEDULED' && new Date(s.startTime).getTime() > Date.now() && s.attendeeCount === 0 && (s.transactionCount || 0) === 0;
+                          const mode = canDelete ? 'delete' : 'cancel';
+                          const isPending = pendingAction === `${mode}:${s.id}`;
+                          return <button type="button" disabled={Boolean(pendingAction)} onClick={() => void handleMutation(s, mode)} className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-3 text-sm font-semibold ${canDelete ? 'text-rose-700 hover:bg-rose-50' : 'text-amber-700 hover:bg-amber-50'}`} title={canDelete ? 'Delete unstarted session' : 'Cancel and preserve history'}>
+                            {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : canDelete ? <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> : <Ban className="h-3.5 w-3.5" aria-hidden="true" />}
+                            {canDelete ? 'Delete' : 'Cancel'}
+                          </button>;
+                        })()}
+                      </div>
+                    </td>}
                   </tr>
                 ))}
               </tbody>
               </table>
               </div>
+              {actionError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm font-medium text-rose-800">{actionError}</p>}
               <TablePagination
                 itemCount={filteredSessions.length}
                 page={pagination.page}

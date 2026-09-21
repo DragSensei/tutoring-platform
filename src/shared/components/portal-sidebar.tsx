@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   CalendarDays,
@@ -17,6 +17,7 @@ import {
   X,
   ListTodo,
   History,
+  LogOut,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -75,7 +76,7 @@ export const tutorNavigation: PortalNavigationConfig = {
   roleTitle: 'Big Hero Tutor',
   roleSubtitle: 'Faculty portal',
   portalRoot: '/tutor',
-  hasGlobalHeader: true,
+  hasGlobalHeader: false,
   bottomActionLabel: 'Public Site',
   bottomActionHref: '/',
   clusters: [
@@ -93,7 +94,7 @@ export const studentNavigation: PortalNavigationConfig = {
   roleTitle: 'Big Hero Student',
   roleSubtitle: 'Student portal',
   portalRoot: '/student',
-  hasGlobalHeader: true,
+  hasGlobalHeader: false,
   bottomActionLabel: 'Public Site',
   bottomActionHref: '/',
   clusters: [
@@ -131,7 +132,18 @@ export function getPortalSidebarAsideClasses({
     ? 'sticky top-16 h-[calc(100vh-4rem)]'
     : 'sticky top-0 h-screen';
 
-  return `hidden md:flex flex-col ${widthClass} shrink-0 border-r border-stone-200/80 bg-white ${stickyClass} transition-[width] duration-300 ease-in-out`;
+  return `hidden md:flex flex-col ${widthClass} min-w-0 shrink-0 border-r border-stone-200/80 bg-white ${stickyClass} transition-[width] duration-300 ease-in-out`;
+}
+
+const expandedNavRowClasses =
+  'min-h-[44px] flex items-center gap-3 px-3 py-2.5 rounded-lg mx-2 text-sm transition-colors';
+const collapsedNavRowClasses =
+  'min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg mx-1 text-sm transition-colors';
+
+function getNavRowTone(active: boolean) {
+  return active
+    ? 'bg-brand-primary text-white font-semibold shadow-xs'
+    : 'text-stone-700 hover:bg-stone-100/70 hover:text-stone-900 font-medium';
 }
 
 function PortalIdentity({
@@ -179,6 +191,8 @@ export function PortalSidebar({
 }: PortalSidebarProps) {
   const pathname = usePathname();
   const [isOpenMobile, setIsOpenMobile] = React.useState(false);
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
+  const router = useRouter();
   const closeButtonRef = React.useRef<HTMLButtonElement>(null);
 
   React.useEffect(() => {
@@ -194,6 +208,18 @@ export function PortalSidebar({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpenMobile]);
+
+  async function handleLogout() {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.push('/login');
+      router.refresh();
+    } finally {
+      setIsLoggingOut(false);
+    }
+  }
 
   const renderNavClusters = (onItemClick?: () => void, forceExpanded = false) => {
     const effectiveCollapsed = forceExpanded ? false : isCollapsed;
@@ -224,11 +250,7 @@ export function PortalSidebar({
                         onClick={onItemClick}
                         aria-label={item.label}
                         title={item.label}
-                        className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg mx-1 text-sm transition-colors ${
-                          active
-                            ? 'bg-brand-primary text-white font-semibold shadow-xs'
-                            : 'text-stone-700 hover:bg-stone-100/70 hover:text-stone-900 font-medium'
-                        }`}
+                        className={`${collapsedNavRowClasses} ${getNavRowTone(active)}`}
                       >
                         <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                       </Link>
@@ -248,11 +270,7 @@ export function PortalSidebar({
                     href={item.href}
                     onClick={onItemClick}
                     aria-current={active ? 'page' : undefined}
-                    className={`min-h-[44px] flex items-center gap-3 px-3 py-2.5 rounded-lg mx-2 text-sm transition-colors ${
-                      active
-                        ? 'bg-brand-primary text-white font-semibold shadow-xs'
-                        : 'text-stone-700 hover:bg-stone-100/70 hover:text-stone-900 font-medium'
-                    }`}
+                    className={`${expandedNavRowClasses} ${getNavRowTone(active)}`}
                   >
                     <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                     <span>{item.label}</span>
@@ -317,10 +335,15 @@ export function PortalSidebar({
                 <Link
                   href={config.bottomActionHref || '/'}
                   onClick={() => setIsOpenMobile(false)}
-                  className="min-h-[44px] flex items-center px-3 py-2.5 rounded-lg text-sm font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100/70 transition-colors"
+                  className="min-h-[44px] flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100/70 transition-colors"
                 >
+                  <Globe className="h-4 w-4 shrink-0" aria-hidden="true" />
                   <span>{config.bottomActionLabel || 'Public Site'}</span>
                 </Link>
+                <button type="button" onClick={() => void handleLogout()} disabled={isLoggingOut} className="mt-1 min-h-[44px] w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-stone-500 hover:bg-stone-100/70 hover:text-stone-800 disabled:opacity-50">
+                  <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{isLoggingOut ? 'Signing out…' : 'Logout'}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -380,29 +403,59 @@ export function PortalSidebar({
 
       {/* Bottom Pin */}
       {!isCollapsed ? (
-        <div className="mt-auto p-4 border-t border-stone-100 shrink-0">
-          <Link
-            href={config.bottomActionHref || '/'}
-            className="min-h-[44px] flex items-center px-3 py-2.5 rounded-lg mx-2 text-sm font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100/70 transition-colors"
-          >
-            <span>{config.bottomActionLabel || 'Public Site'}</span>
-          </Link>
-        </div>
-      ) : (
-        <div className="mt-auto p-3 border-t border-stone-100 shrink-0 flex justify-center">
-          <div className="relative group">
+        <div className="mt-auto py-4 px-1 border-t border-stone-100 shrink-0">
+          <nav className="space-y-1" aria-label="Portal actions">
             <Link
               href={config.bottomActionHref || '/'}
-              aria-label={config.bottomActionLabel || 'Public Site'}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-sm text-stone-500 hover:text-stone-800 hover:bg-stone-100/70 transition-colors"
+              className={`${expandedNavRowClasses} font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100/70`}
             >
               <Globe className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{config.bottomActionLabel || 'Public Site'}</span>
             </Link>
-            <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-stone-900 text-white text-xs font-semibold rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-md">
-              {config.bottomActionLabel || 'Public Site'}
-              <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-stone-900" />
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              disabled={isLoggingOut}
+              className={`${expandedNavRowClasses} w-full text-left font-medium text-stone-500 hover:bg-stone-100/70 hover:text-stone-800 disabled:opacity-50`}
+            >
+              <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{isLoggingOut ? 'Signing out…' : 'Logout'}</span>
+            </button>
+          </nav>
+        </div>
+      ) : (
+        <div className="mt-auto py-3 px-2 border-t border-stone-100 shrink-0">
+          <nav className="space-y-1" aria-label="Portal actions">
+            <div className="relative group flex justify-center">
+              <Link
+                href={config.bottomActionHref || '/'}
+                aria-label={config.bottomActionLabel || 'Public Site'}
+                title={config.bottomActionLabel || 'Public Site'}
+                className={`${collapsedNavRowClasses} text-stone-500 hover:text-stone-800 hover:bg-stone-100/70`}
+              >
+                <Globe className="h-4 w-4 shrink-0" aria-hidden="true" />
+              </Link>
+              <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-stone-900 text-white text-xs font-semibold rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-md">
+                {config.bottomActionLabel || 'Public Site'}
+                <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-stone-900" />
+              </div>
             </div>
-          </div>
+            <div className="relative group flex justify-center">
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                disabled={isLoggingOut}
+                aria-label="Logout"
+                title="Logout"
+                className={`${collapsedNavRowClasses} text-stone-500 hover:bg-stone-100/70 hover:text-stone-800 disabled:opacity-50`}
+              >
+                <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
+              </button>
+              <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-stone-900 text-white text-xs font-semibold rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-md">
+                Logout
+              </div>
+            </div>
+          </nav>
         </div>
       )}
     </div>

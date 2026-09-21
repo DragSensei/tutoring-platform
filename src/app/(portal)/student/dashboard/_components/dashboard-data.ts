@@ -1,8 +1,8 @@
 import { prisma } from '@/shared/lib/prisma';
 import { requireAuth } from '@/features/auth/server/session';
 import { getStudentWallet } from '@/features/wallets/server/wallet-actions';
+import { getPlatformPolicies } from '@/features/policies/server/policy-actions';
 import { isCheckInExpired } from '@/shared/utils/deadline';
-import { SESSION_PRICING, SessionType } from '@/shared/types';
 import type { ScheduledLecture } from './UpcomingLecturesCard';
 import type { WalletActivityEvent } from './RecentActivityLedger';
 
@@ -18,6 +18,7 @@ export async function getStudentDashboardData() {
   const studentId = studentUser.id;
   const studentName = studentUser.name;
   const wallet = await getStudentWallet(studentId);
+  const policy = await getPlatformPolicies();
 
   const now = new Date();
   const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -66,7 +67,7 @@ export async function getStudentDashboardData() {
       alreadyCheckedIn = Boolean(existingAttendance);
     }
 
-    const price = SESSION_PRICING[nextSession.session_type as SessionType] || 375;
+    const price = nextSession.session_type === 'PRIVATE' ? policy.privateSessionPrice : policy.groupSessionPrice;
     const isWithinActiveWindow = !alreadyCheckedIn && !isCheckInExpired(nextSession.deadline, now);
 
     nextLecture = {
