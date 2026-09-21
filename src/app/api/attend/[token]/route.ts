@@ -3,7 +3,7 @@ import { executeStudentCheckIn } from '@/features/attendance/server/checkin-acti
 import { getSession } from '@/features/auth/server/session';
 
 export async function POST(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { token: string } }
 ) {
   try {
@@ -12,29 +12,17 @@ export async function POST(
       return NextResponse.json({ message: 'Token parameter missing' }, { status: 400 });
     }
 
-    // Try session cookie first; fallback to request body studentId
     const session = await getSession();
-    let studentId = session?.userId;
-
-    if (!studentId) {
-      try {
-        const body = await req.json();
-        studentId = body.studentId;
-      } catch {
-        // empty body
-      }
-    }
-
-    if (!studentId) {
+    if (!session || session.role !== 'STUDENT') {
       return NextResponse.json(
-        { message: 'Authentication required: please log in or provide studentId' },
+        { message: 'Student authentication is required' },
         { status: 401 }
       );
     }
 
     const result = await executeStudentCheckIn({
       token,
-      studentId,
+      studentId: session.userId,
     });
 
     return NextResponse.json(result, { status: result.statusCode });

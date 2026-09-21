@@ -49,6 +49,7 @@ export async function getStudentDashboardData() {
     where: {
       status: { in: ['SCHEDULED', 'ACTIVE'] },
       deadline: { gte: now },
+      participants: { some: { student_id: studentId } },
     },
     include: {
       tutor: { select: { name: true } },

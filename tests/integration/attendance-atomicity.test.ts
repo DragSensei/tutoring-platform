@@ -18,6 +18,9 @@ vi.mock('@/shared/lib/prisma', () => ({
       findUnique: vi.fn(),
       create: vi.fn(),
     },
+    sessionParticipant: {
+      findUnique: vi.fn(),
+    },
     wallet: {
       create: vi.fn(),
       update: vi.fn(),
@@ -101,11 +104,15 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
     // Mock transaction behavior
     vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
       const tx = {
+        sessionParticipant: {
+          findUnique: vi.fn().mockResolvedValue({ session_id: mockSession.id, student_id: mockStudent.id }),
+        },
         attendanceRecord: {
           findUnique: vi.fn().mockResolvedValue(null), // not already checked in
           create: vi.fn().mockResolvedValue({ id: 'att_1' }),
         },
         wallet: {
+          findUnique: vi.fn().mockResolvedValue(mockStudent.wallet),
           update: vi.fn().mockImplementation(({ data }: any) => ({
             id: mockStudent.wallet.id,
             balance: data.balance,
@@ -113,7 +120,11 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
           })),
         },
         walletTransaction: {
+          findMany: vi.fn().mockResolvedValue([]),
           create: vi.fn().mockResolvedValue({ id: 'wtx_1' }),
+        },
+        platformPolicy: {
+          findUnique: vi.fn().mockResolvedValue(null),
         },
       };
       return callback(tx);
@@ -144,6 +155,9 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
     // Mock that attendance record already exists
     vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
       const tx = {
+        sessionParticipant: {
+          findUnique: vi.fn().mockResolvedValue({ session_id: mockSession.id, student_id: mockStudent.id }),
+        },
         attendanceRecord: {
           findUnique: vi.fn().mockResolvedValue({ id: 'existing_att_1' }),
         },
@@ -195,11 +209,15 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
 
       vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
         const tx = {
+          sessionParticipant: {
+            findUnique: vi.fn().mockResolvedValue({ session_id: mockSession.id, student_id: mockStudent.id }),
+          },
           attendanceRecord: {
             findUnique: vi.fn().mockResolvedValue(null),
             create: vi.fn().mockResolvedValue({ id: 'att_1' }),
           },
           wallet: {
+            findUnique: vi.fn().mockResolvedValue(mockStudent.wallet),
             update: vi.fn().mockImplementation(({ data }: any) => ({
               id: mockStudent.wallet.id,
               balance: data.balance,
@@ -207,7 +225,11 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
             })),
           },
           walletTransaction: {
+            findMany: vi.fn().mockResolvedValue([]),
             create: vi.fn().mockResolvedValue({ id: 'wtx_1' }),
+          },
+          platformPolicy: {
+            findUnique: vi.fn().mockRejectedValue(missingTableError),
           },
         };
         return callback(tx);
@@ -241,11 +263,15 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
 
       vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
         const tx = {
+          sessionParticipant: {
+            findUnique: vi.fn().mockResolvedValue({ session_id: mockSession.id, student_id: mockStudent.id }),
+          },
           attendanceRecord: {
             findUnique: vi.fn().mockResolvedValue(null),
             create: vi.fn().mockResolvedValue({ id: 'att_1' }),
           },
           wallet: {
+            findUnique: vi.fn().mockResolvedValue(mockStudent.wallet),
             update: vi.fn().mockImplementation(({ data }: any) => ({
               id: mockStudent.wallet.id,
               balance: data.balance,
@@ -253,6 +279,7 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
             })),
           },
           walletTransaction: {
+            findMany: vi.fn().mockResolvedValue([]),
             create: vi.fn().mockResolvedValue({ id: 'wtx_1' }),
           },
         };
@@ -284,6 +311,20 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
 
       const dbError = new Error('Connection pool exhausted / timeout');
       vi.mocked(prisma.platformPolicy.findUnique).mockRejectedValue(dbError);
+      vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) =>
+        callback({
+          sessionParticipant: {
+            findUnique: vi.fn().mockResolvedValue({ session_id: mockSession.id, student_id: mockStudent.id }),
+          },
+          attendanceRecord: {
+            findUnique: vi.fn().mockResolvedValue(null),
+            create: vi.fn(),
+          },
+          platformPolicy: {
+            findUnique: vi.fn().mockRejectedValue(dbError),
+          },
+        })
+      );
 
       const result = await executeStudentCheckIn({
         token: mockSession.token,
@@ -294,8 +335,8 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
       expect(result.success).toBe(false);
       expect(result.statusCode).toBe(500);
       expect(result.message).toContain('Failed to retrieve platform policy configuration');
-      // Crucial: No transaction must be executed and no student funds debited!
-      expect(prisma.$transaction).not.toHaveBeenCalled();
+      // The shared billing owner is invoked inside the atomic transaction; the error rolls it back.
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining('[ATTENDANCE_CHECKIN] Failed to retrieve platform policy configuration:'),
         dbError

@@ -19,23 +19,44 @@ export async function createSession(input: CreateSessionInput) {
   const windowHours = policy?.check_in_window_hours ?? 4;
   const deadline = computeSessionDeadline(start, windowHours);
   const token = crypto.randomUUID();
+  const participantIds = [...new Set(input.participantIds)];
 
-  const session = await prisma.session.create({
-    data: {
-      title: input.title,
-      tutor_id: input.tutorId,
-      session_type: input.sessionType as SessionType,
-      start_time: start,
-      end_time: end,
-      deadline,
-      token,
-      status: 'SCHEDULED',
-    },
-    include: {
-      tutor: {
-        select: { id: true, name: true, email: true },
+  if (input.sessionType === 'PRIVATE' && participantIds.length !== 1) {
+    throw new Error('Private sessions require exactly one student');
+  }
+  if (input.sessionType === 'GROUP' && (participantIds.length < 1 || participantIds.length > 4)) {
+    throw new Error('Group sessions require one to four students');
+  }
+
+  const students = await prisma.user.findMany({
+    where: { id: { in: participantIds }, role: 'STUDENT' },
+    select: { id: true },
+  });
+  if (students.length !== participantIds.length) {
+    throw new Error('Every assigned participant must be a Student account');
+  }
+
+  const session = await prisma.$transaction(async (tx) => {
+    return tx.session.create({
+      data: {
+        title: input.title,
+        tutor_id: input.tutorId,
+        session_type: input.sessionType as SessionType,
+        start_time: start,
+        end_time: end,
+        deadline,
+        token,
+        status: 'SCHEDULED',
+        participants: {
+          create: participantIds.map((student_id) => ({ student_id })),
+        },
       },
-    },
+      include: {
+        tutor: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
   });
 
   try {
@@ -87,47 +108,35 @@ export async function getGadwalSessions(filter?: SessionFilterInput) {
 }
 
 export async function getTutorSessions(tutorId: string) {
-  const [sessions, allStudents] = await Promise.all([
-    prisma.session.findMany({
-      where: { tutor_id: tutorId },
-      include: {
-        tutor: { select: { id: true, name: true } },
-        _count: { select: { attendances: true } },
-        attendances: {
-          include: {
-            student: { select: { id: true, name: true, email: true } },
-          },
+  const sessions = await prisma.session.findMany({
+    where: { tutor_id: tutorId },
+    include: {
+      tutor: { select: { id: true, name: true } },
+      _count: { select: { attendances: true } },
+      participants: {
+        include: {
+          student: { select: { id: true, name: true, email: true } },
         },
       },
-      orderBy: { start_time: 'desc' },
-    }),
-    prisma.user.findMany({
-      where: { role: 'STUDENT' },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-      },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
-    }),
-  ]);
+      attendances: { select: { student_id: true } },
+    },
+    orderBy: { start_time: 'desc' },
+  });
 
   return sessions.map((s) => {
-    const attendedIds = new Set(s.attendances.map((a) => a.student.id));
-    const assignedStudents = s.attendances.map((a) => a.student.name);
+    const attendedIds = new Set(s.attendances.map((a) => a.student_id));
+    const assignedStudents = s.participants.map((participant) => participant.student.name);
     const sessionCode = formatSessionCode({
       title: s.title,
       startTime: s.start_time,
       endTime: s.end_time,
     });
 
-    const cohortPool =
-      s.session_type === 'PRIVATE' ? allStudents.slice(0, 1) : allStudents.slice(0, 4);
-    const roster = cohortPool.map((student) => ({
-      id: student.id,
-      name: student.name,
-      email: student.email,
-      attended: attendedIds.has(student.id),
+    const roster = s.participants.map((participant) => ({
+      id: participant.student.id,
+      name: participant.student.name,
+      email: participant.student.email,
+      attended: attendedIds.has(participant.student.id),
     }));
 
     return {

@@ -4,6 +4,7 @@ export const createSessionSchema = z.object({
   title: z.string().min(3, 'Session title must be at least 3 characters'),
   tutorId: z.string().min(1, 'Tutor ID is required'),
   sessionType: z.enum(['PRIVATE', 'GROUP']),
+  participantIds: z.array(z.string().min(1)).min(1, 'At least one student must be assigned').max(4),
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
 });

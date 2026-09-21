@@ -43,6 +43,7 @@ describe('Domain Zod Schemas Validation', () => {
         title: 'Physics Mechanics I',
         tutorId: 'tutor_99',
         sessionType: 'PRIVATE',
+        participantIds: ['student_123'],
         startTime: '2026-10-01T12:00:00.000Z',
         endTime: '2026-10-01T14:00:00.000Z',
       };

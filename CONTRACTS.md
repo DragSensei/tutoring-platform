@@ -58,7 +58,14 @@ export interface SessionContract {
   updatedAt: Date;
 }
 
-// Attendance Record (Proof of presence)
+// Durable session roster membership
+export interface SessionParticipantContract {
+  sessionId: string;
+  studentId: string;
+  // Unique Constraint: @@id([sessionId, studentId])
+}
+
+// Attendance Record (final Tutor attendance truth / Student check-in proof)
 export interface AttendanceRecordContract {
   id: string;
   sessionId: string;
@@ -77,6 +84,10 @@ export interface WalletTransactionContract {
   createdByUserId?: string | null;
   createdAt: Date;
 }
+
+// Provenance: attendance reconciliation entries leave createdByUserId null;
+// Admin-created deposits/refunds carry the authenticated Admin user ID and
+// are never included in Tutor attendance net-charge reconciliation.
 ```
 
 ---
@@ -89,7 +100,7 @@ export interface WalletTransactionContract {
 | **Duplicate Attendance Check** | $O(1)$ | $O(1)$ | B-Tree lookup on composite unique index `AttendanceRecord(session_id, student_id)`. |
 | **Atomic Wallet Deduction & Transaction Insert** | $O(1)$ | $O(1)$ | Single indexed update on `Wallet(id)` and append-only write to `WalletTransaction`. |
 | **Tutor Monthly & Lifetime KPI Aggregation** | $O(\log N + K)$ | $O(1)$ | Indexed count queries on `Session(tutor_id, start_time)` and `AttendanceRecord(session_id)`. |
-| **Tutor Attendance Replacement** | $O(R)$ | $O(R)$ | Transactionally validates and replaces presence for the server-derived roster; `R <= 4` under the current cohort contract. |
+| **Tutor Attendance Replacement** | $O(R)$ | $O(R)$ | Transactionally validates and replaces presence for the durable `SessionParticipant` roster; `R <= 4` under the current session capacity contract. |
 | **Admin Overdraft Review Query** | $O(M)$ | $O(M)$ | Filtered query on `Wallet(is_flagged_overdraft = true)`. |
 
 ---
@@ -102,16 +113,18 @@ Client Request (GET /attend/[token] or POST /api/attend/[token])
   │
   ├── 1. Auth Guard (Extract Session / Student ID)
   │
-  ├── 2. Deadline Verification: NOW() <= session.deadline (start_time + 4h)
+  ├── 2. Reject CANCELLED or COMPLETED sessions (finalized attendance is immutable to Student check-in)
+  │
+  ├── 3. Deadline Verification: NOW() <= session.deadline (start_time + 4h)
   │      └── If NOW() > deadline: ABORT with HTTP 403 Forbidden.
   │
-  └── 3. Isolated Database Transaction (prisma.$transaction):
+  └── 4. Isolated Database Transaction (prisma.$transaction):
+         ├── Check: Student belongs to SessionParticipant roster
          ├── Check: Has student already checked in? (Throw 409 if duplicate)
          ├── Mutate: INSERT into AttendanceRecords(session_id, student_id, attended_at)
-         ├── Mutate: UPDATE Wallet SET balance = balance - session_cost, is_flagged_overdraft = (balance < 0)
-         └── Mutate: INSERT into WalletTransactions(wallet_id, amount = -cost, type = 'SESSION_DEDUCTION', session_id)
+         └── Reconcile final PRESENT financial state through the shared attendance billing owner
   │
-  └── 4. Success Response: HTTP 200 { success: true, deductedAmount, newBalance, isOverdraft }
+  └── 5. Success Response: HTTP 200 { success: true, deductedAmount, newBalance, isOverdraft }
 ```
 
 ### Tutor Attendance Persistence Flow:
@@ -120,28 +133,30 @@ Client server-action request { sessionId, presentStudentIds, notes }
   │
   ├── 1. Require an authenticated Tutor session
   │
-  └── 2. Atomic database transaction (prisma.$transaction):
+  └── 2. Atomic database transaction (prisma.$transaction, serializable):
          ├── Read the session by id + authenticated tutor_id
-         ├── Rebuild the canonical private/group roster server-side
-         ├── Reject any submitted student outside that roster
-         ├── Delete attendance rows no longer marked present
-         ├── Insert missing present rows with skipDuplicates
+         ├── Read the durable SessionParticipant roster (fail closed when empty)
+         ├── Reject any submitted student outside that roster before mutation
+         ├── Persist final AttendanceRecord presence state
+         ├── Reconcile every participant's net session charge through the shared billing owner
          └── Persist notes and Session.status = COMPLETED
   │
   └── 3. Revalidate Tutor Agenda, History, and attendance route
 ```
 
 - An empty `presentStudentIds` array is valid after explicit review; completion and notes on `Session` distinguish it from an untouched session.
-- Repeating the same payload is idempotent because attendance is replaced against the unique `(session_id, student_id)` key.
+- `Session.status = COMPLETED` means the session occurrence and attendance have been finalized. It does not assert durable screenshot evidence.
+- PRESENT has exactly one net session charge; ABSENT has zero net session charge. Reconciliation appends immutable deductions/refunds and never deletes ledger history.
+- Repeating the same payload is idempotent because attendance is replaced against the unique `(session_id, student_id)` key and financial reconciliation targets the existing net ledger state.
 - Screenshot evidence is intentionally excluded from the server contract and remains browser-local until an approved durable storage provider exists.
 
 ---
 
 ## 4. Failure Modes & Mitigations
 
-1. **Race Condition on Check-In:**
-   - *Risk:* A student attempts multiple simultaneous requests to evade balance deductions or duplicate roster entries.
-   - *Mitigation:* Database composite unique index `@@unique([session_id, student_id])` enforced inside `prisma.$transaction()`. Any duplicate request errors with code `P2002` and rolls back all modifications.
+1. **Race Condition on Check-In or Finalization:**
+   - *Risk:* A student attempts multiple simultaneous requests or a Tutor saves the same final state concurrently.
+   - *Mitigation:* Database composite unique indexes plus serializable Prisma transactions. Any conflicting request rolls back all attendance, wallet, and ledger mutations.
 
 2. **Negative Balance / Overdraft Exploitation:**
    - *Risk:* A student with 0.00 EGP attends multiple high-value private sessions (500.00 EGP each).
@@ -153,7 +168,7 @@ Client server-action request { sessionId, presentStudentIds, notes }
 
 4. **Tutor IDOR / Roster Injection:**
    - *Risk:* A Tutor submits another Tutor's session ID or adds arbitrary student IDs.
-   - *Mitigation:* The write transaction scopes the session lookup to the authenticated `tutor_id` and verifies every submitted ID against the server-derived session roster before mutating attendance.
+   - *Mitigation:* The write transaction scopes the session lookup to the authenticated `tutor_id` and verifies every submitted ID against the durable `SessionParticipant` roster before mutating attendance or finances. Sessions without participants fail closed.
 
 ---
 
@@ -161,6 +176,7 @@ Client server-action request { sessionId, presentStudentIds, notes }
 
 ### `POST /api/attend/[token]`
 Records student session check-in using unique session token, updates student wallet balance, and creates an audit ledger transaction.
+- The token identifies the Session; the authenticated `STUDENT` session identifies the Student. Client-provided student IDs are not accepted.
 - **Status:** `200 OK`
 ```json
 {

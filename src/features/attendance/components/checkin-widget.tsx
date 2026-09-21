@@ -20,11 +20,10 @@ interface CheckInWidgetProps {
     price: number;
     tutorName: string;
   };
-  studentId?: string;
   initialCheckedIn?: boolean;
 }
 
-export function CheckInWidget({ token, session, studentId, initialCheckedIn = false }: CheckInWidgetProps) {
+export function CheckInWidget({ token, session, initialCheckedIn = false }: CheckInWidgetProps) {
   const [remaining, setRemaining] = React.useState<RemainingTime>(() =>
     getRemainingCheckInTime(session.deadline)
   );
@@ -57,7 +56,6 @@ export function CheckInWidget({ token, session, studentId, initialCheckedIn = fa
       const res = await fetch(`/api/attend/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId }),
       });
 
       const data = await res.json();

@@ -98,6 +98,10 @@ export async function adminDeposit(input: AdminDepositInput) {
 }
 
 export async function adminRefund(input: RefundInput) {
+  if (!input.adminUserId) {
+    throw new Error('Admin identity is required for refund provenance');
+  }
+
   const amountDec = new Prisma.Decimal(input.amount);
 
   return prisma.$transaction(async (tx) => {

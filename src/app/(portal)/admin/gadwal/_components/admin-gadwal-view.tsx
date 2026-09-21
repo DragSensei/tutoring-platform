@@ -11,6 +11,7 @@ import {
 interface AdminGadwalViewProps {
   sessions: GadwalSessionItem[];
   tutors: { id: string; name: string; email: string }[];
+  students: { id: string; name: string; email: string }[];
 }
 
 const containerVariants = {
@@ -32,7 +33,7 @@ const itemVariants = {
   },
 };
 
-export function AdminGadwalView({ sessions, tutors }: AdminGadwalViewProps) {
+export function AdminGadwalView({ sessions, tutors, students }: AdminGadwalViewProps) {
   return (
     <motion.div
       variants={containerVariants}
@@ -61,7 +62,7 @@ export function AdminGadwalView({ sessions, tutors }: AdminGadwalViewProps) {
       </motion.div>
 
       <motion.div variants={itemVariants}>
-        <ScheduleSessionCard tutors={tutors} />
+        <ScheduleSessionCard tutors={tutors} students={students} />
       </motion.div>
 
       <motion.div variants={itemVariants}>

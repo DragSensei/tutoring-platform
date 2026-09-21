@@ -3,13 +3,14 @@
 import * as React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/shared/components/card';
 import { Combobox } from '@/shared/components/combobox';
-import { createSession } from '@/features/sessions/server/session-actions';
+import { createAdminSession } from '../actions';
 
 interface ScheduleSessionCardProps {
   tutors: { id: string; name: string; email: string }[];
+  students: { id: string; name: string; email: string }[];
 }
 
-export function ScheduleSessionCard({ tutors }: ScheduleSessionCardProps) {
+export function ScheduleSessionCard({ tutors, students }: ScheduleSessionCardProps) {
   const [selectedTutorId, setSelectedTutorId] = React.useState(tutors[0]?.id || '');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -26,6 +27,7 @@ export function ScheduleSessionCard({ tutors }: ScheduleSessionCardProps) {
     const title = formData.get('title') as string;
     const tutorId = formData.get('tutorId') as string || selectedTutorId;
     const sessionType = formData.get('sessionType') as 'PRIVATE' | 'GROUP';
+    const participantIds = formData.getAll('participantIds') as string[];
     const startTimeStr = formData.get('startTime') as string;
     const durationHours = parseInt((formData.get('duration') as string) || '2', 10);
 
@@ -33,10 +35,11 @@ export function ScheduleSessionCard({ tutors }: ScheduleSessionCardProps) {
     const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
 
     try {
-      await createSession({
+      await createAdminSession({
         title,
         tutorId,
         sessionType,
+        participantIds,
         startTime: start.toISOString(),
         endTime: end.toISOString(),
       });
@@ -86,6 +89,22 @@ export function ScheduleSessionCard({ tutors }: ScheduleSessionCardProps) {
               <option value="GROUP">GROUP (375.00 EGP)</option>
             </select>
           </div>
+
+          <fieldset className="lg:col-span-3 rounded-xl border border-stone-200 p-4">
+            <legend className="px-1 text-xs font-semibold text-stone-700">Assign Students (1–4)</legend>
+            {students.length === 0 ? (
+              <p className="text-sm text-stone-500">No Student accounts are available.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {students.map((student) => (
+                  <label key={student.id} className="flex min-h-[44px] items-center gap-2 rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700">
+                    <input type="checkbox" name="participantIds" value={student.id} className="h-4 w-4 accent-brand-primary" />
+                    <span className="min-w-0 truncate">{student.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </fieldset>
 
           <div>
             <label className="block text-xs font-semibold text-stone-700 mb-1">Start Time</label>

@@ -5,10 +5,11 @@ import { AdminGadwalView } from './_components/admin-gadwal-view';
 export const dynamic = 'force-dynamic';
 
 export default async function AdminGadwalPage() {
-  const [sessions, tutors] = await Promise.all([
+  const [sessions, tutors, students] = await Promise.all([
     getGadwalSessions(),
     prisma.user.findMany({ where: { role: 'TUTOR' }, select: { id: true, name: true, email: true } }),
+    prisma.user.findMany({ where: { role: 'STUDENT' }, select: { id: true, name: true, email: true }, orderBy: [{ name: 'asc' }, { id: 'asc' }] }),
   ]);
 
-  return <AdminGadwalView sessions={sessions} tutors={tutors} />;
+  return <AdminGadwalView sessions={sessions} tutors={tutors} students={students} />;
 }

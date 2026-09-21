@@ -6,8 +6,9 @@ import {
   tutorAttendanceSchema,
   type TutorAttendanceInput,
 } from '@/features/attendance/schemas';
+import { reconcileSessionFinancialState } from '@/features/attendance/server/session-financials';
 import { prisma } from '@/shared/lib/prisma';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 export type SaveTutorAttendanceResult =
   | { success: true; sessionId: string; presentCount: number }
@@ -35,8 +36,9 @@ export async function saveTutorAttendance(
   const presentStudentIds = [...new Set(parsed.data.presentStudentIds)];
 
   try {
-    await prisma.$transaction((tx) =>
-      persistTutorAttendance(tx, { tutorId, sessionId, presentStudentIds, notes })
+    await prisma.$transaction(
+      (tx) => persistTutorAttendance(tx, { tutorId, sessionId, presentStudentIds, notes }),
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
   } catch (error) {
     if (error instanceof AttendanceAccessError) {
@@ -71,13 +73,15 @@ async function persistTutorAttendance(
     throw new AttendanceStateError('Cancelled sessions cannot record attendance.');
   }
 
-  const roster = await tx.user.findMany({
-    where: { role: 'STUDENT' },
-    select: { id: true },
-    orderBy: [{ name: 'asc' }, { id: 'asc' }],
-    take: session.session_type === 'PRIVATE' ? 1 : 4,
+  const participants = await tx.sessionParticipant.findMany({
+    where: { session_id: session.id },
+    select: { student_id: true },
   });
-  const rosterIds = new Set(roster.map((student) => student.id));
+  if (participants.length === 0) {
+    throw new AttendanceAccessError();
+  }
+
+  const rosterIds = new Set(participants.map((participant) => participant.student_id));
   if (input.presentStudentIds.some((studentId) => !rosterIds.has(studentId))) {
     throw new AttendanceAccessError();
   }
@@ -99,6 +103,17 @@ async function persistTutorAttendance(
         student_id: studentId,
       })),
       skipDuplicates: true,
+    });
+  }
+
+  const presentIds = new Set(input.presentStudentIds);
+  for (const participant of participants) {
+    await reconcileSessionFinancialState(tx, {
+      sessionId: session.id,
+      studentId: participant.student_id,
+      sessionType: session.session_type,
+      present: presentIds.has(participant.student_id),
+      occurredAt: new Date(),
     });
   }
 

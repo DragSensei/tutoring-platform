@@ -45,6 +45,7 @@ model User {
   wallet               Wallet?
   tutored_sessions     Session[]           @relation("TutorSessions")
   attendances          AttendanceRecord[]  @relation("StudentAttendances")
+  session_participants SessionParticipant[]
   created_transactions WalletTransaction[] @relation("AdminCreatedTransactions")
 
   @@index([role])
@@ -81,11 +82,23 @@ model Session {
   updated_at       DateTime      @updatedAt
 
   attendances  AttendanceRecord[]
+  participants SessionParticipant[]
   transactions WalletTransaction[]
 
   @@index([tutor_id])
   @@index([token])
   @@index([start_time])
+}
+
+model SessionParticipant {
+  session_id String
+  student_id String
+  session    Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  student    User    @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  created_at DateTime @default(now())
+
+  @@id([session_id, student_id])
+  @@index([student_id])
 }
 
 model AttendanceRecord {

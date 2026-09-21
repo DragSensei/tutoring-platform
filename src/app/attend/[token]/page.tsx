@@ -20,7 +20,6 @@ export default async function AttendPage({ params }: AttendPageProps) {
       <CheckInWidget
         token={params.token}
         session={data.sessionData}
-        studentId={data.userId}
         initialCheckedIn={data.alreadyCheckedIn}
       />
     </div>

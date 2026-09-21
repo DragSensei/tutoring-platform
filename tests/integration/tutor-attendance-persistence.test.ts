@@ -28,6 +28,37 @@ function createTransaction(overrides?: {
         overrides?.roster || [{ id: 'student-1' }, { id: 'student-2' }]
       ),
     },
+    sessionParticipant: {
+      findMany: vi.fn().mockResolvedValue(
+        (overrides?.roster || [{ id: 'student-1' }, { id: 'student-2' }]).map((student) => ({
+          student_id: student.id,
+        }))
+      ),
+    },
+    platformPolicy: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
+    wallet: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: 'wallet-1',
+        balance: 0,
+        is_flagged_overdraft: false,
+      }),
+      create: vi.fn().mockResolvedValue({
+        id: 'wallet-1',
+        balance: 0,
+        is_flagged_overdraft: false,
+      }),
+      update: vi.fn().mockResolvedValue({
+        id: 'wallet-1',
+        balance: 0,
+        is_flagged_overdraft: false,
+      }),
+    },
+    walletTransaction: {
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({ id: 'wallet-tx-1' }),
+    },
     attendanceRecord: {
       deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       createMany: vi.fn().mockResolvedValue({ count: 0 }),

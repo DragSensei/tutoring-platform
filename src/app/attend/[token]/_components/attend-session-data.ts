@@ -15,7 +15,17 @@ export async function getAttendSessionData(token: string) {
   const userSession = await getSession();
   let alreadyCheckedIn = false;
 
-  if (userSession?.userId) {
+  if (userSession?.userId && userSession.role === 'STUDENT') {
+    const participant = await prisma.sessionParticipant.findUnique({
+      where: {
+        session_id_student_id: {
+          session_id: session.id,
+          student_id: userSession.userId,
+        },
+      },
+    });
+    if (!participant) return null;
+
     const record = await prisma.attendanceRecord.findUnique({
       where: {
         session_id_student_id: {

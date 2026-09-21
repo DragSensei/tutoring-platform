@@ -1,7 +1,15 @@
 import { prisma } from '@/shared/lib/prisma';
 import { isCheckInExpired } from '@/shared/utils/deadline';
-import { SESSION_PRICING, CheckInVerificationResult } from '@/shared/types';
+import { CheckInVerificationResult, SessionType } from '@/shared/types';
 import { Prisma } from '@prisma/client';
+import {
+  isTableNotExistError,
+  OverdraftDisallowedError,
+  PlatformPolicyReadError,
+  reconcileSessionFinancialState,
+} from './session-financials';
+
+export { isTableNotExistError, OverdraftDisallowedError } from './session-financials';
 
 export interface CheckInParams {
   token: string;
@@ -40,6 +48,14 @@ export async function executeStudentCheckIn({
     };
   }
 
+  if (session.status === 'COMPLETED') {
+    return {
+      success: false,
+      statusCode: 409,
+      message: 'Attendance for this session has already been finalized',
+    };
+  }
+
   // Step 2: 4-Hour Expiration Check (Strict HTTP 403 enforcement)
   if (isCheckInExpired(session.deadline, currentTime)) {
     return {
@@ -52,7 +68,7 @@ export async function executeStudentCheckIn({
   // Step 3: Verify Student identity
   const student = await prisma.user.findUnique({
     where: { id: studentId },
-    include: { wallet: true },
+    select: { id: true, role: true },
   });
 
   if (!student) {
@@ -71,41 +87,22 @@ export async function executeStudentCheckIn({
     };
   }
 
-  let policy = null;
-  if (!prisma.platformPolicy?.findUnique) {
-    console.warn(
-      '[ATTENDANCE_CHECKIN] PlatformPolicy model not defined on Prisma client. Falling back to default platform pricing.'
-    );
-  } else {
-    try {
-      policy = await prisma.platformPolicy.findUnique({ where: { id: 'default' } });
-    } catch (error) {
-      if (isTableNotExistError(error)) {
-        console.warn(
-          '[ATTENDANCE_CHECKIN] PlatformPolicy table does not exist in database (migration pending). Falling back to default pricing.',
-          error
-        );
-        policy = null;
-      } else {
-        console.error('[ATTENDANCE_CHECKIN] Failed to retrieve platform policy configuration:', error);
-        return {
-          success: false,
-          statusCode: 500,
-          message: 'Failed to retrieve platform policy configuration due to a database error. Check-in aborted to prevent incorrect billing.',
-        };
-      }
-    }
-  }
-  const defaultPrice = session.session_type === 'PRIVATE' ? 500.00 : 375.00;
-  const sessionCost = policy
-    ? (session.session_type === 'PRIVATE' ? Number(policy.private_session_price) : Number(policy.group_session_price))
-    : (SESSION_PRICING[session.session_type] ?? defaultPrice);
-  const allowOverdraft = policy ? policy.allow_overdraft : true;
-
   try {
-    // Step 4: Atomic Verification & Deduction Transaction
+    // Step 4: Atomic roster verification, attendance, and financial reconciliation.
     const result = await prisma.$transaction(async (tx) => {
-      // 4a: Check duplicate attendance inside transaction
+      const participant = await tx.sessionParticipant.findUnique({
+        where: {
+          session_id_student_id: {
+            session_id: session.id,
+            student_id: student.id,
+          },
+        },
+      });
+
+      if (!participant) {
+        throw new StudentNotEnrolledError('Student is not assigned to this session');
+      }
+
       const existingAttendance = await tx.attendanceRecord.findUnique({
         where: {
           session_id_student_id: {
@@ -119,19 +116,6 @@ export async function executeStudentCheckIn({
         throw new DuplicateAttendanceError('Student has already checked in for this session');
       }
 
-      // 4b: Ensure student has a wallet
-      let wallet = student.wallet;
-      if (!wallet) {
-        wallet = await tx.wallet.create({
-          data: {
-            user_id: student.id,
-            balance: new Prisma.Decimal(0.00),
-            is_flagged_overdraft: false,
-          },
-        });
-      }
-
-      // 4c: Record entry in AttendanceRecords
       await tx.attendanceRecord.create({
         data: {
           session_id: session.id,
@@ -140,43 +124,21 @@ export async function executeStudentCheckIn({
         },
       });
 
-      // 4d: Calculate new balance and overdraft status
-      const currentBalance = new Prisma.Decimal(wallet.balance);
-      const deductionAmount = new Prisma.Decimal(sessionCost);
-      const newBalance = currentBalance.sub(deductionAmount);
-      const isOverdraft = newBalance.isNegative();
-
-      if (!allowOverdraft && isOverdraft) {
-        throw new OverdraftDisallowedError('Insufficient balance: Platform policy prohibits negative account balance');
-      }
-
-      // Update wallet balance & overdraft flag
-      const updatedWallet = await tx.wallet.update({
-        where: { id: wallet.id },
-        data: {
-          balance: newBalance,
-          is_flagged_overdraft: isOverdraft,
-        },
-      });
-
-      // 4e: Create immutable ledger audit record
-      await tx.walletTransaction.create({
-        data: {
-          wallet_id: updatedWallet.id,
-          amount: deductionAmount.negated(),
-          transaction_type: 'SESSION_DEDUCTION',
-          session_id: session.id,
-          created_at: currentTime,
-        },
+      const financials = await reconcileSessionFinancialState(tx, {
+        sessionId: session.id,
+        studentId: student.id,
+        sessionType: session.session_type as SessionType,
+        present: true,
+        occurredAt: currentTime,
       });
 
       return {
         sessionTitle: session.title,
-        deductedAmount: sessionCost,
-        newBalance: Number(newBalance),
-        isOverdraft,
+        deductedAmount: Number(financials.adjustment.abs()),
+        newBalance: Number(financials.balance),
+        isOverdraft: financials.isOverdraft,
       };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     return {
       success: true,
@@ -204,6 +166,27 @@ export async function executeStudentCheckIn({
       };
     }
 
+    if (error instanceof StudentNotEnrolledError) {
+      return {
+        success: false,
+        statusCode: 403,
+        message: 'Student is not assigned to this session',
+      };
+    }
+
+    if (error instanceof PlatformPolicyReadError) {
+      console.error(
+        '[ATTENDANCE_CHECKIN] Failed to retrieve platform policy configuration:',
+        error.cause
+      );
+      return {
+        success: false,
+        statusCode: 500,
+        message:
+          'Failed to retrieve platform policy configuration due to a database error. Check-in aborted to prevent incorrect billing.',
+      };
+    }
+
     // Prisma unique constraint violation code
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return {
@@ -228,33 +211,9 @@ export class DuplicateAttendanceError extends Error {
   }
 }
 
-export class OverdraftDisallowedError extends Error {
+export class StudentNotEnrolledError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'OverdraftDisallowedError';
+    this.name = 'StudentNotEnrolledError';
   }
 }
-
-/**
- * Detects whether an error indicates that the PlatformPolicy table/relation does not exist
- * in the database (e.g. pending migration in current environment).
- */
-export function isTableNotExistError(error: unknown): boolean {
-  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
-    return true;
-  }
-  if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 'P2021') {
-    return true;
-  }
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    return (
-      message.includes('p2021') ||
-      message.includes('table does not exist') ||
-      message.includes('no such table') ||
-      (message.includes('relation') && message.includes('does not exist'))
-    );
-  }
-  return false;
-}
-

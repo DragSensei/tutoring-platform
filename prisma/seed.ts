@@ -9,6 +9,7 @@ async function main() {
   // Clean existing records
   await prisma.walletTransaction.deleteMany();
   await prisma.attendanceRecord.deleteMany();
+  await prisma.sessionParticipant.deleteMany();
   await prisma.session.deleteMany();
   await prisma.wallet.deleteMany();
   await prisma.user.deleteMany();
@@ -197,7 +198,7 @@ async function main() {
   const sessionCDeadline = new Date(sessionCStart.getTime() + 4 * 3600 * 1000);
   const sessionCToken = '33333333-4444-5555-6666-777777777777';
 
-  await prisma.session.create({
+  const sessionC = await prisma.session.create({
     data: {
       title: 'Robotics Level 2: Sumo Bots & Autonomous Avoidance',
       tutor_id: tutor1.id,
@@ -216,7 +217,7 @@ async function main() {
   const sessionDDeadline = new Date(sessionDStart.getTime() + 4 * 3600 * 1000);
   const sessionDToken = '44444444-5555-6666-7777-888888888888';
 
-  await prisma.session.create({
+  const sessionD = await prisma.session.create({
     data: {
       title: 'Private Track: 1-on-1 Embedded C++ Mentorship',
       tutor_id: tutor1.id,
@@ -229,7 +230,24 @@ async function main() {
     },
   });
 
-  // 5. Seed Attendance Proofs (Students in courses)
+  // 5. Seed explicit durable rosters and checked-in attendance proofs.
+  await prisma.sessionParticipant.createMany({
+    data: [
+      { session_id: sessionA.id, student_id: student1.id },
+      { session_id: sessionA.id, student_id: student2.id },
+      { session_id: sessionA.id, student_id: student3.id },
+      { session_id: sessionB.id, student_id: student1.id },
+      { session_id: sessionB.id, student_id: student2.id },
+      { session_id: sessionB.id, student_id: student3.id },
+      { session_id: sessionB.id, student_id: student4.id },
+      { session_id: sessionC.id, student_id: student1.id },
+      { session_id: sessionC.id, student_id: student2.id },
+      { session_id: sessionC.id, student_id: student3.id },
+      { session_id: sessionD.id, student_id: student4.id },
+    ],
+  });
+
+  // Session A: 3 students checked in (GROUP = 375.00 EGP each)
   // 3 students in Session A
   await prisma.attendanceRecord.createMany({
     data: [
@@ -239,7 +257,7 @@ async function main() {
     ],
   });
 
-  // 4 students in Session B (Full group capacity)
+  // Session B: 4 students checked in (Full group capacity)
   await prisma.attendanceRecord.createMany({
     data: [
       { session_id: sessionB.id, student_id: student1.id },
@@ -248,6 +266,32 @@ async function main() {
       { session_id: sessionB.id, student_id: student4.id },
     ],
   });
+
+  const seededCheckIns = [
+    { session_id: sessionA.id, student_id: student1.id },
+    { session_id: sessionA.id, student_id: student2.id },
+    { session_id: sessionA.id, student_id: student3.id },
+    { session_id: sessionB.id, student_id: student1.id },
+    { session_id: sessionB.id, student_id: student2.id },
+    { session_id: sessionB.id, student_id: student3.id },
+    { session_id: sessionB.id, student_id: student4.id },
+  ];
+  for (const checkIn of seededCheckIns) {
+    const wallet = await prisma.wallet.findUniqueOrThrow({ where: { user_id: checkIn.student_id } });
+    const newBalance = new Prisma.Decimal(wallet.balance).sub(375);
+    await prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { balance: newBalance, is_flagged_overdraft: newBalance.isNegative() },
+    });
+    await prisma.walletTransaction.create({
+      data: {
+        wallet_id: wallet.id,
+        amount: new Prisma.Decimal(-375),
+        transaction_type: 'SESSION_DEDUCTION',
+        session_id: checkIn.session_id,
+      },
+    });
+  }
 
   console.log('✅ Big Hero Robotics Academy database successfully seeded!');
   console.log(`- Faculty Tutor: Eng. Omar Ashraf (${tutor1.id})`);
