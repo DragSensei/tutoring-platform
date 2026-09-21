@@ -90,6 +90,25 @@ export async function executeStudentCheckIn({
   try {
     // Step 4: Atomic roster verification, attendance, and financial reconciliation.
     const result = await prisma.$transaction(async (tx) => {
+      // Re-read lifecycle state inside the serializable transaction. The
+      // preflight read above can become stale while a Tutor finalizes the
+      // session; finalized attendance is authoritative and must not be
+      // mutated by a late Student check-in.
+      const currentSession = await tx.session.findUnique({
+        where: { id: session.id },
+        select: { status: true },
+      });
+
+      if (!currentSession) {
+        throw new SessionStateError(404, 'Session not found for the provided token');
+      }
+      if (currentSession.status === 'CANCELLED') {
+        throw new SessionStateError(400, 'This session has been cancelled');
+      }
+      if (currentSession.status === 'COMPLETED') {
+        throw new SessionStateError(409, 'Attendance for this session has already been finalized');
+      }
+
       const participant = await tx.sessionParticipant.findUnique({
         where: {
           session_id_student_id: {
@@ -174,6 +193,14 @@ export async function executeStudentCheckIn({
       };
     }
 
+    if (error instanceof SessionStateError) {
+      return {
+        success: false,
+        statusCode: error.statusCode,
+        message: error.message,
+      };
+    }
+
     if (error instanceof PlatformPolicyReadError) {
       console.error(
         '[ATTENDANCE_CHECKIN] Failed to retrieve platform policy configuration:',
@@ -215,5 +242,12 @@ export class StudentNotEnrolledError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'StudentNotEnrolledError';
+  }
+}
+
+export class SessionStateError extends Error {
+  constructor(public readonly statusCode: 400 | 404 | 409, message: string) {
+    super(message);
+    this.name = 'SessionStateError';
   }
 }

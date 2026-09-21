@@ -104,6 +104,9 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
     // Mock transaction behavior
     vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
       const tx = {
+        session: {
+          findUnique: vi.fn().mockResolvedValue({ id: mockSession.id, status: mockSession.status }),
+        },
         sessionParticipant: {
           findUnique: vi.fn().mockResolvedValue({ session_id: mockSession.id, student_id: mockStudent.id }),
         },
@@ -155,6 +158,9 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
     // Mock that attendance record already exists
     vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
       const tx = {
+        session: {
+          findUnique: vi.fn().mockResolvedValue({ id: mockSession.id, status: mockSession.status }),
+        },
         sessionParticipant: {
           findUnique: vi.fn().mockResolvedValue({ session_id: mockSession.id, student_id: mockStudent.id }),
         },
@@ -174,6 +180,37 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
     expect(result.success).toBe(false);
     expect(result.statusCode).toBe(409);
     expect(result.message).toContain('already checked in');
+  });
+
+  it('rejects a stale check-in when Tutor finalization wins after the preflight read', async () => {
+    vi.mocked(prisma.session.findUnique).mockResolvedValue(mockSession as any);
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(mockStudent as any);
+
+    const transactionSessionRead = vi
+      .fn()
+      .mockResolvedValue({ id: mockSession.id, status: 'COMPLETED' });
+    vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) =>
+      callback({
+        session: { findUnique: transactionSessionRead },
+        sessionParticipant: { findUnique: vi.fn() },
+      })
+    );
+
+    const result = await executeStudentCheckIn({
+      token: mockSession.token,
+      studentId: mockStudent.id,
+      currentTime: new Date('2026-10-01T11:00:00.000Z'),
+    });
+
+    expect(result).toEqual({
+      success: false,
+      statusCode: 409,
+      message: 'Attendance for this session has already been finalized',
+    });
+    expect(transactionSessionRead).toHaveBeenCalledWith({
+      where: { id: mockSession.id },
+      select: { status: true },
+    });
   });
 
   it('rolls back all mutations if transaction fails midway', async () => {
@@ -209,6 +246,9 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
 
       vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
         const tx = {
+          session: {
+            findUnique: vi.fn().mockResolvedValue({ id: mockSession.id, status: mockSession.status }),
+          },
           sessionParticipant: {
             findUnique: vi.fn().mockResolvedValue({ session_id: mockSession.id, student_id: mockStudent.id }),
           },
@@ -263,6 +303,9 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
 
       vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
         const tx = {
+          session: {
+            findUnique: vi.fn().mockResolvedValue({ id: mockSession.id, status: mockSession.status }),
+          },
           sessionParticipant: {
             findUnique: vi.fn().mockResolvedValue({ session_id: mockSession.id, student_id: mockStudent.id }),
           },
@@ -313,6 +356,9 @@ describe('Attendance Verification & Atomic Wallet Deduction Integration', () => 
       vi.mocked(prisma.platformPolicy.findUnique).mockRejectedValue(dbError);
       vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) =>
         callback({
+          session: {
+            findUnique: vi.fn().mockResolvedValue({ id: mockSession.id, status: mockSession.status }),
+          },
           sessionParticipant: {
             findUnique: vi.fn().mockResolvedValue({ session_id: mockSession.id, student_id: mockStudent.id }),
           },
