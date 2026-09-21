@@ -1,8 +1,8 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Active Branch:** `main`
-- **Latest Completed Task:** Re-architected the existing tutor frontend around a responsive portal shell, dedicated attendance workspace, timetable route, and naturally scrolling agenda while preserving local-only documentation and recurrence semantics.
+- **Active Branch:** `001-backend-attendance-persistence`
+- **Latest Completed Task:** Iteration 001 replaced Tutor browser-local attendance/session notes with authenticated, transaction-backed Prisma persistence while preserving local-only screenshot evidence and timetable exceptions.
 - **Last Completed Work:** Animated all pages across the Admin Dashboard and clarified "Cohorts" domain semantics:
   1. Route-Level Page Transitions: Wrapped `AdminLayout` content canvas in `motion.div` keyed by `pathname` for smooth fade/elevation transitions between sibling routes.
   2. Overview (`/admin`): Staggered entry for executive header, 4 KPI cards with micro-elevation hover interactions, Wallet Solvency Sentinel, and recent sessions list.
@@ -10,24 +10,18 @@
   4. Faculty Mentors (`/admin/mentors`): Staggered cascade for mentor cards with interactive hover lift, displaying certified mentors and their assigned session cohort counts.
   5. Platform Policies (`/admin/policies`): Staggered policy forms with `AnimatePresence` toast notifications and token-compliant brand styling.
   6. Wallets & Financials (`/admin/wallets`): Animated header, overdraft warning indicator, and student ledger card.
-- **Immediate Next Move:** Final deployment verification or staging preview to Vercel with Neon connection pooling.
+- **Immediate Next Move:** Review and deploy branch `001-backend-attendance-persistence`; apply the Prisma schema update in the target environment before release.
 - **Blockers / Open Decisions:** None.
 
 ## Tier 2 Verification
-- **Tutor Workspace UI:** The tutor shell now owns desktop/mobile navigation for Agenda, Timetable, and History. `/tutor/attendance/[sessionId]` owns the full attendance workflow, and the obsolete drawer was removed. The existing nearest-session timer still selects by effective start/end time rather than by attendance deadline; shared countdown functions now live in `src/shared/utils/session-timing.ts`.
-- **Frontend-only boundaries:** Screenshot evidence is browser-compressed and stays local; notes and one-off reschedule exceptions are visibly local-only. No server action, schema, API, authentication, or production session data contract changed.
-- **Search and responsive UI:** Shared client table toolbar covers Gadwal, transaction ledger, admin wallets, account directory, and student activity ledger. Tutor agenda and student dashboard viewport audits pass at 375px, 768px, and 1440px (agent-reviewed); desktop page canvas and mobile touch targets are clean.
-- **Tests:** Vitest 78/78 passing (machine-verified): all-absent review state, shared session timing, effective reschedules, image validation/scaling, pagination, and table search boundaries are covered.
-- **Twelve-Row Table Pagination:** Added shared local pagination to Gadwal timetable, transaction ledger, admin wallets, and admin accounts. Each page shows at most 12 rows, omits controls for one-page datasets, and clamps the current page if the dataset shrinks.
-- **Security:** Repository secret and environment sentinel clean (machine-verified); authorization remains unchanged and was agent-reviewed.
-- **Performance:** Static frontend architecture checks pass (machine-verified); the public viewport audit passes at 375px, 768px, and 1440px (agent-reviewed). Protected table screenshots require an authenticated browser session and correctly reject unauthenticated requests; runtime latency is not-verified.
-- **Tests:** Vitest 65/65 passing (machine-verified), including empty, partial, exact, multi-page, and clamped pagination boundaries.
-- **Revisor:** Token purity and route isolation pass (machine-verified); the shared, dependency-free pagination pattern is YAGNI-reviewed.
-- **Tutor Wallet Privacy:** Tutor session queries no longer select wallet records; tutor attendance views render no wallet, balance, overdraft, total-deduction, or batch-total details. Vitest: 60/60 passing; ESLint, frontend architecture, UI architecture, token purity, Impeccable detector, and interactive viewport audits pass.
-- **Security:** Audited animation components and route transitions; zero database exposure or unescaped state rendering; all client components remain decoupled from direct Prisma queries.
-- **Performance:** Hardware-accelerated GPU transforms (`opacity`, `y`, `scale`) using `motion/react`; zero layout shifts (CLS = 0); verified 100% mobile ergonomics compliance (tap targets >= 44px) across all 5 admin views.
-- **Tests:** Full Vitest suite passing (60/60 tests); multi-viewport Playwright visual audit verified across mobile (375px), tablet (768px), and desktop (1440px) with zero horizontal spill.
-- **Revisor:** Standardized animation curves (`[0.22, 1, 0.36, 1]`), extracted `AdminGadwalView` keeping all page orchestrators <= 35 lines, and maintained 100% design token purity.
+- **Security:** Repository secret/env sentinel clean (machine-verified); Tutor role enforcement, session ownership/IDOR resistance, server-derived roster membership, Zod bounds, and generic authorization failures agent-reviewed (grade A).
+- **Persistence:** `Session.attendance_notes` added and applied to the local PostgreSQL schema. Attendance replacement, notes, and `COMPLETED` status commit in one Prisma transaction; an explicitly reviewed empty present list remains valid.
+- **Performance:** Frontend static architecture checks pass (machine-verified); the mutation performs bounded roster work (`R <= 4`) with no N+1 loop. Runtime latency is not-verified at this tier.
+- **Tests:** Full Vitest suite passing (94/94, machine-verified), including authentication, ownership, roster injection, all-absent, and idempotent repeat-save boundaries. Prisma validation/generation, TypeScript, lint, and production build pass.
+- **Visual:** Authenticated Attendance, Agenda, History, and Timetable audits pass at 375px, 768px, and 1440px with HTTP 200, zero horizontal spill, and compliant touch targets/form text (agent-reviewed from captured snapshots).
+- **Revisor:** Token purity, route isolation, and UI architecture pass (machine-verified); the implementation reuses `AttendanceRecord`, the existing roster contract, auth helper, and route loaders without a new provider or persistence layer.
+- **Deferred/local-only:** Screenshot evidence remains browser-local and excluded from the server payload; timetable/reschedule exceptions remain in local storage.
+- **Checkpoint:** Verification completed on `001-backend-attendance-persistence` at `2026-09-21T13:36:17+03:00`; commit SHA pending checkpoint commit.
 
 ## Milestone Checklist
 - [x] Scaffold Feature-Driven Unidirectional directory tree
@@ -36,6 +30,7 @@
 - [x] Model schema in `prisma/schema.prisma` (Users, Wallets, Sessions, AttendanceRecords, WalletTransactions)
 - [x] Implement 4-hour window calculation and strict HTTP 403 deadline validation
 - [x] Implement atomic check-in transaction (`prisma.$transaction`) with wallet deduction and overdraft flagging
+- [x] Persist Tutor attendance decisions and session notes with authenticated, ownership-scoped, idempotent Prisma transactions
 - [x] Abstract tutor workflows (Gadwal timetable, token sharing, monthly/lifetime KPIs)
 - [x] Create motion-enhanced UI components (animated balance counter, spring buttons, modals)
 - [x] Execute unit & integration test suites (100% passing)

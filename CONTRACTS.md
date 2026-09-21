@@ -53,6 +53,7 @@ export interface SessionContract {
   deadline: Date; // Computed: startTime + 4 hours
   token: string; // UUID, Unique
   status: SessionStatus;
+  attendanceNotes?: string | null; // Required when Tutor records attendance
   createdAt: Date;
   updatedAt: Date;
 }
@@ -88,6 +89,7 @@ export interface WalletTransactionContract {
 | **Duplicate Attendance Check** | $O(1)$ | $O(1)$ | B-Tree lookup on composite unique index `AttendanceRecord(session_id, student_id)`. |
 | **Atomic Wallet Deduction & Transaction Insert** | $O(1)$ | $O(1)$ | Single indexed update on `Wallet(id)` and append-only write to `WalletTransaction`. |
 | **Tutor Monthly & Lifetime KPI Aggregation** | $O(\log N + K)$ | $O(1)$ | Indexed count queries on `Session(tutor_id, start_time)` and `AttendanceRecord(session_id)`. |
+| **Tutor Attendance Replacement** | $O(R)$ | $O(R)$ | Transactionally validates and replaces presence for the server-derived roster; `R <= 4` under the current cohort contract. |
 | **Admin Overdraft Review Query** | $O(M)$ | $O(M)$ | Filtered query on `Wallet(is_flagged_overdraft = true)`. |
 
 ---
@@ -112,6 +114,27 @@ Client Request (GET /attend/[token] or POST /api/attend/[token])
   └── 4. Success Response: HTTP 200 { success: true, deductedAmount, newBalance, isOverdraft }
 ```
 
+### Tutor Attendance Persistence Flow:
+```
+Client server-action request { sessionId, presentStudentIds, notes }
+  │
+  ├── 1. Require an authenticated Tutor session
+  │
+  └── 2. Atomic database transaction (prisma.$transaction):
+         ├── Read the session by id + authenticated tutor_id
+         ├── Rebuild the canonical private/group roster server-side
+         ├── Reject any submitted student outside that roster
+         ├── Delete attendance rows no longer marked present
+         ├── Insert missing present rows with skipDuplicates
+         └── Persist notes and Session.status = COMPLETED
+  │
+  └── 3. Revalidate Tutor Agenda, History, and attendance route
+```
+
+- An empty `presentStudentIds` array is valid after explicit review; completion and notes on `Session` distinguish it from an untouched session.
+- Repeating the same payload is idempotent because attendance is replaced against the unique `(session_id, student_id)` key.
+- Screenshot evidence is intentionally excluded from the server contract and remains browser-local until an approved durable storage provider exists.
+
 ---
 
 ## 4. Failure Modes & Mitigations
@@ -127,6 +150,10 @@ Client Request (GET /attend/[token] or POST /api/attend/[token])
 3. **Clock Skew & Expired Token Submissions:**
    - *Risk:* Check-in attempt submitted after 4-hour window due to client-side clock tampering.
    - *Mitigation:* The 4-hour expiration check (`NOW() > session.deadline`) evaluates using the database server / server-side timestamp, strictly returning HTTP 403.
+
+4. **Tutor IDOR / Roster Injection:**
+   - *Risk:* A Tutor submits another Tutor's session ID or adds arbitrary student IDs.
+   - *Mitigation:* The write transaction scopes the session lookup to the authenticated `tutor_id` and verifies every submitted ID against the server-derived session roster before mutating attendance.
 
 ---
 
@@ -178,16 +205,13 @@ Retrieves scheduled tutoring sessions for agenda and calendar dashboards.
 }
 ```
 
-### `POST /api/attendance/checkin`
-Direct tutor attendance checkin action for tutor attendance drawer.
-- **Status:** `200 OK`
+### `saveTutorAttendance` server action
+Persists the authenticated Tutor's complete attendance decision and required session notes.
 ```json
 {
   "success": true,
-  "attendanceId": "att-mock-001",
   "sessionId": "s-1",
-  "status": "PRESENT",
-  "recordedAt": "2026-09-20T14:05:00.000Z"
+  "presentCount": 0
 }
 ```
 
@@ -261,4 +285,3 @@ export interface TablePaginationResult<T> {
 - No API, database, auth, or persistence contract changes.
 - `page` is clamped when data changes; controls are omitted when `pageCount` is one.
 - Bounds: deriving a page is O(12) time and O(12) output space; page-count calculation is O(1).
-

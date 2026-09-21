@@ -16,7 +16,7 @@ enum Role {
 
 enum SessionType {
   PRIVATE // 500.00 EGP
-  GROUP   // 375.00 EGP
+  GROUP // 375.00 EGP
 }
 
 enum SessionStatus {
@@ -66,18 +66,19 @@ model Wallet {
 }
 
 model Session {
-  id           String        @id @default(cuid())
-  tutor_id     String
-  tutor        User          @relation("TutorSessions", fields: [tutor_id], references: [id], onDelete: Restrict)
-  title        String
-  session_type SessionType
-  start_time   DateTime
-  end_time     DateTime
-  deadline     DateTime // start_time + 4 hours
-  token        String        @unique @default(uuid())
-  status       SessionStatus @default(SCHEDULED)
-  created_at   DateTime      @default(now())
-  updated_at   DateTime      @updatedAt
+  id               String        @id @default(cuid())
+  tutor_id         String
+  tutor            User          @relation("TutorSessions", fields: [tutor_id], references: [id], onDelete: Restrict)
+  title            String
+  session_type     SessionType
+  start_time       DateTime
+  end_time         DateTime
+  deadline         DateTime // start_time + 4 hours
+  token            String        @unique @default(uuid())
+  status           SessionStatus @default(SCHEDULED)
+  attendance_notes String?       @db.Text
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
 
   attendances  AttendanceRecord[]
   transactions WalletTransaction[]
@@ -126,4 +127,3 @@ model PlatformPolicy {
   created_at            DateTime @default(now())
   updated_at            DateTime @updatedAt
 }
-

@@ -31,6 +31,7 @@ export interface GadwalSessionItem {
   token: string;
   status: SessionStatus;
   attendeeCount: number;
+  attendanceNotes?: string | null;
   price: number;
   assignedStudents?: string[];
   sessionCode?: string;

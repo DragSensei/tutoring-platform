@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check, CheckCircle2, Circle, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@/shared/components/button';
 import { SessionEvidenceUpload, type LocalEvidenceMetadata } from '@/features/attendance/components/session-evidence-upload';
+import { saveTutorAttendance } from '../../actions';
 import {
   MIN_SESSION_NOTE_LENGTH,
   createAttendanceReviewState,
@@ -17,11 +18,7 @@ import {
 import { formatDateTime, formatTime } from '@/shared/utils/date-format';
 import { resolveEffectiveSessionTiming } from '@/shared/utils/session-timing';
 import type { GadwalSessionItem } from '@/features/sessions/types';
-import {
-  getStoredScheduleExceptions,
-  getStoredSessions,
-  saveStoredSessions,
-} from '../../../dashboard/_components/session-storage';
+import { getStoredScheduleExceptions } from '../../../dashboard/_components/session-storage';
 
 interface AttendanceWorkspaceProps {
   initialSessions: GadwalSessionItem[];
@@ -31,12 +28,11 @@ interface AttendanceWorkspaceProps {
 export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWorkspaceProps) {
   const router = useRouter();
   const initialSession = initialSessions.find((item) => item.id === sessionId) || null;
-  const [session, setSession] = React.useState<GadwalSessionItem | null>(initialSession);
-  const [allSessions, setAllSessions] = React.useState(initialSessions);
+  const session: GadwalSessionItem | null = initialSession;
   const [review, setReview] = React.useState(() =>
     createAttendanceReviewState(initialSession?.roster || [], initialSession?.status === 'COMPLETED')
   );
-  const [notes, setNotes] = React.useState('');
+  const [notes, setNotes] = React.useState(initialSession?.attendanceNotes || '');
   const [evidence, setEvidence] = React.useState<LocalEvidenceMetadata | null>(null);
   const [validationError, setValidationError] = React.useState<string | null>(null);
   const [effectiveStartTime, setEffectiveStartTime] = React.useState(initialSession?.startTime || '');
@@ -44,17 +40,11 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
   const [isPending, startTransition] = React.useTransition();
 
   React.useEffect(() => {
-    const storedSessions = getStoredSessions(initialSessions);
-    const storedSession = storedSessions.find((item) => item.id === sessionId) || initialSession;
-    setAllSessions(storedSessions);
-    setSession(storedSession);
-    setReview(createAttendanceReviewState(storedSession?.roster || [], storedSession?.status === 'COMPLETED'));
-
-    if (storedSession) {
-      const exception = getStoredScheduleExceptions()[storedSession.id];
+    if (initialSession) {
+      const exception = getStoredScheduleExceptions()[initialSession.id];
       const timing = resolveEffectiveSessionTiming(
-        storedSession.startTime,
-        storedSession.endTime,
+        initialSession.startTime,
+        initialSession.endTime,
         exception?.effectiveStartTime
       );
       setEffectiveStartTime(timing.startTime);
@@ -85,25 +75,19 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
       return;
     }
 
-    const updatedSessions = allSessions.map((item) => {
-      if (item.id !== session.id) return item;
-      const updatedRoster = (item.roster || []).map((student) => ({
-        ...student,
-        attended: presentStudentIds.includes(student.id),
-      }));
-      const attendedNames = updatedRoster.filter((student) => student.attended).map((student) => student.name);
-      return {
-        ...item,
-        status: 'COMPLETED' as const,
-        roster: updatedRoster,
-        assignedStudents: attendedNames,
-        attendeeCount: attendedNames.length,
-      };
-    });
+    startTransition(async () => {
+      const result = await saveTutorAttendance({
+        sessionId: session.id,
+        presentStudentIds,
+        notes,
+      });
 
-    saveStoredSessions(updatedSessions);
-    startTransition(() => {
-      router.push(`/tutor/agenda?completed=${encodeURIComponent(session.id)}&present=${presentStudentIds.length}`);
+      if (!result.success) {
+        setValidationError(result.message);
+        return;
+      }
+
+      router.push(`/tutor/agenda?completed=${encodeURIComponent(result.sessionId)}&present=${result.presentCount}`);
     });
   };
 
@@ -228,10 +212,10 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row">
               <Link href="/tutor/agenda" className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-stone-300 px-4 text-sm font-medium text-stone-700 hover:bg-stone-50">Cancel</Link>
               <Button type="button" className="min-h-[44px] flex-1 gap-2" isLoading={isPending} onClick={completeWorkflow}>
-                <ShieldCheck className="h-4 w-4" aria-hidden="true" /> {isEditing ? 'Save local changes' : 'Complete local workflow'}
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" /> {isEditing ? 'Save attendance changes' : 'Complete attendance'}
               </Button>
             </div>
-            <p className="mt-3 text-xs text-stone-500">Local demo state only. Server attendance is unchanged.</p>
+            <p className="mt-3 text-xs text-stone-500">Attendance and notes are saved securely. Screenshot evidence remains on this device and is not uploaded.</p>
           </section>
         </aside>
       </div>

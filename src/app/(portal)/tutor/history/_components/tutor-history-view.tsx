@@ -1,27 +1,16 @@
 'use client';
 
-import * as React from 'react';
 import Link from 'next/link';
 import { Edit3, ArrowLeft, CheckCircle2, Users, Calendar } from 'lucide-react';
-import { getStoredSessions } from '../../dashboard/_components/session-storage';
 import { formatSessionCode } from '@/shared/utils/session-code';
 import { formatDateTime } from '@/shared/utils/date-format';
 import type { TutorDashboardData } from '../../dashboard/_components/dashboard-data';
-import type { GadwalSessionItem } from '@/features/sessions/types';
 
 export function TutorHistoryView({
   tutor,
   sessions: initialSessions,
 }: TutorDashboardData) {
-  const [allSessions, setAllSessions] = React.useState<GadwalSessionItem[]>(initialSessions);
-
-  // Sync client-persisted sessions on mount
-  React.useEffect(() => {
-    const stored = getStoredSessions(initialSessions);
-    setAllSessions(stored);
-  }, [initialSessions]);
-
-  const completedSessions = allSessions.filter((s) => s.status === 'COMPLETED');
+  const completedSessions = initialSessions.filter((s) => s.status === 'COMPLETED');
 
   return (
     <div className="space-y-8">
@@ -29,7 +18,7 @@ export function TutorHistoryView({
         <div>
           <span className="inline-flex rounded-md border border-brand-border/60 bg-brand-subtle px-2 py-1 text-xs font-semibold text-brand-primary">Faculty portal</span>
           <h1 className="mt-3 text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl">Session history</h1>
-          <p className="mt-1 text-sm text-stone-500">Review {tutor.name}&apos;s locally completed attendance workflows.</p>
+          <p className="mt-1 text-sm text-stone-500">Review {tutor.name}&apos;s saved attendance records and session notes.</p>
         </div>
         <Link href="/tutor/agenda" className="inline-flex min-h-[44px] w-fit items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-700 hover:bg-stone-50">
           <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to agenda
@@ -109,6 +98,10 @@ export function TutorHistoryView({
                     </div>
 
                     <h3 className="text-sm font-bold text-stone-800">{session.title}</h3>
+
+                    {session.attendanceNotes && (
+                      <p className="text-xs text-stone-600">{session.attendanceNotes}</p>
+                    )}
 
                     {/* Attended Students List */}
                     <div className="flex items-center gap-1.5 flex-wrap pt-1">

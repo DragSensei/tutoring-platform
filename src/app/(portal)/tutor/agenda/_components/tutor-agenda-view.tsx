@@ -8,7 +8,6 @@ import { ClosestSessionTimer } from '../../dashboard/_components/ClosestSessionT
 import { SessionSelectionGrid } from '../../dashboard/_components/SessionSelectionGrid';
 import {
   getStoredScheduleExceptions,
-  getStoredSessions,
   saveStoredScheduleExceptions,
 } from '../../dashboard/_components/session-storage';
 import { findClosestSessionDue } from '../../dashboard/_components/timer-utils';
@@ -23,14 +22,13 @@ import {
 
 export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashboardData) {
   const searchParams = useSearchParams();
-  const [allSessions, setAllSessions] = React.useState(initialSessions);
+  const allSessions = initialSessions;
   const [exceptions, setExceptions] = React.useState<Record<string, LocalScheduleException>>({});
   const [rescheduleSession, setRescheduleSession] = React.useState<WeeklyScheduleSession | null>(null);
 
   React.useEffect(() => {
-    setAllSessions(getStoredSessions(initialSessions));
     setExceptions(getStoredScheduleExceptions());
-  }, [initialSessions]);
+  }, []);
 
   const activeSessions = React.useMemo(
     () => allSessions
@@ -77,7 +75,7 @@ export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashb
         <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="flex items-center gap-2 text-sm font-medium text-emerald-900">
             <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
-            {completedSession.title} completed locally with {presentCount} present.
+            {completedSession.title} saved with {presentCount} present.
           </p>
           <Link href="/tutor/history" className="inline-flex min-h-[44px] items-center px-2 text-sm font-semibold text-emerald-800 hover:text-emerald-900">View history</Link>
         </div>

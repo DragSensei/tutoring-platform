@@ -81,6 +81,7 @@ export async function getGadwalSessions(filter?: SessionFilterInput) {
     token: s.token,
     status: s.status,
     attendeeCount: s._count.attendances,
+    attendanceNotes: s.attendance_notes,
     price: SESSION_PRICING[s.session_type as SessionType],
   }));
 }
@@ -107,7 +108,7 @@ export async function getTutorSessions(tutorId: string) {
         name: true,
         email: true,
       },
-      orderBy: { name: 'asc' },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
     }),
   ]);
 
@@ -142,6 +143,7 @@ export async function getTutorSessions(tutorId: string) {
       token: s.token,
       status: s.status,
       attendeeCount: s._count.attendances,
+      attendanceNotes: s.attendance_notes,
       assignedStudents,
       roster,
       price: SESSION_PRICING[s.session_type as SessionType],

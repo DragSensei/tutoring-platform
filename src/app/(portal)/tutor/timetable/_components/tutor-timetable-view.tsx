@@ -11,7 +11,6 @@ import {
 import type { GadwalSessionItem } from '@/features/sessions/types';
 import {
   getStoredScheduleExceptions,
-  getStoredSessions,
   saveStoredScheduleExceptions,
 } from '../../dashboard/_components/session-storage';
 
@@ -21,14 +20,12 @@ interface TutorTimetableViewProps {
 }
 
 export function TutorTimetableView({ tutor, sessions: initialSessions }: TutorTimetableViewProps) {
-  const [sessions, setSessions] = React.useState(initialSessions);
   const [exceptions, setExceptions] = React.useState<Record<string, LocalScheduleException>>({});
   const [rescheduleSession, setRescheduleSession] = React.useState<WeeklyScheduleSession | null>(null);
 
   React.useEffect(() => {
-    setSessions(getStoredSessions(initialSessions));
     setExceptions(getStoredScheduleExceptions());
-  }, [initialSessions]);
+  }, []);
 
   const saveException = (sessionId: string, exception: LocalScheduleException) => {
     setExceptions((current) => {
@@ -52,7 +49,7 @@ export function TutorTimetableView({ tutor, sessions: initialSessions }: TutorTi
       </header>
 
       <WeeklySessionSchedule
-        sessions={sessions}
+        sessions={initialSessions}
         exceptions={exceptions}
         onReschedule={setRescheduleSession}
         heading="Weekly recurring schedule"
