@@ -2,18 +2,16 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle2 } from 'lucide-react';
 import { ClosestSessionTimer } from '../../dashboard/_components/ClosestSessionTimer';
 import { SessionSelectionGrid } from '../../dashboard/_components/SessionSelectionGrid';
-import {
-  getStoredScheduleExceptions,
-  saveStoredScheduleExceptions,
-} from '../../dashboard/_components/session-storage';
 import { findClosestSessionDue } from '../../dashboard/_components/timer-utils';
 import { SessionRescheduleDialog } from '@/features/sessions/components/session-reschedule-dialog';
-import type { LocalScheduleException, WeeklyScheduleSession } from '@/features/sessions/components/weekly-session-schedule';
+import type { WeeklyScheduleSession } from '@/features/sessions/components/weekly-session-schedule';
 import type { TutorDashboardData } from '../../dashboard/_components/dashboard-data';
+import { getAttendanceWindowState } from '@/shared/utils/deadline';
+import { postponeTutorSession } from '../../timetable/actions';
 import {
   NeedsAttention,
   RecentSessionSummary,
@@ -22,40 +20,57 @@ import {
 
 export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashboardData) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const allSessions = initialSessions;
-  const [exceptions, setExceptions] = React.useState<Record<string, LocalScheduleException>>({});
+  const [now, setNow] = React.useState(() => Date.now());
   const [rescheduleSession, setRescheduleSession] = React.useState<WeeklyScheduleSession | null>(null);
 
   React.useEffect(() => {
-    setExceptions(getStoredScheduleExceptions());
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
   }, []);
 
-  const activeSessions = React.useMemo(
-    () => allSessions
-      .filter((session) => session.status !== 'COMPLETED' && session.status !== 'CANCELLED')
-      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
-    [allSessions]
+  const sessionsAtNow = React.useMemo(
+    () => allSessions.map((session) => ({
+      ...session,
+      attendanceWindowState: getAttendanceWindowState(session.startTime, session.attendanceClosesAt || session.deadline, now),
+    })),
+    [allSessions, now]
   );
-  const completedSessions = allSessions.filter((session) => session.status === 'COMPLETED');
+  const activeSessions = React.useMemo(
+    () => sessionsAtNow
+      .filter((session) => session.status !== 'COMPLETED' && session.status !== 'CANCELLED' && new Date(session.endTime).getTime() > now)
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+    [sessionsAtNow, now]
+  );
+  const needsAttentionSessions = React.useMemo(
+    () => sessionsAtNow
+      .filter((session) => session.status !== 'COMPLETED' && session.status !== 'CANCELLED')
+      .filter((session) => new Date(session.endTime).getTime() <= now && (
+        session.attendanceWindowState === 'OPEN'
+        || (session.attendanceWindowState === 'CLOSED' && !session.attendanceSavedAt)
+      ))
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+    [sessionsAtNow, now]
+  );
+  const completedSessions = sessionsAtNow.filter((session) => session.status === 'COMPLETED');
   const closestSession = React.useMemo(
-    () => findClosestSessionDue(activeSessions, new Date(), exceptions),
-    [activeSessions, exceptions]
+    () => findClosestSessionDue(activeSessions, now),
+    [activeSessions, now]
   );
   const nextSession = closestSession
     ? activeSessions.find((session) => session.id === closestSession.id) || null
     : null;
+  const attendanceSession = nextSession?.attendanceWindowState === 'OPEN' ? nextSession : null;
   const completedId = searchParams.get('completed');
   const completedSession = completedId
     ? allSessions.find((session) => session.id === completedId)
     : null;
   const presentCount = Number(searchParams.get('present') || 0);
 
-  const saveException = (sessionId: string, exception: LocalScheduleException) => {
-    setExceptions((current) => {
-      const next = { ...current, [sessionId]: exception };
-      saveStoredScheduleExceptions(next);
-      return next;
-    });
+  const saveException = async (sessionId: string, input: { startTime: string; endTime: string; reason: string }) => {
+    await postponeTutorSession(sessionId, input);
+    router.refresh();
   };
 
   return (
@@ -86,23 +101,22 @@ export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashb
           <section className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs sm:p-7" aria-label="Next or current session">
             <ClosestSessionTimer
               closestSession={closestSession}
-              attendanceHref={nextSession ? `/tutor/attendance/${nextSession.id}` : undefined}
+              attendanceHref={attendanceSession ? `/tutor/attendance/${attendanceSession.id}` : undefined}
               onPostpone={nextSession ? () => setRescheduleSession(nextSession) : undefined}
             />
           </section>
-          <NeedsAttention sessions={activeSessions} />
+          <NeedsAttention sessions={needsAttentionSessions} />
           <SessionSelectionGrid sessions={activeSessions} />
         </div>
 
         <div className="min-w-0 space-y-6 xl:col-span-4">
-          <SchedulePreview sessions={allSessions} exceptions={exceptions} />
+          <SchedulePreview sessions={activeSessions} />
           <RecentSessionSummary sessions={completedSessions} />
         </div>
       </div>
 
       <SessionRescheduleDialog
         session={rescheduleSession}
-        existingException={rescheduleSession ? exceptions[rescheduleSession.id] : undefined}
         onClose={() => setRescheduleSession(null)}
         onSave={saveException}
       />

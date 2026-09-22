@@ -2,7 +2,8 @@ import { prisma } from '@/shared/lib/prisma';
 import { requireAuth } from '@/features/auth/server/session';
 import { getStudentWallet } from '@/features/wallets/server/wallet-actions';
 import { getPlatformPolicies } from '@/features/policies/server/policy-actions';
-import { isCheckInExpired } from '@/shared/utils/deadline';
+import { computeAttendanceClosesAt } from '@/shared/utils/deadline';
+import { materializeActiveSeriesForStudent } from '@/features/sessions/server/recurrence';
 import type { ScheduledLecture } from './UpcomingLecturesCard';
 import type { WalletActivityEvent } from './RecentActivityLedger';
 
@@ -16,9 +17,10 @@ export async function getStudentDashboardData() {
   if (!studentUser) throw new Error('Authenticated Student account is unavailable');
 
   const studentId = studentUser.id;
-  const studentName = studentUser.name;
+  const studentName = studentUser.name ?? 'Not provided';
   const wallet = await getStudentWallet(studentId);
   const policy = await getPlatformPolicies();
+  await materializeActiveSeriesForStudent(studentId, policy);
 
   const now = new Date();
   const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -27,7 +29,7 @@ export async function getStudentDashboardData() {
   const upcomingSessions = await prisma.session.findMany({
     where: {
       status: { in: ['SCHEDULED', 'ACTIVE'] },
-      deadline: { gte: now },
+      end_time: { gte: now },
       participants: { some: { student_id: studentId } },
     },
     include: {
@@ -68,16 +70,15 @@ export async function getStudentDashboardData() {
     }
 
     const price = nextSession.session_type === 'PRIVATE' ? policy.privateSessionPrice : policy.groupSessionPrice;
-    const isWithinActiveWindow = !alreadyCheckedIn && !isCheckInExpired(nextSession.deadline, now);
+    const isWithinActiveWindow = now >= nextSession.start_time && now < nextSession.end_time;
 
     nextLecture = {
       id: nextSession.id,
       title: nextSession.title,
-      tutorName: nextSession.tutor.name,
+      tutorName: nextSession.tutor.name ?? 'Not provided',
       startTime: nextSession.start_time.toISOString(),
       endTime: nextSession.end_time.toISOString(),
-      deadline: nextSession.deadline.toISOString(),
-      token: nextSession.token,
+      deadline: computeAttendanceClosesAt(nextSession.end_time, policy.checkInWindowHours).toISOString(),
       price,
       sessionType: nextSession.session_type,
       isWithinActiveWindow,

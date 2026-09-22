@@ -72,9 +72,9 @@ export async function getAdminOverviewData(): Promise<AdminOverviewData> {
 
   const flaggedWallets = flaggedWalletsRaw.map((w) => ({
     id: w.id,
-    studentName: w.user.name,
-    studentEmail: w.user.email,
-    studentPhone: w.user.phone,
+    studentName: w.user.name ?? 'Not provided',
+    studentEmail: w.user.email ?? 'Not provided',
+    studentPhone: w.user.phone ?? 'Not provided',
     balanceEgp: Number(w.balance),
   }));
 
@@ -85,7 +85,7 @@ export async function getAdminOverviewData(): Promise<AdminOverviewData> {
   const recentSessions = recentSessionsRaw.map((s) => ({
     id: s.id,
     title: s.title,
-    tutorName: s.tutor.name,
+    tutorName: s.tutor.name ?? 'Not provided',
     sessionType: s.session_type as SessionType,
     status: s.status as SessionStatus,
     startTime: s.start_time.toISOString(),

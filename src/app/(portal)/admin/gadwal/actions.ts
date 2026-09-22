@@ -8,9 +8,17 @@ import {
   createSession,
   deleteSession,
   getAdminSession as getSessionRecord,
+  rescheduleSessionOccurrence,
   updateSession,
 } from '@/features/sessions/server/session-actions';
-import type { CreateSessionInput } from '@/features/sessions/schemas';
+import {
+  cancelSessionSeries,
+  createSessionSeries,
+  getAdminWeeklySchedule,
+  getSessionSeries,
+  updateSessionSeries,
+} from '@/features/sessions/server/series-actions';
+import type { CreateSessionInput, RecurrenceScope, SessionSeriesInput } from '@/features/sessions/schemas';
 
 /** Admin orchestration boundary for the session domain operation. */
 export async function createAdminSession(input: CreateSessionInput) {
@@ -23,6 +31,21 @@ export async function createAdminSession(input: CreateSessionInput) {
 export async function updateAdminSession(sessionId: string, input: CreateSessionInput) {
   await requireAuth(['ADMIN']);
   const result = await updateSession(sessionId, input, await getPlatformPolicies());
+  revalidateSessionSurfaces();
+  return result;
+}
+
+export async function postponeAdminSession(
+  sessionId: string,
+  input: { startTime: string; endTime: string; reason: string },
+) {
+  const auth = await requireAuth(['ADMIN']);
+  const result = await rescheduleSessionOccurrence(
+    sessionId,
+    input,
+    await getPlatformPolicies(),
+    { id: auth.userId, role: 'ADMIN' },
+  );
   revalidateSessionSurfaces();
   return result;
 }
@@ -46,10 +69,51 @@ export async function getAdminSession(sessionId: string) {
   return getSessionRecord(sessionId, await getPlatformPolicies());
 }
 
+export async function createAdminSeries(input: SessionSeriesInput) {
+  await requireAuth(['ADMIN']);
+  const result = await createSessionSeries(input, await getPlatformPolicies());
+  revalidateSessionSurfaces();
+  return result;
+}
+
+export async function updateAdminSeries(
+  seriesId: string,
+  input: SessionSeriesInput,
+  scope: RecurrenceScope,
+  effectiveOccurrenceId?: string,
+) {
+  await requireAuth(['ADMIN']);
+  const result = await updateSessionSeries(seriesId, input, scope, await getPlatformPolicies(), effectiveOccurrenceId);
+  revalidateSessionSurfaces();
+  return result;
+}
+
+export async function cancelAdminSeries(
+  seriesId: string,
+  scope: RecurrenceScope,
+  effectiveOccurrenceId?: string,
+) {
+  await requireAuth(['ADMIN']);
+  const result = await cancelSessionSeries(seriesId, scope, await getPlatformPolicies(), effectiveOccurrenceId);
+  revalidateSessionSurfaces();
+  return result;
+}
+
+export async function getAdminSeries(seriesId: string) {
+  await requireAuth(['ADMIN']);
+  return getSessionSeries(seriesId, await getPlatformPolicies());
+}
+
+export async function getAdminWeeklySeries(tutorId?: string) {
+  await requireAuth(['ADMIN']);
+  return getAdminWeeklySchedule(tutorId, await getPlatformPolicies());
+}
+
 function revalidateSessionSurfaces() {
   revalidatePath('/admin/gadwal');
   revalidatePath('/admin/gadwal/new');
   revalidatePath('/tutor/agenda');
   revalidatePath('/tutor/dashboard');
+  revalidatePath('/tutor/timetable');
   revalidatePath('/student/dashboard');
 }

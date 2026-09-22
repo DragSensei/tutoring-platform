@@ -1,9 +1,10 @@
 import { prisma } from '@/shared/lib/prisma';
-import { computeSessionDeadline } from '@/shared/utils/deadline';
+import { computeAttendanceClosesAt, getAttendanceWindowState } from '@/shared/utils/deadline';
 import type { SessionType, TutorVolumeKPIs } from '@/shared/types';
 import { formatSessionCode } from '@/shared/utils/session-code';
 import { createSessionSchema, type CreateSessionInput, type SessionFilterInput } from '../schemas';
-import crypto from 'crypto';
+import { academyDateTime, materializeActiveSeriesForTutor } from './recurrence';
+import type { Prisma } from '@prisma/client';
 
 export interface SessionPricingConfig {
   checkInWindowHours: number;
@@ -13,14 +14,21 @@ export interface SessionPricingConfig {
 
 const SESSION_INCLUDE = {
   tutor: { select: { id: true, name: true, email: true } },
+  series: { select: { start_minute: true } },
   participants: {
     include: { student: { select: { id: true, name: true, email: true } } },
   },
   _count: { select: { attendances: true, transactions: true } },
 } as const;
 
+type SessionWithDetails = Prisma.SessionGetPayload<{ include: typeof SESSION_INCLUDE }>;
+
 function sessionPrice(sessionType: SessionType, policy: SessionPricingConfig): number {
   return sessionType === 'PRIVATE' ? policy.privateSessionPrice : policy.groupSessionPrice;
+}
+
+function displayProfile(value: string | null): string {
+  return value ?? 'Not provided';
 }
 
 function parseSessionInput(input: CreateSessionInput): CreateSessionInput {
@@ -60,30 +68,36 @@ async function validateSessionReferences(input: CreateSessionInput) {
 }
 
 function serializeSession(
-  session: Awaited<ReturnType<typeof prisma.session.findUniqueOrThrow>> & {
-    tutor: { id: string; name: string; email: string };
-    participants: { student: { id: string; name: string; email: string } }[];
-    _count: { attendances: number; transactions: number };
-  },
+  session: SessionWithDetails,
   policy: SessionPricingConfig
 ) {
+  const attendanceClosesAt = computeAttendanceClosesAt(session.end_time, policy.checkInWindowHours);
+  const baseStartTime = session.series && session.occurrence_date
+    ? academyDateTime(session.occurrence_date, session.series.start_minute)
+    : session.start_time;
   return {
     id: session.id,
     title: session.title,
     tutorId: session.tutor_id,
-    tutorName: session.tutor.name,
+    tutorName: displayProfile(session.tutor.name),
     sessionType: session.session_type as SessionType,
     startTime: session.start_time.toISOString(),
     endTime: session.end_time.toISOString(),
-    deadline: session.deadline.toISOString(),
+    deadline: attendanceClosesAt.toISOString(),
+    attendanceClosesAt: attendanceClosesAt.toISOString(),
+    attendanceSavedAt: session.attendance_saved_at?.toISOString() || null,
+    attendanceFinalizedAt: session.attendance_finalized_at?.toISOString() || null,
+    baseStartTime: baseStartTime.toISOString(),
+    isRescheduled: session.series_exception,
+    rescheduleReason: session.series_exception_reason,
     token: session.token,
     status: session.status,
     attendeeCount: session._count.attendances,
     participantCount: session.participants.length,
     transactionCount: session._count.transactions,
     attendanceNotes: session.attendance_notes,
-    assignedStudents: session.participants.map(({ student }) => student.name),
-    roster: session.participants.map(({ student }) => ({ ...student, attended: false })),
+    assignedStudents: session.participants.map(({ student }) => displayProfile(student.name)),
+    roster: session.participants.map(({ student }) => ({ id: student.id, name: displayProfile(student.name), email: displayProfile(student.email), attended: false })),
     price: sessionPrice(session.session_type as SessionType, policy),
   };
 }
@@ -93,9 +107,7 @@ export async function createSession(input: CreateSessionInput, policy: SessionPr
   const start = new Date(validInput.startTime);
   const end = new Date(validInput.endTime);
   await validateSessionReferences(validInput);
-  const windowHours = policy.checkInWindowHours;
-  const deadline = computeSessionDeadline(start, windowHours);
-  const token = crypto.randomUUID();
+  const deadline = computeAttendanceClosesAt(end, policy.checkInWindowHours);
 
   const session = await prisma.$transaction(async (tx) => {
     return tx.session.create({
@@ -106,7 +118,6 @@ export async function createSession(input: CreateSessionInput, policy: SessionPr
         start_time: start,
         end_time: end,
         deadline,
-        token,
         status: 'SCHEDULED',
         participants: {
           create: validInput.participantIds.map((student_id) => ({ student_id })),
@@ -148,18 +159,19 @@ export async function getGadwalSessions(filter: SessionFilterInput | undefined, 
     id: s.id,
     title: s.title,
     tutorId: s.tutor_id,
-    tutorName: s.tutor.name,
+    tutorName: displayProfile(s.tutor.name),
     sessionType: s.session_type as SessionType,
     startTime: s.start_time.toISOString(),
     endTime: s.end_time.toISOString(),
-    deadline: s.deadline.toISOString(),
+    deadline: computeAttendanceClosesAt(s.end_time, policy.checkInWindowHours).toISOString(),
+    attendanceClosesAt: computeAttendanceClosesAt(s.end_time, policy.checkInWindowHours).toISOString(),
     token: s.token,
     status: s.status,
     attendeeCount: s._count.attendances,
     participantCount: s.participants.length,
     transactionCount: s._count.transactions,
     attendanceNotes: s.attendance_notes,
-    assignedStudents: s.participants.map(({ student }) => student.name),
+    assignedStudents: s.participants.map(({ student }) => displayProfile(student.name)),
     price: sessionPrice(s.session_type as SessionType, policy),
   }));
 }
@@ -174,7 +186,12 @@ export async function getAdminSession(sessionId: string, policy: SessionPricingC
   return serializeSession(session, policy);
 }
 
-export async function updateSession(sessionId: string, input: CreateSessionInput, policy: SessionPricingConfig) {
+export async function updateSession(
+  sessionId: string,
+  input: CreateSessionInput,
+  policy: SessionPricingConfig,
+  options?: { markSeriesException?: boolean },
+) {
   const validInput = parseSessionInput(input);
   await validateSessionReferences(validInput);
   const existing = await prisma.session.findUnique({
@@ -209,7 +226,8 @@ export async function updateSession(sessionId: string, input: CreateSessionInput
       session_type: validInput.sessionType,
       start_time: new Date(validInput.startTime),
       end_time: new Date(validInput.endTime),
-      deadline: computeSessionDeadline(new Date(validInput.startTime), policy.checkInWindowHours),
+      deadline: computeAttendanceClosesAt(new Date(validInput.endTime), policy.checkInWindowHours),
+      ...(options?.markSeriesException ? { series_exception: true } : {}),
       participants: {
         deleteMany: {},
         create: validInput.participantIds.map((student_id) => ({ student_id })),
@@ -246,7 +264,54 @@ export async function cancelSession(sessionId: string) {
   return { success: true, mode: 'cancelled' as const };
 }
 
-export async function getTutorSessions(tutorId: string, policy: SessionPricingConfig) {
+export async function rescheduleSessionOccurrence(
+  sessionId: string,
+  input: { startTime: string; endTime: string; reason: string },
+  policy: SessionPricingConfig,
+  actor: { id: string; role: 'ADMIN' | 'TUTOR' },
+) {
+  const start = new Date(input.startTime);
+  const end = new Date(input.endTime);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+    throw new Error('End time must be strictly after start time');
+  }
+  if (input.reason.trim().length < 3) throw new Error('A reschedule reason is required');
+
+  const existing = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: {
+      id: true,
+      tutor_id: true,
+      status: true,
+      _count: { select: { attendances: true, transactions: true } },
+    },
+  });
+  if (!existing || (actor.role === 'TUTOR' && existing.tutor_id !== actor.id)) {
+    throw new Error('Session is not available to this user');
+  }
+  if (existing.status === 'COMPLETED' || existing.status === 'CANCELLED') {
+    throw new Error('Completed or cancelled sessions cannot be postponed');
+  }
+  if (existing._count.attendances > 0 || existing._count.transactions > 0) {
+    throw new Error('Sessions with attendance or financial history cannot be postponed');
+  }
+
+  const updated = await prisma.session.update({
+    where: { id: sessionId },
+    data: {
+      start_time: start,
+      end_time: end,
+      deadline: computeAttendanceClosesAt(end, policy.checkInWindowHours),
+      series_exception: true,
+      series_exception_reason: input.reason.trim(),
+    },
+    include: SESSION_INCLUDE,
+  });
+  return serializeSession(updated, policy);
+}
+
+export async function getTutorSessions(tutorId: string, policy: SessionPricingConfig, currentTime = new Date()) {
+  await materializeActiveSeriesForTutor(tutorId, policy, currentTime);
   const sessions = await prisma.session.findMany({
     where: { tutor_id: tutorId },
     include: {
@@ -257,6 +322,7 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
           student: { select: { id: true, name: true, email: true } },
         },
       },
+      series: { select: { start_minute: true } },
       attendances: { select: { student_id: true } },
     },
     orderBy: { start_time: 'desc' },
@@ -264,7 +330,7 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
 
   return sessions.map((s) => {
     const attendedIds = new Set(s.attendances.map((a) => a.student_id));
-    const assignedStudents = s.participants.map((participant) => participant.student.name);
+    const assignedStudents = s.participants.map((participant) => displayProfile(participant.student.name));
     const sessionCode = formatSessionCode({
       title: s.title,
       startTime: s.start_time,
@@ -273,8 +339,8 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
 
     const roster = s.participants.map((participant) => ({
       id: participant.student.id,
-      name: participant.student.name,
-      email: participant.student.email,
+      name: displayProfile(participant.student.name),
+      email: displayProfile(participant.student.email),
       attended: attendedIds.has(participant.student.id),
     }));
 
@@ -283,11 +349,18 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
       title: s.title,
       sessionCode,
       tutorId: s.tutor_id,
-      tutorName: s.tutor.name,
+      tutorName: displayProfile(s.tutor.name),
       sessionType: s.session_type as SessionType,
       startTime: s.start_time.toISOString(),
       endTime: s.end_time.toISOString(),
-      deadline: s.deadline.toISOString(),
+      deadline: computeAttendanceClosesAt(s.end_time, policy.checkInWindowHours).toISOString(),
+      attendanceClosesAt: computeAttendanceClosesAt(s.end_time, policy.checkInWindowHours).toISOString(),
+      attendanceSavedAt: s.attendance_saved_at?.toISOString() || null,
+      attendanceFinalizedAt: s.attendance_finalized_at?.toISOString() || null,
+      attendanceWindowState: getAttendanceWindowState(s.start_time, computeAttendanceClosesAt(s.end_time, policy.checkInWindowHours), currentTime),
+      baseStartTime: s.series && s.occurrence_date ? academyDateTime(s.occurrence_date, s.series.start_minute).toISOString() : s.start_time.toISOString(),
+      isRescheduled: s.series_exception,
+      rescheduleReason: s.series_exception_reason,
       token: s.token,
       status: s.status,
       attendeeCount: s._count.attendances,
@@ -340,7 +413,7 @@ export async function getTutorKPIs(tutorId: string): Promise<TutorVolumeKPIs> {
 
   return {
     tutorId: tutor.id,
-    tutorName: tutor.name,
+    tutorName: displayProfile(tutor.name),
     monthlySessionCount,
     lifetimeSessionCount,
     monthlyAttendedStudents,

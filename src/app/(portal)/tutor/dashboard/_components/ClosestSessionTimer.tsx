@@ -4,7 +4,6 @@ import * as React from 'react';
 import Link from 'next/link';
 import { CheckCircle2 } from 'lucide-react';
 import { formatDateTime } from '@/shared/utils/date-format';
-import { CopyTokenButton } from '@/features/sessions/components/copy-token-button';
 import { type ClosestSessionDue } from './timer-utils';
 import { computeSessionCountdown, type SessionCountdown } from '@/shared/utils/session-timing';
 import { Button } from '@/shared/components/button';
@@ -19,7 +18,7 @@ export function ClosestSessionTimer({ closestSession, attendanceHref, onPostpone
   const [countdown, setCountdown] = React.useState<SessionCountdown>(() =>
     closestSession
       ? computeSessionCountdown(closestSession.targetTimestamp)
-      : { isPast: true, totalMs: 0, hours: 0, minutes: 0, seconds: 0, formatted: '00:00:00' }
+      : { isPast: true, totalMs: 0, days: 0, hours: 0, minutes: 0, seconds: 0, formatted: '00:00:00:00' }
   );
 
   React.useEffect(() => {
@@ -52,6 +51,12 @@ export function ClosestSessionTimer({ closestSession, attendanceHref, onPostpone
 
   const { isCurrentlyActive } = closestSession;
   const sessionCode = closestSession.sessionCode || 'ON-SESSION';
+  const countdownUnits = [
+    { label: 'Days', value: countdown.days },
+    { label: 'Hours', value: countdown.hours },
+    { label: 'Minutes', value: countdown.minutes },
+    { label: 'Seconds', value: countdown.seconds },
+  ];
 
   return (
     <div className={`w-full max-w-2xl mx-auto flex flex-col items-center justify-center rounded-2xl border p-5 text-center sm:p-7 ${isCurrentlyActive ? 'border-emerald-200 bg-emerald-50/60' : 'border-transparent'}`}>
@@ -89,68 +94,29 @@ export function ClosestSessionTimer({ closestSession, attendanceHref, onPostpone
         )}
       </div>
 
-      {/* Timer Display: Each unit (hours, minutes, seconds) in its own small box */}
-      <div suppressHydrationWarning className="flex items-center justify-center gap-2 sm:gap-3.5 mt-5">
-        {/* Hours Box */}
-        <div className="flex flex-col items-center">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white border-2 border-brand-border/80 hover:border-brand-primary shadow-xs flex items-center justify-center transition-all hover:scale-105">
-            <span
-              suppressHydrationWarning
-              className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary tabular-nums"
-            >
-              {countdown.hours.toString().padStart(2, '0')}
-            </span>
-          </div>
-          <span className="mt-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-stone-400">
-            Hours
-          </span>
-        </div>
-
-        {/* Separator */}
-        <span className="text-xl sm:text-2xl font-bold text-brand-border pb-5">:</span>
-
-        {/* Minutes Box */}
-        <div className="flex flex-col items-center">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white border-2 border-brand-border/80 hover:border-brand-primary shadow-xs flex items-center justify-center transition-all hover:scale-105">
-            <span
-              suppressHydrationWarning
-              className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary tabular-nums"
-            >
-              {countdown.minutes.toString().padStart(2, '0')}
-            </span>
-          </div>
-          <span className="mt-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-stone-400">
-            Minutes
-          </span>
-        </div>
-
-        {/* Separator */}
-        <span className="text-xl sm:text-2xl font-bold text-brand-border pb-5">:</span>
-
-        {/* Seconds Box */}
-        <div className="flex flex-col items-center">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-white border-2 border-brand-border/80 hover:border-brand-primary shadow-xs flex items-center justify-center transition-all hover:scale-105">
-            <span
-              suppressHydrationWarning
-              className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary tabular-nums"
-            >
-              {countdown.seconds.toString().padStart(2, '0')}
-            </span>
-          </div>
-          <span className="mt-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-stone-400">
-            Seconds
-          </span>
-        </div>
+      {/* Timer Display: Each unit (days, hours, minutes, seconds) in its own small box */}
+      <div suppressHydrationWarning className="mt-5 flex max-w-full items-center justify-center gap-1.5 sm:gap-3.5">
+        {countdownUnits.map(({ label, value }, index) => (
+          <React.Fragment key={label}>
+            {index > 0 && <span className="shrink-0 pb-5 text-lg font-bold text-brand-border sm:text-2xl">:</span>}
+            <div className="flex shrink-0 flex-col items-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl border-2 border-brand-border/80 bg-white shadow-xs transition-all hover:scale-105 hover:border-brand-primary sm:h-20 sm:w-20">
+                <span suppressHydrationWarning className="font-mono text-xl font-extrabold tabular-nums text-brand-primary sm:text-3xl">
+                  {value.toString().padStart(2, '0')}
+                </span>
+              </div>
+              <span className="mt-1.5 text-[9px] font-bold uppercase tracking-wider text-stone-400 sm:text-[11px]">{label}</span>
+            </div>
+          </React.Fragment>
+        ))}
       </div>
 
-      {/* Timing and Share Action Below Timer Boxes */}
+      {/* Effective concrete occurrence timing */}
       <div className="mt-5 flex flex-wrap items-center justify-center gap-3 text-xs text-stone-500">
         <span>{closestSession.isRescheduled ? 'This week:' : 'Scheduled:'} <strong className="font-medium text-stone-700">{formatDateTime(closestSession.startTime)}</strong></span>
         {closestSession.isRescheduled && (
           <span>Recurring: <strong className="font-medium text-stone-700">{formatDateTime(closestSession.baseStartTime)}</strong></span>
         )}
-        <span className="text-stone-300">&bull;</span>
-        <CopyTokenButton token={closestSession.token} />
       </div>
       {(attendanceHref || onPostpone) && (
         <div className="mt-5 flex flex-wrap justify-center gap-2">

@@ -11,7 +11,6 @@ import { TablePagination } from '@/shared/components/table-pagination';
 import { useTablePagination } from '@/shared/hooks/use-table-pagination';
 import { TableToolbar } from '@/shared/components/table-toolbar';
 import { matchesTableSearch } from '@/shared/utils/table-search';
-import { CopyTokenButton } from './copy-token-button';
 import { SessionType, SessionStatus } from '@/shared/types';
 
 export interface SessionStudentAttendee {
@@ -30,7 +29,14 @@ export interface GadwalSessionItem {
   startTime: string;
   endTime: string;
   deadline: string;
-  token: string;
+  token: string | null;
+  attendanceClosesAt?: string;
+  attendanceSavedAt?: string | null;
+  attendanceFinalizedAt?: string | null;
+  attendanceWindowState?: 'BEFORE' | 'OPEN' | 'CLOSED';
+  baseStartTime?: string;
+  isRescheduled?: boolean;
+  rescheduleReason?: string | null;
   status: SessionStatus;
   attendeeCount: number;
   participantCount?: number;
@@ -69,7 +75,7 @@ export function GadwalTable({ sessions, showTutorColumn = true, showAdminActions
   const [pendingAction, setPendingAction] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const filteredSessions = sessions.filter((session) =>
-    matchesTableSearch([session.title, session.tutorName, session.sessionType, session.status, session.token], search) &&
+    matchesTableSearch([session.title, session.tutorName, session.sessionType, session.status], search) &&
     (!statusFilter || session.status === statusFilter) &&
     (!typeFilter || session.sessionType === typeFilter)
   );
@@ -119,7 +125,7 @@ export function GadwalTable({ sessions, showTutorColumn = true, showAdminActions
               onSearchChange={setSearch}
               resultCount={filteredSessions.length}
               onClear={() => { setSearch(''); setStatusFilter(''); setTypeFilter(''); }}
-              searchPlaceholder="Search sessions, tutors, status, or token"
+              searchPlaceholder="Search sessions, tutors, or status"
               filters={[
                 { id: 'status', label: 'status', value: statusFilter, onChange: setStatusFilter, options: SESSION_STATUS_OPTIONS },
                 { id: 'type', label: 'type', value: typeFilter, onChange: setTypeFilter, options: SESSION_TYPE_OPTIONS },
@@ -137,10 +143,9 @@ export function GadwalTable({ sessions, showTutorColumn = true, showAdminActions
                   {showTutorColumn && <th className="px-4 py-3">Tutor</th>}
                   <th className="px-4 py-3">Type / Rate</th>
                   <th className="px-4 py-3">Start Time</th>
-                  <th className="px-4 py-3">4h Deadline</th>
+                  <th className="px-4 py-3">Attendance closes</th>
                   <th className="px-4 py-3">Attendees</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Attendance Token</th>
                   {showAdminActions && <th className="px-4 py-3 text-right">Actions</th>}
                 </tr>
               </thead>
@@ -161,9 +166,6 @@ export function GadwalTable({ sessions, showTutorColumn = true, showAdminActions
                     </td>
                     <td className="px-4 py-3 font-medium">{s.attendeeCount}</td>
                     <td className="px-4 py-3">{getStatusBadge(s.status)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <CopyTokenButton token={s.token} />
-                    </td>
                     {showAdminActions && <td className="px-4 py-3 text-right">
                       <div className="flex min-w-[180px] items-center justify-end gap-2">
                         {s.status !== 'COMPLETED' && s.status !== 'CANCELLED' && <Link href={`/admin/gadwal/${s.id}/edit`} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-stone-200 px-3 text-xs font-semibold text-stone-700 hover:bg-stone-50" title="Edit session">

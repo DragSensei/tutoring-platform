@@ -124,7 +124,7 @@ export async function getSessionBillingConfig(
   let policy = null;
   if (!db.platformPolicy?.findUnique) {
     console.warn(
-      '[ATTENDANCE_CHECKIN] PlatformPolicy model not defined on Prisma client. Falling back to default platform pricing.'
+      '[ATTENDANCE_FINALIZATION] PlatformPolicy model not defined on Prisma client. Falling back to default platform pricing.'
     );
   } else {
     try {
@@ -132,7 +132,7 @@ export async function getSessionBillingConfig(
     } catch (error) {
       if (isTableNotExistError(error)) {
         console.warn(
-          '[ATTENDANCE_CHECKIN] PlatformPolicy table does not exist in database (migration pending). Falling back to default pricing.',
+          '[ATTENDANCE_FINALIZATION] PlatformPolicy table does not exist in database (migration pending). Falling back to default pricing.',
           error
         );
       } else {

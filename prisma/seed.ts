@@ -157,8 +157,7 @@ async function main() {
   // Session A: Upcoming in 2 hours 15 mins (Closest Session Next Due)
   const sessionAStart = new Date(now.getTime() + (2 * 3600 + 15 * 60) * 1000);
   const sessionAEnd = new Date(sessionAStart.getTime() + 2 * 3600 * 1000);
-  const sessionADeadline = new Date(sessionAStart.getTime() + 4 * 3600 * 1000);
-  const sessionAToken = '11111111-2222-3333-4444-555555555555';
+  const sessionADeadline = new Date(sessionAEnd.getTime() + 4 * 3600 * 1000);
 
   const sessionA = await prisma.session.create({
     data: {
@@ -168,16 +167,14 @@ async function main() {
       start_time: sessionAStart,
       end_time: sessionAEnd,
       deadline: sessionADeadline,
-      token: sessionAToken,
       status: 'SCHEDULED',
     },
   });
 
-  // Session B: Active Now (Started 30m ago, 4h deadline in 3.5h)
+  // Session B: Active Now (Started 30m ago, 4h grace after its end)
   const sessionBStart = new Date(now.getTime() - 30 * 60 * 1000);
   const sessionBEnd = new Date(sessionBStart.getTime() + 2 * 3600 * 1000);
-  const sessionBDeadline = new Date(sessionBStart.getTime() + 4 * 3600 * 1000);
-  const sessionBToken = '22222222-3333-4444-5555-666666666666';
+  const sessionBDeadline = new Date(sessionBEnd.getTime() + 4 * 3600 * 1000);
 
   const sessionB = await prisma.session.create({
     data: {
@@ -187,7 +184,6 @@ async function main() {
       start_time: sessionBStart,
       end_time: sessionBEnd,
       deadline: sessionBDeadline,
-      token: sessionBToken,
       status: 'ACTIVE',
     },
   });
@@ -195,8 +191,7 @@ async function main() {
   // Session C: Robotics Level 2 (Sumo & Obstacle Avoidance) - Tomorrow
   const sessionCStart = new Date(now.getTime() + 26 * 3600 * 1000);
   const sessionCEnd = new Date(sessionCStart.getTime() + 2 * 3600 * 1000);
-  const sessionCDeadline = new Date(sessionCStart.getTime() + 4 * 3600 * 1000);
-  const sessionCToken = '33333333-4444-5555-6666-777777777777';
+  const sessionCDeadline = new Date(sessionCEnd.getTime() + 4 * 3600 * 1000);
 
   const sessionC = await prisma.session.create({
     data: {
@@ -206,7 +201,6 @@ async function main() {
       start_time: sessionCStart,
       end_time: sessionCEnd,
       deadline: sessionCDeadline,
-      token: sessionCToken,
       status: 'SCHEDULED',
     },
   });
@@ -214,8 +208,7 @@ async function main() {
   // Session D: Private 1-on-1 C++ Mentorship
   const sessionDStart = new Date(now.getTime() + 48 * 3600 * 1000);
   const sessionDEnd = new Date(sessionDStart.getTime() + 2 * 3600 * 1000);
-  const sessionDDeadline = new Date(sessionDStart.getTime() + 4 * 3600 * 1000);
-  const sessionDToken = '44444444-5555-6666-7777-888888888888';
+  const sessionDDeadline = new Date(sessionDEnd.getTime() + 4 * 3600 * 1000);
 
   const sessionD = await prisma.session.create({
     data: {
@@ -225,7 +218,6 @@ async function main() {
       start_time: sessionDStart,
       end_time: sessionDEnd,
       deadline: sessionDDeadline,
-      token: sessionDToken,
       status: 'SCHEDULED',
     },
   });

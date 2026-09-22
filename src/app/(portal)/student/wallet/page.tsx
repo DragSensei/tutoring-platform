@@ -22,5 +22,5 @@ export default async function StudentWalletPage() {
   }
 
   const wallet = await getStudentWallet(studentUser.id);
-  return <StudentWalletView studentName={studentUser.name} wallet={wallet} />;
+  return <StudentWalletView studentName={studentUser.name ?? 'Not provided'} wallet={wallet} />;
 }

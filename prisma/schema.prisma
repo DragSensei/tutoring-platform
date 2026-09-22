@@ -14,6 +14,17 @@ enum Role {
   STUDENT
 }
 
+enum AccountStatus {
+  PENDING_CREDENTIALS
+  PENDING_PROFILE
+  ACTIVE
+}
+
+enum AccountTokenPurpose {
+  SETUP
+  PASSWORD_RESET
+}
+
 enum SessionType {
   PRIVATE // 500.00 EGP
   GROUP // 375.00 EGP
@@ -26,6 +37,12 @@ enum SessionStatus {
   CANCELLED
 }
 
+enum SessionSeriesStatus {
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
 enum TransactionType {
   ADMIN_DEPOSIT
   SESSION_DEDUCTION
@@ -33,20 +50,24 @@ enum TransactionType {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  name          String
-  phone         String   @unique
-  email         String   @unique
-  password_hash String
-  role          Role     @default(STUDENT)
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  id             String        @id @default(cuid())
+  name           String?
+  phone          String?       @unique
+  email          String?       @unique
+  password_hash  String?
+  role           Role          @default(STUDENT)
+  account_status AccountStatus @default(ACTIVE)
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
 
   wallet               Wallet?
-  tutored_sessions     Session[]           @relation("TutorSessions")
-  attendances          AttendanceRecord[]  @relation("StudentAttendances")
+  tutored_sessions     Session[]                  @relation("TutorSessions")
+  tutored_series       SessionSeries[]            @relation("TutorSeries")
+  attendances          AttendanceRecord[]         @relation("StudentAttendances")
   session_participants SessionParticipant[]
-  created_transactions WalletTransaction[] @relation("AdminCreatedTransactions")
+  series_participants  SessionSeriesParticipant[]
+  setup_tokens         AccountSetupToken[]
+  created_transactions WalletTransaction[]        @relation("AdminCreatedTransactions")
 
   @@index([role])
 }
@@ -67,34 +88,76 @@ model Wallet {
 }
 
 model Session {
-  id               String        @id @default(cuid())
+  id               String         @id @default(cuid())
   tutor_id         String
-  tutor            User          @relation("TutorSessions", fields: [tutor_id], references: [id], onDelete: Restrict)
+  tutor            User           @relation("TutorSessions", fields: [tutor_id], references: [id], onDelete: Restrict)
+  series_id        String?
+  series           SessionSeries? @relation(fields: [series_id], references: [id], onDelete: SetNull)
+  occurrence_date  DateTime?
+  series_exception Boolean        @default(false)
   title            String
   session_type     SessionType
   start_time       DateTime
   end_time         DateTime
-  deadline         DateTime // start_time + 4 hours
-  token            String        @unique @default(uuid())
-  status           SessionStatus @default(SCHEDULED)
-  attendance_notes String?       @db.Text
-  created_at       DateTime      @default(now())
-  updated_at       DateTime      @updatedAt
+  deadline         DateTime // legacy field name; attendance closes at end_time + policy grace
+  token            String?        @unique // retained only for historical attendance-link data
+  status           SessionStatus  @default(SCHEDULED)
+  attendance_notes String?        @db.Text
+  attendance_saved_at DateTime?
+  attendance_finalized_at DateTime?
+  series_exception_reason String?
+  created_at       DateTime       @default(now())
+  updated_at       DateTime       @updatedAt
 
   attendances  AttendanceRecord[]
   participants SessionParticipant[]
   transactions WalletTransaction[]
 
+  @@unique([series_id, occurrence_date])
   @@index([tutor_id])
+  @@index([series_id, occurrence_date])
   @@index([token])
   @@index([start_time])
+}
+
+model SessionSeries {
+  id               String              @id @default(cuid())
+  tutor_id         String
+  tutor            User                @relation("TutorSeries", fields: [tutor_id], references: [id], onDelete: Restrict)
+  title            String
+  session_type     SessionType
+  weekday          Int
+  start_minute     Int
+  duration_minutes Int
+  starts_on        DateTime
+  ends_on          DateTime?
+  status           SessionSeriesStatus @default(ACTIVE)
+  created_at       DateTime            @default(now())
+  updated_at       DateTime            @updatedAt
+
+  participants SessionSeriesParticipant[]
+  occurrences  Session[]
+
+  @@index([tutor_id, status])
+  @@index([status, starts_on])
+}
+
+model SessionSeriesParticipant {
+  series_id  String
+  student_id String
+  series     SessionSeries @relation(fields: [series_id], references: [id], onDelete: Cascade)
+  student    User          @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  created_at DateTime      @default(now())
+
+  @@id([series_id, student_id])
+  @@index([student_id])
 }
 
 model SessionParticipant {
   session_id String
   student_id String
-  session    Session @relation(fields: [session_id], references: [id], onDelete: Cascade)
-  student    User    @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  session    Session  @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  student    User     @relation(fields: [student_id], references: [id], onDelete: Cascade)
   created_at DateTime @default(now())
 
   @@id([session_id, student_id])
@@ -139,4 +202,18 @@ model PlatformPolicy {
   allow_overdraft       Boolean  @default(true)
   created_at            DateTime @default(now())
   updated_at            DateTime @updatedAt
+}
+
+model AccountSetupToken {
+  id          String    @id @default(cuid())
+  user_id     String
+  user        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  purpose     AccountTokenPurpose @default(SETUP)
+  token_hash  String    @unique
+  expires_at  DateTime
+  consumed_at DateTime?
+  created_at  DateTime  @default(now())
+
+  @@index([user_id, purpose, expires_at])
+  @@index([expires_at, consumed_at])
 }

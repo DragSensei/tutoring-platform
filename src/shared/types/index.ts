@@ -20,7 +20,7 @@ export interface SessionWithTutor {
   startTime: Date | string;
   endTime: Date | string;
   deadline: Date | string;
-  token: string;
+  token: string | null;
   status: SessionStatus;
   price: number;
 }

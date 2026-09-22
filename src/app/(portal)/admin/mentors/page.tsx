@@ -20,9 +20,9 @@ export default async function AdminMentorsPage() {
     <AdminMentorsView
       mentors={mentors.map((m) => ({
         id: m.id,
-        name: m.name,
-        email: m.email,
-        phone: m.phone,
+        name: m.name ?? 'Not provided',
+        email: m.email ?? 'Not provided',
+        phone: m.phone ?? 'Not provided',
         sessionsCount: m._count.tutored_sessions,
       }))}
     />

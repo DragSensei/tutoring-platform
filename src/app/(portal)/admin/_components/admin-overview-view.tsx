@@ -66,7 +66,7 @@ export function AdminOverviewView({
             Admin Overview (نظرة عامة)
           </h1>
           <p className="text-xs sm:text-sm text-stone-500 mt-1">
-            Monitor STEM cohort schedules, check-in pacing, faculty mentors, and student financial health.
+            Monitor STEM cohort schedules, Tutor attendance finalization, faculty mentors, and student financial health.
           </p>
         </div>
 
@@ -164,7 +164,7 @@ export function AdminOverviewView({
           </div>
         </motion.div>
 
-        {/* Card 4: Total Check-ins */}
+        {/* Card 4: Verified attendances */}
         <motion.div
           variants={itemVariants}
           whileHover={{ y: -3, transition: { duration: 0.15 } }}
@@ -211,7 +211,7 @@ export function AdminOverviewView({
                 Wallet Solvency Sentinel (مراقبة السحب على المكشوف)
               </h2>
               <p className="text-xs text-stone-500">
-                Automatic overdraft detection on check-in debit transactions
+                Automatic overdraft detection on final attendance settlement
               </p>
             </div>
           </div>

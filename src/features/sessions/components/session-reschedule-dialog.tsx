@@ -3,13 +3,12 @@
 import * as React from 'react';
 import { Dialog } from '@/shared/components/dialog';
 import { Button } from '@/shared/components/button';
-import type { WeeklyScheduleSession, LocalScheduleException } from './weekly-session-schedule';
+import type { WeeklyScheduleSession } from './weekly-session-schedule';
 
 interface SessionRescheduleDialogProps {
   session: WeeklyScheduleSession | null;
-  existingException?: LocalScheduleException;
   onClose: () => void;
-  onSave: (sessionId: string, exception: LocalScheduleException) => void;
+  onSave: (sessionId: string, input: { startTime: string; endTime: string; reason: string }) => Promise<void>;
 }
 
 function toLocalInputValue(value: string) {
@@ -18,17 +17,18 @@ function toLocalInputValue(value: string) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
-export function SessionRescheduleDialog({ session, existingException, onClose, onSave }: SessionRescheduleDialogProps) {
+export function SessionRescheduleDialog({ session, onClose, onSave }: SessionRescheduleDialogProps) {
   const [dateTime, setDateTime] = React.useState('');
   const [reason, setReason] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
+  const [isPending, startTransition] = React.useTransition();
 
   React.useEffect(() => {
     if (!session) return;
-    setDateTime(toLocalInputValue(existingException?.effectiveStartTime || session.startTime));
-    setReason(existingException?.reason || '');
+    setDateTime(toLocalInputValue(session.startTime));
+    setReason(session.rescheduleReason || '');
     setError(null);
-  }, [existingException, session]);
+  }, [session]);
 
   if (!session) return null;
 
@@ -37,11 +37,11 @@ export function SessionRescheduleDialog({ session, existingException, onClose, o
       isOpen={Boolean(session)}
       onClose={onClose}
       title="Postpone one occurrence"
-      description="This changes only this browser's preview of this week's occurrence. The recurring schedule is unchanged."
+      description="This changes only the concrete occurrence. The recurring weekly schedule remains unchanged."
     >
       <div className="space-y-4">
         <div className="rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm text-stone-600">
-          <span className="font-medium text-stone-900">Recurring schedule:</span> {session.title}
+          <span className="font-medium text-stone-900">Concrete occurrence:</span> {session.title}
         </div>
         <div>
           <label htmlFor="reschedule-time" className="text-sm font-medium text-stone-800">New date and time</label>
@@ -54,14 +54,27 @@ export function SessionRescheduleDialog({ session, existingException, onClose, o
         {error && <p role="alert" className="text-sm font-medium text-brand-primary">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-          <Button type="button" onClick={() => {
+          <Button type="button" disabled={isPending} isLoading={isPending} onClick={() => {
             if (!dateTime || reason.trim().length < 3) {
               setError('Choose a new date and time and provide a short reason.');
               return;
             }
-            onSave(session.id, { effectiveStartTime: new Date(dateTime).toISOString(), reason: reason.trim() });
-            onClose();
-          }}>Save local exception</Button>
+            const nextStart = new Date(dateTime);
+            const duration = new Date(session.endTime).getTime() - new Date(session.startTime).getTime();
+            const nextEnd = new Date(nextStart.getTime() + duration);
+            startTransition(async () => {
+              try {
+                await onSave(session.id, {
+                  startTime: nextStart.toISOString(),
+                  endTime: nextEnd.toISOString(),
+                  reason: reason.trim(),
+                });
+                onClose();
+              } catch (saveError) {
+                setError(saveError instanceof Error ? saveError.message : 'The occurrence could not be postponed.');
+              }
+            });
+          }}>Save occurrence</Button>
         </div>
       </div>
     </Dialog>

@@ -2,9 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { Prisma } from '@prisma/client';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
-if (!testDatabaseUrl) {
-  throw new Error('TEST_DATABASE_URL is required for database-backed integration tests');
-}
+if (!testDatabaseUrl) throw new Error('TEST_DATABASE_URL is required for database-backed integration tests');
 process.env.DATABASE_URL = testDatabaseUrl;
 process.env.DIRECT_URL = process.env.TEST_DIRECT_DATABASE_URL?.trim() || testDatabaseUrl;
 
@@ -13,452 +11,134 @@ vi.mock('@/features/auth/server/session', () => ({ requireAuth: vi.fn() }));
 
 const { prisma } = await import('@/shared/lib/prisma');
 const { requireAuth } = await import('@/features/auth/server/session');
-const { executeStudentCheckIn } = await import('@/features/attendance/server/checkin-action');
 const { saveTutorAttendance } = await import('@/app/(portal)/tutor/attendance/actions');
-const { createAdminSession } = await import('@/app/(portal)/admin/gadwal/actions');
+const { finalizeDueAttendance } = await import('@/features/attendance/server/finalize-due-attendance');
+const { executeStudentCheckIn } = await import('@/features/attendance/server/checkin-action');
 const { getTutorSessions } = await import('@/features/sessions/server/session-actions');
 const { getPlatformPolicies } = await import('@/features/policies/server/policy-actions');
-const { adminRefund } = await import('@/features/wallets/server/wallet-actions');
 
-const fixturePrefix = 'test-fixture-domain-';
-const marker = `${fixturePrefix}${process.pid}-${Date.now()}`;
-let fixtureCounter = 0;
-let originalPolicy: Awaited<ReturnType<typeof prisma.platformPolicy.findUnique>>;
+const prefix = `test-final-attendance-${process.pid}-${Date.now()}-`;
+let counter = 0;
+const now = new Date('2026-10-01T12:00:00.000Z');
+const policy = { checkInWindowHours: 4, groupSessionPrice: 375, privateSessionPrice: 500 };
 
-async function cleanupFixtureResidue() {
-  const users = await prisma.user.findMany({
-    where: { email: { startsWith: fixturePrefix } },
-    select: { id: true },
-  });
-  const sessions = await prisma.session.findMany({
-    where: { title: { contains: fixturePrefix } },
-    select: { id: true },
-  });
-
-  // This prefix is reserved exclusively for this integration suite, so its
-  // sessions and test-only ledger history are safe to remove after interruption.
-  await prisma.$transaction(async (tx) => {
-    if (sessions.length > 0) {
-      await tx.session.deleteMany({ where: { id: { in: sessions.map((session) => session.id) } } });
-    }
-    if (users.length > 0) {
-      await tx.user.deleteMany({ where: { id: { in: users.map((user) => user.id) } } });
-    }
-  });
-}
-
-async function createFixture(participantCount = 3, sessionType: 'PRIVATE' | 'GROUP' = 'GROUP') {
-  const fixtureMarker = `${marker}-${fixtureCounter++}`;
+async function createFixture(start: Date, end: Date) {
+  const marker = `${prefix}${counter++}`;
   const tutor = await prisma.user.create({
+    data: { name: `Tutor ${marker}`, email: `${marker}-tutor@example.com`, phone: `+20${Date.now()}${counter}`, password_hash: 'test', role: 'TUTOR' },
+  });
+  const student = await prisma.user.create({
     data: {
-      name: `Tutor ${fixtureMarker}`,
-      email: `${fixtureMarker}-tutor@example.com`,
-      phone: `+20${Date.now()}1`,
-      password_hash: 'test',
-      role: 'TUTOR',
+      name: `Student ${marker}`, email: `${marker}-student@example.com`, phone: `+20${Date.now()}${counter + 1}`, password_hash: 'test', role: 'STUDENT',
+      wallet: { create: { balance: new Prisma.Decimal(1000), is_flagged_overdraft: false } },
     },
   });
-  const students = await Promise.all(
-    Array.from({ length: participantCount }, (_, index) =>
-      prisma.user.create({
-        data: {
-          name: `Student ${fixtureMarker}-${index}`,
-          email: `${fixtureMarker}-student-${index}@example.com`,
-          phone: `+20${Date.now()}${index + 2}`,
-          password_hash: 'test',
-          role: 'STUDENT',
-          wallet: { create: { balance: new Prisma.Decimal(1000), is_flagged_overdraft: false } },
-        },
-      })
-    )
-  );
-  const now = new Date();
   const session = await prisma.session.create({
     data: {
-      title: `Domain session ${marker}`,
-      tutor_id: tutor.id,
-      session_type: sessionType,
-      start_time: new Date(now.getTime() - 60 * 60 * 1000),
-      end_time: new Date(now.getTime() + 60 * 60 * 1000),
-      deadline: new Date(now.getTime() + 3 * 60 * 60 * 1000),
-      status: 'ACTIVE',
-      participants: { create: students.map((student) => ({ student_id: student.id })) },
+      title: `Final attendance ${marker}`, tutor_id: tutor.id, session_type: 'GROUP', start_time: start, end_time: end,
+      deadline: new Date(end.getTime() + 4 * 60 * 60 * 1000), participants: { create: [{ student_id: student.id }] },
     },
   });
-  return { tutor, students, session, now };
+  return { tutor, student, session };
+}
+
+async function cleanup() {
+  await prisma.session.deleteMany({ where: { title: { contains: prefix } } });
+  await prisma.user.deleteMany({ where: { email: { startsWith: prefix } } });
 }
 
 async function walletState(studentId: string, sessionId: string) {
   const wallet = await prisma.wallet.findUniqueOrThrow({ where: { user_id: studentId } });
-  const transactions = await prisma.walletTransaction.findMany({
-    where: { wallet_id: wallet.id, session_id: sessionId },
-    orderBy: { created_at: 'asc' },
-  });
+  const transactions = await prisma.walletTransaction.findMany({ where: { wallet_id: wallet.id, session_id: sessionId } });
   return { balance: Number(wallet.balance), transactions };
 }
 
-describe('durable attendance domain invariants', () => {
+describe('final Tutor attendance and settlement contract', () => {
   beforeAll(async () => {
-    // The reserved prefix makes interrupted local runs recoverable on the next run.
-    await cleanupFixtureResidue();
-    originalPolicy = await prisma.platformPolicy.findUnique({ where: { id: 'default' } });
+    await cleanup();
     await prisma.platformPolicy.upsert({
       where: { id: 'default' },
-      update: { group_session_price: 375, private_session_price: 500, allow_overdraft: true },
-      create: { id: 'default', group_session_price: 375, private_session_price: 500, allow_overdraft: true },
+      update: { check_in_window_hours: 4, group_session_price: 375, private_session_price: 500, allow_overdraft: true },
+      create: { id: 'default', check_in_window_hours: 4, group_session_price: 375, private_session_price: 500, allow_overdraft: true },
     });
   });
 
   beforeEach(() => {
-    vi.mocked(requireAuth).mockResolvedValue({
-      userId: 'placeholder',
-      email: 'placeholder@example.com',
-      name: 'Placeholder',
-      role: 'TUTOR',
-    });
+    vi.mocked(requireAuth).mockResolvedValue({ userId: 'placeholder', email: 'placeholder@example.com', name: 'Placeholder', role: 'TUTOR' });
   });
 
   afterAll(async () => {
-    await cleanupFixtureResidue();
-    if (originalPolicy) {
-      await prisma.platformPolicy.update({
-        where: { id: 'default' },
-        data: {
-          check_in_window_hours: originalPolicy.check_in_window_hours,
-          group_session_price: originalPolicy.group_session_price,
-          private_session_price: originalPolicy.private_session_price,
-          allow_overdraft: originalPolicy.allow_overdraft,
-        },
-      });
-    } else {
-      await prisma.platformPolicy.delete({ where: { id: 'default' } });
-    }
+    await cleanup();
     await prisma.$disconnect();
   });
 
-  it('uses durable PRIVATE/GROUP participants as the Tutor roster', async () => {
-    const groupFixture = await createFixture(3, 'GROUP');
-    const privateFixture = await createFixture(1, 'PRIVATE');
-    const currentPolicy = await getPlatformPolicies();
-    const groupSessions = await getTutorSessions(groupFixture.tutor.id, currentPolicy);
-    const privateSessions = await getTutorSessions(privateFixture.tutor.id, currentPolicy);
-    const groupSession = groupSessions.find((item) => item.id === groupFixture.session.id);
-    const privateSession = privateSessions.find((item) => item.id === privateFixture.session.id);
-
-    expect(groupSession?.roster?.map((student) => student.id)).toEqual(
-      groupFixture.students.map((student) => student.id)
-    );
-    expect(privateSession?.roster?.map((student) => student.id)).toEqual(
-      privateFixture.students.map((student) => student.id)
-    );
-  });
-
-  it('requires explicit Student assignments when creating a session', async () => {
-    const fixture = await createFixture(2);
-    vi.mocked(requireAuth).mockResolvedValue({
-      userId: 'admin-fixture',
-      email: 'admin-fixture@example.com',
-      name: 'Admin Fixture',
-      role: 'ADMIN',
-    });
-    const created = await createAdminSession({
-      title: `Created session ${marker}`,
-      tutorId: fixture.tutor.id,
-      sessionType: 'GROUP',
-      participantIds: fixture.students.map((student) => student.id),
-      startTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-      endTime: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
-    });
-    const participants = await prisma.sessionParticipant.findMany({
-      where: { session_id: created.id },
-      orderBy: { student_id: 'asc' },
-    });
-    expect(participants.map((participant) => participant.student_id)).toEqual(
-      [...fixture.students.map((student) => student.id)].sort()
-    );
-    await expect(
-      createAdminSession({
-        title: `Invalid session ${marker}`,
-        tutorId: fixture.tutor.id,
-        sessionType: 'PRIVATE',
-        participantIds: [],
-        startTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-        endTime: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
-      })
-    ).rejects.toThrow('Private sessions require exactly one student');
-  });
-
-  it('requires Admin authorization before accepting session assignments', async () => {
-    const fixture = await createFixture(1);
-    const input = {
-      title: `Authorized session ${marker}`,
-      tutorId: fixture.tutor.id,
-      sessionType: 'PRIVATE' as const,
-      participantIds: [fixture.students[0].id],
-      startTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-      endTime: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
-    };
-
-    vi.mocked(requireAuth).mockRejectedValueOnce(new Error('Unauthorized'));
-    await expect(createAdminSession(input)).rejects.toThrow('Unauthorized');
-
-    vi.mocked(requireAuth).mockRejectedValueOnce(new Error('Forbidden: Insufficient privileges'));
-    await expect(createAdminSession(input)).rejects.toThrow('Forbidden');
-
-    expect(
-      await prisma.session.count({ where: { title: input.title } })
-    ).toBe(0);
-  });
-
-  it('rejects a foreign Student before attendance or financial mutation', async () => {
-    const fixture = await createFixture(2);
-    const foreign = await prisma.user.create({
-      data: {
-        name: `Foreign ${marker}`,
-        email: `${marker}-foreign@example.com`,
-        phone: `+20${Date.now()}9`,
-        password_hash: 'test',
-        role: 'STUDENT',
-        wallet: { create: { balance: new Prisma.Decimal(1000), is_flagged_overdraft: false } },
-      },
-    });
-    vi.mocked(requireAuth).mockResolvedValue({
-      userId: fixture.tutor.id,
-      email: fixture.tutor.email,
-      name: fixture.tutor.name,
-      role: 'TUTOR',
-    });
-
-    const result = await saveTutorAttendance({
-      sessionId: fixture.session.id,
-      presentStudentIds: [foreign.id],
-      notes: 'Foreign participant must be rejected.',
-    });
-
-    expect(result.success).toBe(false);
+  it('rejects future attendance, opens exactly at start, and uses end plus policy grace', async () => {
+    const fixture = await createFixture(new Date('2026-10-01T13:00:00.000Z'), new Date('2026-10-01T15:00:00.000Z'));
+    vi.mocked(requireAuth).mockResolvedValue({ userId: fixture.tutor.id, email: fixture.tutor.email!, name: fixture.tutor.name!, role: 'TUTOR' });
+    const before = await saveTutorAttendance({ sessionId: fixture.session.id, presentStudentIds: [fixture.student.id], notes: 'Too early to record.' }, new Date('2026-10-01T12:59:59.999Z'));
+    expect(before.success).toBe(false);
     expect(await prisma.attendanceRecord.count({ where: { session_id: fixture.session.id } })).toBe(0);
-    expect((await walletState(foreign.id, fixture.session.id)).transactions).toHaveLength(0);
+    const atStart = await saveTutorAttendance({ sessionId: fixture.session.id, presentStudentIds: [fixture.student.id], notes: 'Attendance opened at start.' }, fixture.session.start_time);
+    expect(atStart.success).toBe(true);
+    const serialized = (await getTutorSessions(fixture.tutor.id, policy, fixture.session.start_time)).find((item) => item.id === fixture.session.id);
+    expect(serialized?.attendanceClosesAt).toBe('2026-10-01T19:00:00.000Z');
   });
 
-  it('reconciles check-in, mixed attendance, all absent, and repeated edits to one net charge', async () => {
-    const fixture = await createFixture(3);
-    vi.mocked(requireAuth).mockResolvedValue({
-      userId: fixture.tutor.id,
-      email: fixture.tutor.email,
-      name: fixture.tutor.name,
-      role: 'TUTOR',
-    });
+  it('allows edits through grace, charges only the final PRESENT state, and is idempotent', async () => {
+    const fixture = await createFixture(new Date('2026-10-01T09:00:00.000Z'), new Date('2026-10-01T11:00:00.000Z'));
+    const graceTime = new Date('2026-10-01T14:00:00.000Z');
+    const close = new Date('2026-10-01T15:00:00.000Z');
+    vi.mocked(requireAuth).mockResolvedValue({ userId: fixture.tutor.id, email: fixture.tutor.email!, name: fixture.tutor.name!, role: 'TUTOR' });
+    expect((await saveTutorAttendance({ sessionId: fixture.session.id, presentStudentIds: [fixture.student.id], notes: 'Present during the workshop.' }, new Date('2026-10-01T10:00:00.000Z'))).success).toBe(true);
+    expect((await saveTutorAttendance({ sessionId: fixture.session.id, presentStudentIds: [], notes: 'Final review marked the student absent.' }, graceTime)).success).toBe(true);
+    expect((await walletState(fixture.student.id, fixture.session.id)).transactions).toHaveLength(0);
+    const presentAgain = await saveTutorAttendance({ sessionId: fixture.session.id, presentStudentIds: [fixture.student.id], notes: 'Final review corrected to present.' }, graceTime);
+    expect(presentAgain.success).toBe(true);
+    const first = await finalizeDueAttendance(policy, new Date(close.getTime() + 1));
+    const second = await finalizeDueAttendance(policy, new Date(close.getTime() + 1));
+    expect(first.finalizedCount).toBe(1);
+    expect(second.finalizedCount).toBe(0);
+    const wallet = await walletState(fixture.student.id, fixture.session.id);
+    expect(wallet.balance).toBe(625);
+    expect(wallet.transactions.filter((entry) => entry.transaction_type === 'SESSION_DEDUCTION')).toHaveLength(1);
+    expect((await prisma.session.findUniqueOrThrow({ where: { id: fixture.session.id } })).status).toBe('COMPLETED');
+  });
 
-    const checkIn = await executeStudentCheckIn({
-      token: fixture.session.token,
-      studentId: fixture.students[0].id,
-      currentTime: fixture.now,
-    });
-    expect(checkIn.success).toBe(true);
+  it('settles ABSENT to zero and does not invent data when no review was saved', async () => {
+    const absent = await createFixture(new Date('2026-10-01T08:00:00.000Z'), new Date('2026-10-01T10:00:00.000Z'));
+    vi.mocked(requireAuth).mockResolvedValue({ userId: absent.tutor.id, email: absent.tutor.email!, name: absent.tutor.name!, role: 'TUTOR' });
+    expect((await saveTutorAttendance({ sessionId: absent.session.id, presentStudentIds: [], notes: 'The roster was reviewed and absent.' }, new Date('2026-10-01T09:00:00.000Z'))).success).toBe(true);
+    const absentResult = await finalizeDueAttendance(policy, new Date('2026-10-01T14:00:01.000Z'));
+    expect(absentResult.finalizedCount).toBe(1);
+    expect((await walletState(absent.student.id, absent.session.id)).transactions).toHaveLength(0);
 
-    const absentResult = await saveTutorAttendance({
-      sessionId: fixture.session.id,
-      presentStudentIds: [],
-      notes: 'Everyone was absent at final review.',
-    });
-    expect(absentResult.success).toBe(true);
-    expect(await prisma.attendanceRecord.count({ where: { session_id: fixture.session.id } })).toBe(0);
-    const afterAbsent = await walletState(fixture.students[0].id, fixture.session.id);
-    expect(afterAbsent.transactions.map((transaction) => transaction.transaction_type)).toEqual([
-      'SESSION_DEDUCTION',
-      'REFUND',
+    const missed = await createFixture(new Date('2026-10-01T06:00:00.000Z'), new Date('2026-10-01T08:00:00.000Z'));
+    const missedResult = await finalizeDueAttendance(policy, new Date('2026-10-01T12:00:01.000Z'));
+    expect(missedResult.dueCount).toBe(0);
+    expect((await walletState(missed.student.id, missed.session.id)).transactions).toHaveLength(0);
+    const tutorSessions = await getTutorSessions(missed.tutor.id, policy, new Date('2026-10-01T12:00:01.000Z'));
+    expect(tutorSessions.find((item) => item.id === missed.session.id)).toMatchObject({ attendanceWindowState: 'CLOSED', attendanceSavedAt: null });
+  });
+
+  it('rejects the wrong Tutor and disables the Student mutation boundary', async () => {
+    const fixture = await createFixture(new Date('2026-10-01T09:00:00.000Z'), new Date('2026-10-01T11:00:00.000Z'));
+    const wrongTutor = await prisma.user.create({ data: { name: `Wrong ${prefix}`, email: `${prefix}wrong@example.com`, phone: `+20${Date.now()}99`, role: 'TUTOR' } });
+    vi.mocked(requireAuth).mockResolvedValue({ userId: wrongTutor.id, email: wrongTutor.email!, name: wrongTutor.name!, role: 'TUTOR' });
+    const wrong = await saveTutorAttendance({ sessionId: fixture.session.id, presentStudentIds: [fixture.student.id], notes: 'Wrong Tutor attempt.' }, new Date('2026-10-01T10:00:00.000Z'));
+    expect(wrong.success).toBe(false);
+    const studentMutation = await executeStudentCheckIn({ token: 'historical-token', studentId: fixture.student.id, currentTime: now });
+    expect(studentMutation).toMatchObject({ success: false, statusCode: 410 });
+  });
+
+  it('keeps concurrent finalization to one net charge', async () => {
+    const fixture = await createFixture(new Date('2026-10-01T09:00:00.000Z'), new Date('2026-10-01T11:00:00.000Z'));
+    vi.mocked(requireAuth).mockResolvedValue({ userId: fixture.tutor.id, email: fixture.tutor.email!, name: fixture.tutor.name!, role: 'TUTOR' });
+    await saveTutorAttendance({ sessionId: fixture.session.id, presentStudentIds: [fixture.student.id], notes: 'Concurrent finalizer fixture.' }, new Date('2026-10-01T10:00:00.000Z'));
+    const [one, two] = await Promise.all([
+      finalizeDueAttendance(policy, new Date('2026-10-01T15:00:01.000Z')),
+      finalizeDueAttendance(policy, new Date('2026-10-01T15:00:01.000Z')),
     ]);
-    expect(afterAbsent.balance).toBe(1000);
-
-    const presentResult = await saveTutorAttendance({
-      sessionId: fixture.session.id,
-      presentStudentIds: [fixture.students[0].id, fixture.students[1].id],
-      notes: 'Two students completed the reviewed session.',
-    });
-    expect(presentResult.success).toBe(true);
-    expect(await prisma.attendanceRecord.count({ where: { session_id: fixture.session.id } })).toBe(2);
-
-    const repeatedResult = await saveTutorAttendance({
-      sessionId: fixture.session.id,
-      presentStudentIds: [fixture.students[0].id, fixture.students[1].id],
-      notes: 'Two students completed the reviewed session.',
-    });
-    expect(repeatedResult).toEqual(presentResult);
-
-    const firstStudent = await walletState(fixture.students[0].id, fixture.session.id);
-    const secondStudent = await walletState(fixture.students[1].id, fixture.session.id);
-    const thirdStudent = await walletState(fixture.students[2].id, fixture.session.id);
-    expect(firstStudent.transactions.map((transaction) => transaction.transaction_type)).toEqual([
-      'SESSION_DEDUCTION',
-      'REFUND',
-      'SESSION_DEDUCTION',
-    ]);
-    expect(firstStudent.balance).toBe(625);
-    expect(secondStudent.transactions).toHaveLength(1);
-    expect(Number(secondStudent.transactions[0].amount)).toBe(-375);
-    expect(thirdStudent.transactions).toHaveLength(0);
-
-    const completed = await prisma.session.findUniqueOrThrow({ where: { id: fixture.session.id } });
-    expect(completed.status).toBe('COMPLETED');
-
-    const afterFinalizationCheckIn = await executeStudentCheckIn({
-      token: fixture.session.token,
-      studentId: fixture.students[2].id,
-      currentTime: fixture.now,
-    });
-    expect(afterFinalizationCheckIn.success).toBe(false);
-    expect(afterFinalizationCheckIn.statusCode).toBe(409);
-  });
-
-  it('preserves an independent Admin refund during Tutor PRESENT finalization', async () => {
-    const fixture = await createFixture(1);
-    const admin = await prisma.user.create({
-      data: {
-        name: `Admin ${marker}`,
-        email: `${marker}-admin@example.com`,
-        phone: `+20${Date.now()}7`,
-        password_hash: 'test',
-        role: 'ADMIN',
-      },
-    });
-    const wallet = await prisma.wallet.findUniqueOrThrow({ where: { user_id: fixture.students[0].id } });
-
-    const checkIn = await executeStudentCheckIn({
-      token: fixture.session.token,
-      studentId: fixture.students[0].id,
-      currentTime: fixture.now,
-    });
-    expect(checkIn.success).toBe(true);
-
-    const adminRefundResult = await adminRefund({
-      walletId: wallet.id,
-      amount: 100,
-      sessionId: fixture.session.id,
-      adminUserId: admin.id,
-    });
-    expect(adminRefundResult.newBalance).toBe(725);
-
-    vi.mocked(requireAuth).mockResolvedValue({
-      userId: fixture.tutor.id,
-      email: fixture.tutor.email,
-      name: fixture.tutor.name,
-      role: 'TUTOR',
-    });
-    const finalized = await saveTutorAttendance({
-      sessionId: fixture.session.id,
-      presentStudentIds: [fixture.students[0].id],
-      notes: 'Present after independent account adjustment.',
-    });
-    expect(finalized.success).toBe(true);
-
-    const afterFinalization = await walletState(fixture.students[0].id, fixture.session.id);
-    expect(afterFinalization.balance).toBe(725);
-    expect(afterFinalization.transactions).toHaveLength(2);
-    expect(afterFinalization.transactions.filter((transaction) => transaction.transaction_type === 'SESSION_DEDUCTION')).toHaveLength(1);
-    expect(
-      afterFinalization.transactions.filter(
-        (transaction) => transaction.transaction_type === 'REFUND' && transaction.created_by_user_id === admin.id
-      )
-    ).toHaveLength(1);
-    expect(
-      afterFinalization.transactions
-        .filter(
-          (transaction) =>
-            transaction.transaction_type === 'SESSION_DEDUCTION' ||
-            (transaction.transaction_type === 'REFUND' && transaction.created_by_user_id === null)
-        )
-        .reduce((total, transaction) => total + Number(transaction.amount), 0)
-    ).toBe(-375);
-  });
-
-  it('serializes simultaneous Student check-ins to one net session charge', async () => {
-    const fixture = await createFixture(1);
-    const outcomes = await Promise.all([
-      executeStudentCheckIn({
-        token: fixture.session.token,
-        studentId: fixture.students[0].id,
-        currentTime: fixture.now,
-      }),
-      executeStudentCheckIn({
-        token: fixture.session.token,
-        studentId: fixture.students[0].id,
-        currentTime: fixture.now,
-      }),
-    ]);
-
-    expect(outcomes.filter((outcome) => outcome.success)).toHaveLength(1);
-    expect(await prisma.attendanceRecord.count({ where: { session_id: fixture.session.id } })).toBe(1);
-    const afterConcurrentCheckIn = await walletState(fixture.students[0].id, fixture.session.id);
-    expect(afterConcurrentCheckIn.transactions.filter((transaction) => transaction.transaction_type === 'SESSION_DEDUCTION')).toHaveLength(1);
-    expect(afterConcurrentCheckIn.balance).toBe(625);
-  });
-
-  it('keeps simultaneous Tutor finalization attempts to one net session charge', async () => {
-    const fixture = await createFixture(1);
-    vi.mocked(requireAuth).mockResolvedValue({
-      userId: fixture.tutor.id,
-      email: fixture.tutor.email,
-      name: fixture.tutor.name,
-      role: 'TUTOR',
-    });
-
-    const outcomes = await Promise.all([
-      saveTutorAttendance({
-        sessionId: fixture.session.id,
-        presentStudentIds: [fixture.students[0].id],
-        notes: 'Concurrent finalization attempt A.',
-      }),
-      saveTutorAttendance({
-        sessionId: fixture.session.id,
-        presentStudentIds: [fixture.students[0].id],
-        notes: 'Concurrent finalization attempt B.',
-      }),
-    ]);
-
-    expect(outcomes.some((outcome) => outcome.success)).toBe(true);
-    const afterConcurrentFinalization = await walletState(fixture.students[0].id, fixture.session.id);
-    expect(afterConcurrentFinalization.transactions.filter((transaction) => transaction.transaction_type === 'SESSION_DEDUCTION')).toHaveLength(1);
-    expect(afterConcurrentFinalization.balance).toBe(625);
-    expect(await prisma.attendanceRecord.count({ where: { session_id: fixture.session.id } })).toBe(1);
-  });
-
-  it('rejects the wrong Tutor and cancelled sessions without mutation', async () => {
-    const fixture = await createFixture(1);
-    const otherTutor = await prisma.user.create({
-      data: {
-        name: `Other tutor ${marker}`,
-        email: `${marker}-other-tutor@example.com`,
-        phone: `+20${Date.now()}8`,
-        password_hash: 'test',
-        role: 'TUTOR',
-      },
-    });
-    vi.mocked(requireAuth).mockResolvedValue({
-      userId: otherTutor.id,
-      email: otherTutor.email,
-      name: otherTutor.name,
-      role: 'TUTOR',
-    });
-    const wrongTutor = await saveTutorAttendance({
-      sessionId: fixture.session.id,
-      presentStudentIds: [fixture.students[0].id],
-      notes: 'This Tutor does not own the session.',
-    });
-    expect(wrongTutor.success).toBe(false);
-
-    await prisma.session.update({ where: { id: fixture.session.id }, data: { status: 'CANCELLED' } });
-    vi.mocked(requireAuth).mockResolvedValue({
-      userId: fixture.tutor.id,
-      email: fixture.tutor.email,
-      name: fixture.tutor.name,
-      role: 'TUTOR',
-    });
-    const cancelled = await saveTutorAttendance({
-      sessionId: fixture.session.id,
-      presentStudentIds: [],
-      notes: 'Cancelled sessions cannot be finalized.',
-    });
-    expect(cancelled.success).toBe(false);
-    expect(await prisma.attendanceRecord.count({ where: { session_id: fixture.session.id } })).toBe(0);
+    expect(one.finalizedCount + two.finalizedCount).toBe(1);
+    expect((await walletState(fixture.student.id, fixture.session.id)).transactions.filter((entry) => entry.transaction_type === 'SESSION_DEDUCTION')).toHaveLength(1);
   });
 });

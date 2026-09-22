@@ -1,6 +1,7 @@
 export interface SessionCountdown {
   isPast: boolean;
   totalMs: number;
+  days: number;
   hours: number;
   minutes: number;
   seconds: number;
@@ -46,10 +47,11 @@ export function computeSessionCountdown(
   const diffMs = new Date(targetTime).getTime() - new Date(currentTime).getTime();
 
   if (diffMs <= 0) {
-    return { isPast: true, totalMs: 0, hours: 0, minutes: 0, seconds: 0, formatted: '00:00:00' };
+    return { isPast: true, totalMs: 0, days: 0, hours: 0, minutes: 0, seconds: 0, formatted: '00:00:00:00' };
   }
 
-  const hours = Math.floor(diffMs / 3_600_000);
+  const days = Math.floor(diffMs / 86_400_000);
+  const hours = Math.floor((diffMs % 86_400_000) / 3_600_000);
   const minutes = Math.floor((diffMs % 3_600_000) / 60_000);
   const seconds = Math.floor((diffMs % 60_000) / 1_000);
   const pad = (value: number) => value.toString().padStart(2, '0');
@@ -57,10 +59,11 @@ export function computeSessionCountdown(
   return {
     isPast: false,
     totalMs: diffMs,
+    days,
     hours,
     minutes,
     seconds,
-    formatted: `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`,
+    formatted: `${pad(days)}:${pad(hours)}:${pad(minutes)}:${pad(seconds)}`,
   };
 }
 
@@ -72,11 +75,11 @@ export function getSessionTimingTarget(
   const nowMs = new Date(currentTime).getTime();
   const startMs = new Date(startTime).getTime();
   const endMs = new Date(endTime).getTime();
-  const isActive = nowMs >= startMs && nowMs <= endMs;
+  const isActive = nowMs >= startMs && nowMs < endMs;
 
   return {
     targetTimestamp: isActive ? endTime : startTime,
     isActive,
-    hasEnded: nowMs > endMs,
+    hasEnded: nowMs >= endMs,
   };
 }

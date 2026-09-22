@@ -1,8 +1,6 @@
 import Link from 'next/link';
 import { ArrowRight, CalendarClock, CheckCircle2 } from 'lucide-react';
 import { formatDateTime, formatTime } from '@/shared/utils/date-format';
-import { resolveEffectiveSessionTiming } from '@/shared/utils/session-timing';
-import type { LocalScheduleException } from '@/features/sessions/components/weekly-session-schedule';
 import type { GadwalSessionItem } from '@/features/sessions/types';
 
 export function NeedsAttention({ sessions }: { sessions: GadwalSessionItem[] }) {
@@ -22,13 +20,22 @@ export function NeedsAttention({ sessions }: { sessions: GadwalSessionItem[] }) 
       ) : (
         <div className="mt-4 divide-y divide-stone-100">
           {sessions.slice(0, 4).map((session) => (
-            <Link key={session.id} href={`/tutor/attendance/${session.id}`} className="flex min-h-[56px] items-center justify-between gap-3 rounded-lg px-2 py-3 text-sm transition-colors hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
-              <span className="min-w-0">
-                <span className="block truncate font-semibold text-stone-900">{session.title}</span>
-                <span className="block text-xs text-stone-500">{session.sessionCode || session.sessionType}</span>
-              </span>
-              <ArrowRight className="h-4 w-4 shrink-0 text-stone-400" aria-hidden="true" />
-            </Link>
+            session.attendanceWindowState === 'CLOSED' && !session.attendanceSavedAt ? (
+              <div key={session.id} className="flex min-h-[56px] items-center justify-between gap-3 rounded-lg px-2 py-3 text-sm">
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold text-stone-900">{session.title}</span>
+                  <span className="block text-xs font-medium text-brand-primary">Attendance missed · unrecorded</span>
+                </span>
+              </div>
+            ) : (
+              <Link key={session.id} href={`/tutor/attendance/${session.id}`} className="flex min-h-[56px] items-center justify-between gap-3 rounded-lg px-2 py-3 text-sm transition-colors hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold text-stone-900">{session.title}</span>
+                  <span className="block text-xs text-stone-500">{session.sessionCode || session.sessionType} · Attendance open</span>
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-stone-400" aria-hidden="true" />
+              </Link>
+            )
           ))}
         </div>
       )}
@@ -38,13 +45,11 @@ export function NeedsAttention({ sessions }: { sessions: GadwalSessionItem[] }) 
 
 export function SchedulePreview({
   sessions,
-  exceptions,
 }: {
   sessions: GadwalSessionItem[];
-  exceptions: Record<string, LocalScheduleException>;
 }) {
   const previewSessions = [...sessions]
-    .filter((session) => session.status !== 'CANCELLED')
+    .filter((session) => session.status !== 'CANCELLED' && session.status !== 'COMPLETED')
     .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
     .slice(0, 2);
 
@@ -61,15 +66,13 @@ export function SchedulePreview({
         {previewSessions.length === 0 ? (
           <p className="py-2 text-xs text-stone-500">No scheduled sessions.</p>
         ) : previewSessions.map((session) => {
-          const exception = exceptions[session.id];
-          const timing = resolveEffectiveSessionTiming(session.startTime, session.endTime, exception?.effectiveStartTime);
           return (
             <div key={session.id} className="flex items-start gap-2.5 py-2.5">
               <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-semibold text-stone-900">{session.title}</p>
-                <p className="mt-0.5 text-[11px] text-stone-500">{formatDateTime(timing.startTime)}–{formatTime(timing.endTime)}</p>
-                {exception && <p className="mt-0.5 text-[11px] font-medium text-amber-800">One-off · {exception.reason}</p>}
+                <p className="mt-0.5 text-[11px] text-stone-500">{formatDateTime(session.startTime)}–{formatTime(session.endTime)}</p>
+                {session.isRescheduled && <p className="mt-0.5 text-[11px] font-medium text-amber-800">Rescheduled occurrence</p>}
               </div>
             </div>
           );

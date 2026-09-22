@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { Search, ChevronDown, Check, X } from 'lucide-react';
 
 export interface ComboboxOption {
@@ -34,6 +35,77 @@ export interface MultiComboboxProps {
   className?: string;
 }
 
+interface MenuPosition {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+}
+
+const VIEWPORT_MARGIN = 8;
+const MENU_GAP = 6;
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? React.useEffect : React.useLayoutEffect;
+
+function useFloatingMenu(
+  isOpen: boolean,
+  triggerRef: React.RefObject<HTMLElement>,
+  menuRef: React.RefObject<HTMLElement>,
+  contentKey: string | number,
+) {
+  const [position, setPosition] = React.useState<MenuPosition | null>(null);
+
+  const updatePosition = React.useCallback(() => {
+    if (!isOpen || !triggerRef.current || typeof window === 'undefined') {
+      setPosition(null);
+      return;
+    }
+
+    const trigger = triggerRef.current.getBoundingClientRect();
+    const availableWidth = Math.max(window.innerWidth - VIEWPORT_MARGIN * 2, 0);
+    const width = Math.min(trigger.width, availableWidth);
+    const maxLeft = Math.max(VIEWPORT_MARGIN, window.innerWidth - width - VIEWPORT_MARGIN);
+    const left = Math.min(Math.max(trigger.left, VIEWPORT_MARGIN), maxLeft);
+    const menuHeight = menuRef.current?.getBoundingClientRect().height ?? 0;
+    const belowTop = trigger.bottom + MENU_GAP;
+    const canFitBelow = menuHeight === 0 || belowTop + menuHeight <= window.innerHeight - VIEWPORT_MARGIN;
+    const canFitAbove = menuHeight > 0 && trigger.top - MENU_GAP - menuHeight >= VIEWPORT_MARGIN;
+    const top = canFitBelow
+      ? belowTop
+      : canFitAbove
+        ? trigger.top - MENU_GAP - menuHeight
+        : Math.max(VIEWPORT_MARGIN, Math.min(belowTop, window.innerHeight - VIEWPORT_MARGIN - menuHeight));
+
+    setPosition({
+      top,
+      left,
+      width,
+      maxHeight: Math.max(window.innerHeight - top - VIEWPORT_MARGIN, 1),
+    });
+  }, [isOpen, menuRef, triggerRef]);
+
+  useIsomorphicLayoutEffect(() => {
+    updatePosition();
+  }, [contentKey, updatePosition]);
+
+  React.useEffect(() => {
+    if (!isOpen || typeof window === 'undefined') return;
+
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updatePosition);
+    if (resizeObserver && menuRef.current) resizeObserver.observe(menuRef.current);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+      resizeObserver?.disconnect();
+    };
+  }, [isOpen, menuRef, updatePosition]);
+
+  return position;
+}
+
 export function Combobox({
   options,
   value,
@@ -49,6 +121,8 @@ export function Combobox({
   const [searchQuery, setSearchQuery] = React.useState('');
   const [highlightedIndex, setHighlightedIndex] = React.useState(0);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   const selectedOption = options.find((opt) => opt.value === value);
@@ -62,11 +136,13 @@ export function Combobox({
         (opt.sublabel && opt.sublabel.toLowerCase().includes(query))
     );
   }, [options, searchQuery]);
+  const menuPosition = useFloatingMenu(isOpen, triggerRef, menuRef, filteredOptions.length);
 
   // Click outside to close
   React.useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!containerRef.current?.contains(target) && !menuRef.current?.contains(target)) {
         setIsOpen(false);
         setSearchQuery('');
       }
@@ -113,12 +189,13 @@ export function Combobox({
   };
 
   return (
-    <div ref={containerRef} className={`relative w-full ${className}`}>
+    <div ref={containerRef} className={`relative min-w-0 w-full ${className}`}>
       {/* Hidden input for HTML form submissions */}
       {name && <input type="hidden" name={name} value={value} required={required} />}
 
       {/* Trigger Button */}
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         onClick={() => {
@@ -154,15 +231,26 @@ export function Combobox({
           className={`h-4 w-4 text-stone-400 shrink-0 transition-transform ${
             isOpen ? 'rotate-180 text-brand-primary' : ''
           }`}
+          aria-hidden="true"
         />
       </button>
 
       {/* Dropdown Menu */}
-      {isOpen && (
-        <div className="absolute z-50 mt-1.5 w-full bg-white rounded-xl border border-stone-200 shadow-lg overflow-hidden py-1">
+      {isOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            top: menuPosition?.top ?? 0,
+            left: menuPosition?.left ?? 0,
+            width: menuPosition?.width ?? 0,
+            maxHeight: menuPosition?.maxHeight,
+            visibility: menuPosition ? 'visible' : 'hidden',
+          }}
+          className="fixed z-[100] flex max-w-full flex-col overflow-hidden rounded-xl border border-stone-200 bg-white py-1 shadow-lg"
+        >
           {/* Search Field */}
-          <div className="px-2.5 py-1.5 border-b border-stone-100 flex items-center gap-2">
-            <Search className="h-4 w-4 text-stone-400 shrink-0" />
+          <div className="flex shrink-0 items-center gap-2 border-b border-stone-100 px-2.5 py-1.5">
+            <Search className="h-4 w-4 text-stone-400 shrink-0" aria-hidden="true" />
             <input
               ref={inputRef}
               type="text"
@@ -173,21 +261,23 @@ export function Combobox({
               }}
               onKeyDown={handleKeyDown}
               placeholder={searchPlaceholder}
-              className="min-h-[36px] w-full bg-transparent text-sm text-stone-900 placeholder-stone-400 focus:outline-none"
+              className="min-h-[44px] min-w-0 w-full bg-transparent text-sm text-stone-900 placeholder-stone-400 focus:outline-none"
+              aria-label={searchPlaceholder}
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="min-h-[32px] min-w-[32px] flex items-center justify-center text-stone-400 hover:text-stone-600 rounded"
+                className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded text-stone-400 hover:text-stone-600"
+                aria-label="Clear search"
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
             )}
           </div>
 
           {/* Options List */}
-          <div className="max-h-60 overflow-y-auto py-1">
+          <div className="min-h-0 flex-1 overflow-y-auto py-1" role="listbox">
             {filteredOptions.length === 0 ? (
               <div className="px-4 py-3 text-xs text-stone-500 text-center">
                 No matching options found.
@@ -201,6 +291,8 @@ export function Combobox({
                   <button
                     key={option.value}
                     type="button"
+                    role="option"
+                    aria-selected={isSelected}
                     onClick={() => {
                       onChange(option.value);
                       setIsOpen(false);
@@ -215,7 +307,7 @@ export function Combobox({
                         : 'text-stone-700 hover:bg-stone-50'
                     }`}
                   >
-                    <div className="truncate">
+                    <div className="min-w-0 truncate">
                       <span className="block truncate">{option.label}</span>
                       {option.sublabel && (
                         <span className="block text-xs text-stone-500 font-normal">
@@ -224,14 +316,15 @@ export function Combobox({
                       )}
                     </div>
                     {isSelected && (
-                      <Check className="h-4 w-4 text-brand-primary shrink-0 ml-2" />
+                      <Check className="h-4 w-4 text-brand-primary shrink-0 ml-2" aria-hidden="true" />
                     )}
                   </button>
                 );
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -253,6 +346,8 @@ export function MultiCombobox({
   const [searchQuery, setSearchQuery] = React.useState('');
   const [highlightedIndex, setHighlightedIndex] = React.useState(0);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const selectedOptions = options.filter((option) => values.includes(option.value));
   const filteredOptions = React.useMemo(() => {
@@ -260,10 +355,12 @@ export function MultiCombobox({
     if (!query) return options;
     return options.filter((option) => option.label.toLowerCase().includes(query) || option.sublabel?.toLowerCase().includes(query));
   }, [options, searchQuery]);
+  const menuPosition = useFloatingMenu(isOpen, triggerRef, menuRef, filteredOptions.length);
 
   React.useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!containerRef.current?.contains(target) && !menuRef.current?.contains(target)) {
         setIsOpen(false);
         setSearchQuery('');
       }
@@ -308,9 +405,10 @@ export function MultiCombobox({
   }
 
   return (
-    <div ref={containerRef} className={`relative w-full ${className}`}>
+    <div ref={containerRef} className={`relative min-w-0 w-full ${className}`}>
       {name && values.map((value) => <input key={value} type="hidden" name={name} value={value} />)}
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         onClick={() => { setIsOpen((current) => !current); setTimeout(() => inputRef.current?.focus(), 50); }}
@@ -330,9 +428,19 @@ export function MultiCombobox({
         <ChevronDown className={`absolute right-3 top-3.5 h-4 w-4 text-stone-400 transition-transform ${isOpen ? 'rotate-180 text-brand-primary' : ''}`} aria-hidden="true" />
       </button>
 
-      {isOpen && (
-        <div className="absolute z-50 mt-1.5 w-full overflow-hidden rounded-xl border border-stone-200 bg-white py-1 shadow-lg">
-          <div className="flex items-center gap-2 border-b border-stone-100 px-2.5 py-1.5">
+      {isOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            top: menuPosition?.top ?? 0,
+            left: menuPosition?.left ?? 0,
+            width: menuPosition?.width ?? 0,
+            maxHeight: menuPosition?.maxHeight,
+            visibility: menuPosition ? 'visible' : 'hidden',
+          }}
+          className="fixed z-[100] flex max-w-full flex-col overflow-hidden rounded-xl border border-stone-200 bg-white py-1 shadow-lg"
+        >
+          <div className="flex shrink-0 items-center gap-2 border-b border-stone-100 px-2.5 py-1.5">
             <Search className="h-4 w-4 shrink-0 text-stone-400" aria-hidden="true" />
             <input
               ref={inputRef}
@@ -340,12 +448,12 @@ export function MultiCombobox({
               onChange={(event) => { setSearchQuery(event.target.value); setHighlightedIndex(0); }}
               onKeyDown={handleKeyDown}
               placeholder={searchPlaceholder}
-              className="min-h-[36px] w-full bg-transparent text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none"
+              className="min-h-[44px] min-w-0 w-full bg-transparent text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none"
               aria-label={searchPlaceholder}
             />
-            {searchQuery && <button type="button" onClick={() => setSearchQuery('')} className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center rounded text-stone-400 hover:text-stone-700" aria-label="Clear student search"><X className="h-3.5 w-3.5" aria-hidden="true" /></button>}
+            {searchQuery && <button type="button" onClick={() => setSearchQuery('')} className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded text-stone-400 hover:text-stone-700" aria-label="Clear student search"><X className="h-3.5 w-3.5" aria-hidden="true" /></button>}
           </div>
-          <div className="max-h-64 overflow-y-auto py-1" role="listbox" aria-multiselectable="true">
+          <div className="min-h-0 flex-1 overflow-y-auto py-1" role="listbox" aria-multiselectable="true">
             {filteredOptions.length === 0 ? <div className="px-4 py-3 text-center text-xs text-stone-500">{emptyMessage}</div> : filteredOptions.map((option, index) => {
               const isSelected = values.includes(option.value);
               const isAtCapacity = !isSelected && values.length >= maxSelections;
@@ -366,8 +474,9 @@ export function MultiCombobox({
               );
             })}
           </div>
-          <div className="border-t border-stone-100 px-3 py-2 text-xs text-stone-500">{values.length} of {maxSelections} selected</div>
-        </div>
+          <div className="shrink-0 border-t border-stone-100 px-3 py-2 text-xs text-stone-500">{values.length} of {maxSelections} selected</div>
+        </div>,
+        document.body,
       )}
     </div>
   );

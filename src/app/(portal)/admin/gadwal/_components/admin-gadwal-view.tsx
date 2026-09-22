@@ -4,14 +4,12 @@ import * as React from 'react';
 import { motion } from 'motion/react';
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
-import { cancelAdminSession, deleteAdminSession } from '../actions';
-import {
-  GadwalTable,
-  type GadwalSessionItem,
-} from '@/features/sessions/components/gadwal-table';
+import { cancelAdminSeries } from '../actions';
+import { WeeklySeriesTable, type WeeklySeriesItem } from '@/features/sessions/components/series-table';
 
 interface AdminGadwalViewProps {
-  sessions: GadwalSessionItem[];
+  series: WeeklySeriesItem[];
+  tutorFilter?: { id: string; name: string | null };
 }
 
 const containerVariants = {
@@ -33,7 +31,7 @@ const itemVariants = {
   },
 };
 
-export function AdminGadwalView({ sessions }: AdminGadwalViewProps) {
+export function AdminGadwalView({ series, tutorFilter }: AdminGadwalViewProps) {
   return (
     <motion.div
       variants={containerVariants}
@@ -56,17 +54,24 @@ export function AdminGadwalView({ sessions }: AdminGadwalViewProps) {
             Admin Gadwal Management (إدارة الجدول)
           </h1>
           <p className="text-xs sm:text-sm text-stone-500 mt-1 line-clamp-2">
-            Schedule private and group tutoring sessions with policy-controlled pricing and persisted rosters.
+            Weekly teaching assignments materialize concrete occurrences for attendance, completion, and wallet history.
           </p>
         </div>
         <Link href="/admin/gadwal/new" className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-lg bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2">
           <Plus className="h-4 w-4" aria-hidden="true" />
-          New Session
+          New Weekly Series
         </Link>
       </motion.div>
 
+      {tutorFilter && (
+        <motion.div variants={itemVariants} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-border/70 bg-brand-subtle px-4 py-3 text-sm text-stone-700">
+          <span>Showing weekly series for <strong className="text-stone-900">{tutorFilter.name || 'Tutor profile incomplete'}</strong> <span className="text-xs text-stone-500">({tutorFilter.id})</span></span>
+          <Link href="/admin/gadwal" className="inline-flex min-h-[44px] items-center rounded-lg border border-brand-border bg-white px-3 py-2 text-xs font-semibold text-brand-primary hover:bg-brand-subtle">Clear Tutor filter</Link>
+        </motion.div>
+      )}
+
       <motion.div variants={itemVariants}>
-        <GadwalTable sessions={sessions} showAdminActions onDeleteSession={deleteAdminSession} onCancelSession={cancelAdminSession} />
+        <WeeklySeriesTable series={series} onCancelSeries={cancelAdminSeries} />
       </motion.div>
     </motion.div>
   );

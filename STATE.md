@@ -1,27 +1,36 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Active Branch:** `001-backend-attendance-persistence`
-- **Latest Completed Task:** Iteration 001 now includes real database-backed role authentication, exact role portal guards, and secure Student/Admin backend boundaries alongside durable attendance and financial reconciliation.
-- **Last Completed Work:** Animated all pages across the Admin Dashboard and clarified "Cohorts" domain semantics:
-  1. Route-Level Page Transitions: Wrapped `AdminLayout` content canvas in `motion.div` keyed by `pathname` for smooth fade/elevation transitions between sibling routes.
-  2. Overview (`/admin`): Staggered entry for executive header, 4 KPI cards with micro-elevation hover interactions, Wallet Solvency Sentinel, and recent sessions list.
-  3. Gadwal Timetable (`/admin/gadwal`): Extracted `AdminGadwalView` client orchestrator with staggered entry across header, `ScheduleSessionCard`, and `GadwalTable` (reduced page orchestrator to 11 lines).
-  4. Faculty Mentors (`/admin/mentors`): Staggered cascade for mentor cards with interactive hover lift, displaying certified mentors and their assigned session cohort counts.
-  5. Platform Policies (`/admin/policies`): Staggered policy forms with `AnimatePresence` toast notifications and token-compliant brand styling.
-  6. Wallets & Financials (`/admin/wallets`): Animated header, overdraft warning indicator, and student ledger card.
-- **Immediate Next Move:** Commit and push the verified authentication correction on branch `001-backend-attendance-persistence`.
-- **Blockers / Open Decisions:** None for Iteration 001; screenshot evidence remains intentionally local/deferred.
+- **Active Branch:** `002-backend-recurring-sessions-and-accounts`
+- **Latest Completed Task:** Final Tutor attendance/scheduling behavior pass is complete pending final checkpoint review; Iteration 001 remains committed at `08e0164`.
+- **Last Completed Work:** Added bounded recurring-session materialization, scoped weekly Gadwal reads, complete edit/cancel scope handling, and secure Admin Tutor/Student account setup:
+  1. `SessionSeries` owns weekly assignments; concrete `Session` rows remain authoritative for attendance, wallets, completion, cancellation, and audit history.
+  2. Materialization is Cairo-aware, bounded to 12 weeks, idempotent, concurrency-tested, and stops for ended/cancelled series.
+  3. Admin Gadwal supports Tutor filtering, clearing, and all edit/cancel scopes while preserving history-bearing occurrences.
+  4. Admin provisioning is limited to Tutor and Student; partial Students complete a one-time hashed-token setup flow that atomically activates the account and establishes the normal session.
+  5. Active Tutor/Student password reset is a separate purpose-scoped, hashed, short-lived, revocable, atomic one-time token flow; reset changes only the password and returns the user to normal login.
+  6. Shared Combobox clipping is fixed; Cairo-safe date defaults and responsive overflow fixes were verified visually. Tutor countdown now shows DAYS / HOURS / MINUTES / SECONDS.
+  7. Tutor attendance is manual, opens at the concrete Session start, remains editable through end plus policy grace, and finalizes wallet state only after the grace close.
+  8. Concrete Session rows now own effective one-occurrence postpones; the weekly SessionSeries pattern remains unchanged.
+  9. Public/student attendance-link behavior and new token issuance were removed while historical token storage remains intact.
+- **Immediate Next Move:** Review the final checkpoint evidence and commit only if the requested release decision is affirmative; do not push automatically.
+- **Blockers / Open Decisions:** Production Prisma migration history remains unresolved; production deployment still requires an explicit migration strategy and a scheduled authenticated POST to `/api/internal/attendance/finalize` with `CRON_SECRET`. Development schema changes were applied additively after database identity checks; no destructive history cleanup was performed.
 
 ## Tier 2 Verification
-- **Security:** Repository secret/env sentinel clean (machine-verified); bcrypt password verification, signed HttpOnly sessions, production AUTH_SECRET fail-closed behavior, exact portal role guards, Admin wallet authorization, Tutor ownership/IDOR resistance, durable roster membership, and generic authentication failures agent-reviewed.
-- **Persistence:** `Session.attendance_notes` and durable `SessionParticipant` membership are applied to the local PostgreSQL schema. Attendance replacement, notes, final `COMPLETED` status, and immutable wallet reconciliation commit in one serializable Prisma transaction; an explicitly reviewed empty present list remains valid.
-- **Performance:** Frontend static architecture checks pass (machine-verified); the mutation performs bounded per-participant reconciliation (`R <= 4`) with no unbounded work. Runtime latency is not-verified at this tier.
-- **Tests:** Full Vitest suite passing (129/129, machine-verified) against the dedicated `tutoring_platform_test` database; the test guard confirmed it is distinct from `tutoring_platform_db`. Coverage includes PRIVATE/GROUP rosters, explicit session assignment, financial reconciliation, serializable concurrency, real password/session authentication, generic credential failures, role redirects, exact portal middleware guards, logout, Student identity fail-closed behavior, and Admin wallet authorization.
-- **Visual:** Authenticated Attendance, Agenda, History, and Timetable audits pass at 375px, 768px, and 1440px with HTTP 200, zero horizontal spill, and compliant touch targets/form text (agent-reviewed from captured snapshots).
-- **Revisor:** Token purity, route isolation, and UI architecture pass (machine-verified); the implementation reuses `AttendanceRecord`, the durable roster relation, `created_by_user_id` ledger provenance, the auth helper, and route loaders without a new provider or persistence layer.
-- **Deferred/local-only:** Screenshot evidence remains browser-local and excluded from the server payload; timetable/reschedule exceptions remain in local storage.
-- **Checkpoint:** Verification refreshed on `001-backend-attendance-persistence`; isolated database guard, full application gates, and Tier-2 checkpoint evidence are green. The authentication correction and shared session validation fix are ready for normal commit and push.
+- **Security:** Repository secret/env sentinel clean (machine-verified); the secure due-attendance finalizer exists, with Tutor ownership, pre-start/after-close fail-closed attendance mutation, Student mutation removal, authenticated scheduler trigger, finalizer idempotency, and history-preserving cleanup agent-reviewed.
+- **Performance:** Frontend static architecture checks pass (machine-verified); recurrence materialization remains bounded to 12 weeks and scoped to the selected Tutor. Runtime latency is not-verified at this tier.
+- **Tests:** Full Vitest suite passing (144/144, machine-verified) against isolated `tutoring_platform_test`, distinct from `tutoring_platform_db`; attendance regression verification remains green, covering attendance-window boundaries, final-state wallet settlement, concurrent finalization, recurring occurrence edits, postpone isolation, scheduler authentication, and timer boundaries.
+- **Visual:** Authenticated `/tutor/agenda`, `/tutor/attendance/[sessionId]`, and `/tutor/timetable` audits passed at 375px, 768px, and 1440px with zero horizontal spill and 100% measured touch/font compliance; screenshots were manually inspected.
+- **Revisor:** Token purity, route isolation, UI architecture, and concrete-occurrence ownership pass (machine-verified); completed/cancelled timetable rows no longer expose a misleading postpone affordance.
+- **Database:** Test verification used only `tutoring_platform_test`. Development identity was separately proved as `tutoring_platform_db`; two named stale Sessions were retained because each had attendance history, and the named Robotics Session was deleted only after proving zero attendance, financial, participant, and audit dependencies. Schema changes were additive.
+- **Checkpoint:** Prisma validation, TypeScript, lint, isolated full tests, production build, diff-check, authenticated Tutor visual audit, and checkpoint Tier-2 machine evidence are green after the final UI correction; no commit or push performed.
+
+## Final Tutor Attendance/Scheduling Pass
+- **Attendance timing:** `attendanceOpensAt = Session.start_time`; `attendanceClosesAt = Session.end_time + PlatformPolicy.checkInWindowHours`.
+- **Canonical owners:** `deadline.ts` owns timing semantics; concrete `Session` rows own effective occurrence times; `finalizeDueAttendance` owns post-grace financial settlement.
+- **Wallet behavior:** Save/edit writes roster state only. At close, PRESENT reconciles to exactly one net charge, ABSENT to zero, and repeated/concurrent finalization is idempotent.
+- **Link removal:** Tutor copy/generate/link actions and public Student attendance routes were removed. Historical token columns and compatibility storage remain non-functional.
+- **Deployment requirement:** Configure a production scheduler to POST the internal finalizer route with `CRON_SECRET`; exact-time background execution is not provided by the local app automatically.
 
 ## Milestone Checklist
 - [x] Scaffold Feature-Driven Unidirectional directory tree

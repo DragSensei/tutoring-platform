@@ -48,8 +48,10 @@ describe('server authentication contract', () => {
       id: testPayload.userId,
       email: testPayload.email,
       name: testPayload.name,
+      phone: '+201000000001',
       role: testPayload.role,
       password_hash: passwordHash,
+      account_status: 'ACTIVE',
     } as never);
 
     const result = await authenticateUser({ identifier: testPayload.email, password: 'password123' });
@@ -76,8 +78,10 @@ describe('server authentication contract', () => {
       id: 'tutor-1',
       email: 'tutor@example.com',
       name: 'Tutor One',
+      phone: '+201000000002',
       role: 'TUTOR',
       password_hash: passwordHash,
+      account_status: 'ACTIVE',
     } as never);
 
     const result = await authenticateUser({ identifier: '+201000000002', password: 'password123' });
@@ -109,6 +113,42 @@ describe('server authentication contract', () => {
 
     expect(unknown).toEqual({ success: false, error: 'Invalid email or password' });
     expect(wrong).toEqual({ success: false, error: 'Invalid email or password' });
+    expect(cookieStore.set).not.toHaveBeenCalled();
+  });
+
+  it('does not disclose password-setup state before credential authentication', async () => {
+    vi.mocked(prisma.user.findFirst).mockResolvedValue({
+      id: 'pending-credentials',
+      email: 'pending@example.com',
+      name: 'Pending Student',
+      phone: '+201000000003',
+      role: 'STUDENT',
+      password_hash: null,
+      account_status: 'PENDING_CREDENTIALS',
+    } as never);
+
+    await expect(authenticateUser({ identifier: 'pending@example.com', password: 'password123' })).resolves.toEqual({
+      success: false,
+      error: 'Invalid email or password',
+    });
+  });
+
+  it('keeps a valid-password incomplete profile out of normal portal authentication', async () => {
+    const passwordHash = await hashPassword('password123');
+    vi.mocked(prisma.user.findFirst).mockResolvedValue({
+      id: 'pending-profile',
+      email: 'profile@example.com',
+      name: null,
+      phone: '+201000000004',
+      role: 'STUDENT',
+      password_hash: passwordHash,
+      account_status: 'PENDING_PROFILE',
+    } as never);
+
+    await expect(authenticateUser({ identifier: 'profile@example.com', password: 'password123' })).resolves.toMatchObject({
+      success: false,
+      code: 'PROFILE_COMPLETION_REQUIRED',
+    });
     expect(cookieStore.set).not.toHaveBeenCalled();
   });
 

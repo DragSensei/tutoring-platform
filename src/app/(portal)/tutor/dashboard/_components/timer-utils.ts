@@ -1,7 +1,6 @@
 import type { GadwalSessionItem } from '@/features/sessions/types';
 import {
   computeSessionCountdown,
-  resolveEffectiveSessionTiming,
   type SessionCountdown,
 } from '@/shared/utils/session-timing';
 
@@ -14,7 +13,6 @@ export interface ClosestSessionDue {
   endTime: string;
   baseStartTime: string;
   deadline: string;
-  token: string;
   attendeeCount: number;
   assignedStudents?: string[];
   isCurrentlyActive: boolean;
@@ -24,46 +22,38 @@ export interface ClosestSessionDue {
   initialCountdown: SessionCountdown;
 }
 
-export interface SessionTimingOverride {
-  effectiveStartTime: string;
-  reason: string;
-}
-
 export function findClosestSessionDue(
   sessions: GadwalSessionItem[],
   currentTime: Date | string | number = new Date(),
-  overrides: Record<string, SessionTimingOverride> = {}
 ): ClosestSessionDue | null {
   const now = new Date(currentTime);
   const nowMs = now.getTime();
 
-  // Timing is intentionally independent from the 4-hour attendance deadline.
+  // Timing is intentionally independent from the attendance grace close.
   const candidates = sessions
     .filter((session) => session.status !== 'CANCELLED' && session.status !== 'COMPLETED')
     .map((session) => {
-      const override = overrides[session.id];
-      const effectiveTiming = resolveEffectiveSessionTiming(
-        session.startTime,
-        session.endTime,
-        override?.effectiveStartTime
-      );
-      const effectiveStartMs = new Date(effectiveTiming.startTime).getTime();
-      const effectiveEndMs = new Date(effectiveTiming.endTime).getTime();
-
-      return { session, override, effectiveStartMs, effectiveEndMs };
+      const effectiveStartMs = new Date(session.startTime).getTime();
+      const effectiveEndMs = new Date(session.endTime).getTime();
+      return { session, effectiveStartMs, effectiveEndMs };
     })
     .filter(({ effectiveStartMs, effectiveEndMs }) =>
-      Number.isFinite(effectiveStartMs) && Number.isFinite(effectiveEndMs) && effectiveEndMs >= nowMs
+      Number.isFinite(effectiveStartMs) && Number.isFinite(effectiveEndMs) && effectiveEndMs > nowMs
     );
 
   if (candidates.length === 0) {
     return null;
   }
 
-  candidates.sort((a, b) => a.effectiveStartMs - b.effectiveStartMs);
+  const live = candidates
+    .filter(({ effectiveStartMs }) => effectiveStartMs <= nowMs)
+    .sort((a, b) => a.effectiveStartMs - b.effectiveStartMs);
+  const future = candidates
+    .filter(({ effectiveStartMs }) => effectiveStartMs > nowMs)
+    .sort((a, b) => a.effectiveStartMs - b.effectiveStartMs);
 
-  const closest = candidates[0];
-  const isCurrentlyActive = nowMs >= closest.effectiveStartMs && nowMs <= closest.effectiveEndMs;
+  const closest = live[0] || future[0];
+  const isCurrentlyActive = nowMs >= closest.effectiveStartMs && nowMs < closest.effectiveEndMs;
   const targetTime = isCurrentlyActive ? closest.effectiveEndMs : closest.effectiveStartMs;
   const initialCountdown = computeSessionCountdown(targetTime, now);
 
@@ -77,14 +67,13 @@ export function findClosestSessionDue(
     sessionType: closest.session.sessionType,
     startTime: effectiveStartTime,
     endTime: effectiveEndTime,
-    baseStartTime: closest.session.startTime,
+    baseStartTime: closest.session.baseStartTime || closest.session.startTime,
     deadline: closest.session.deadline,
-    token: closest.session.token,
     attendeeCount: closest.session.attendeeCount,
     assignedStudents: closest.session.assignedStudents,
     isCurrentlyActive,
-    isRescheduled: Boolean(closest.override),
-    rescheduleReason: closest.override?.reason,
+    isRescheduled: Boolean(closest.session.isRescheduled),
+    rescheduleReason: closest.session.rescheduleReason || undefined,
     targetTimestamp: new Date(targetTime).toISOString(),
     initialCountdown,
   };

@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
 
     const result = await authenticateUser(validation.data);
     if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 401 });
+      const status = result.code === 'PROFILE_COMPLETION_REQUIRED' ? 409 : 401;
+      return NextResponse.json({ error: result.error, code: result.code }, { status });
     }
 
     return NextResponse.json({ success: true, user: result.user });

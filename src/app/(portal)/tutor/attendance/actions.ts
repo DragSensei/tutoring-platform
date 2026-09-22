@@ -6,16 +6,17 @@ import {
   tutorAttendanceSchema,
   type TutorAttendanceInput,
 } from '@/features/attendance/schemas';
-import { reconcileSessionFinancialState } from '@/features/attendance/server/session-financials';
 import { prisma } from '@/shared/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { CHECKIN_WINDOW_HOURS, computeAttendanceClosesAt, isAttendanceWindowOpen } from '@/shared/utils/deadline';
 
 export type SaveTutorAttendanceResult =
   | { success: true; sessionId: string; presentCount: number }
   | { success: false; message: string };
 
 export async function saveTutorAttendance(
-  input: TutorAttendanceInput
+  input: TutorAttendanceInput,
+  currentTime = new Date(),
 ): Promise<SaveTutorAttendanceResult> {
   let tutorId: string;
   try {
@@ -37,7 +38,7 @@ export async function saveTutorAttendance(
 
   try {
     await prisma.$transaction(
-      (tx) => persistTutorAttendance(tx, { tutorId, sessionId, presentStudentIds, notes }),
+      (tx) => persistTutorAttendance(tx, { tutorId, sessionId, presentStudentIds, notes, currentTime }),
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
   } catch (error) {
@@ -61,16 +62,35 @@ export async function saveTutorAttendance(
 
 async function persistTutorAttendance(
   tx: Prisma.TransactionClient,
-  input: TutorAttendanceInput & { tutorId: string }
+  input: TutorAttendanceInput & { tutorId: string; currentTime: Date }
 ) {
   const session = await tx.session.findFirst({
     where: { id: input.sessionId, tutor_id: input.tutorId },
-    select: { id: true, session_type: true, status: true },
+    select: { id: true, status: true, start_time: true, end_time: true, attendance_finalized_at: true },
   });
 
   if (!session) throw new AttendanceAccessError();
   if (session.status === 'CANCELLED') {
     throw new AttendanceStateError('Cancelled sessions cannot record attendance.');
+  }
+  if (session.status === 'COMPLETED' || session.attendance_finalized_at) {
+    throw new AttendanceStateError('Attendance for this session is already finalized.');
+  }
+
+  const policy = await tx.platformPolicy.findUnique({
+    where: { id: 'default' },
+    select: { check_in_window_hours: true },
+  });
+  const attendanceClosesAt = computeAttendanceClosesAt(
+    session.end_time,
+    policy?.check_in_window_hours ?? CHECKIN_WINDOW_HOURS,
+  );
+  if (!isAttendanceWindowOpen(session.start_time, attendanceClosesAt, input.currentTime)) {
+    throw new AttendanceStateError(
+      input.currentTime < session.start_time
+        ? 'Attendance opens when the session starts.'
+        : 'The attendance window has closed.'
+    );
   }
 
   const participants = await tx.sessionParticipant.findMany({
@@ -106,22 +126,11 @@ async function persistTutorAttendance(
     });
   }
 
-  const presentIds = new Set(input.presentStudentIds);
-  for (const participant of participants) {
-    await reconcileSessionFinancialState(tx, {
-      sessionId: session.id,
-      studentId: participant.student_id,
-      sessionType: session.session_type,
-      present: presentIds.has(participant.student_id),
-      occurredAt: new Date(),
-    });
-  }
-
   await tx.session.update({
     where: { id: session.id },
     data: {
       attendance_notes: input.notes,
-      status: 'COMPLETED',
+      attendance_saved_at: input.currentTime,
     },
   });
 }

@@ -83,6 +83,7 @@ export async function authenticateUser(input: LoginInput): Promise<{
   success: boolean;
   user?: SessionPayload;
   error?: string;
+  code?: 'PASSWORD_SETUP_REQUIRED' | 'PROFILE_COMPLETION_REQUIRED';
 }> {
   const identifier = input.identifier.trim();
   const user = await prisma.user.findFirst({
@@ -98,9 +99,20 @@ export async function authenticateUser(input: LoginInput): Promise<{
     return { success: false, error: 'Invalid email or password' };
   }
 
+  if (!user.password_hash) {
+    return { success: false, error: 'Invalid email or password' };
+  }
+
   const isValid = await verifyPassword(input.password, user.password_hash);
   if (!isValid) {
     return { success: false, error: 'Invalid email or password' };
+  }
+
+  if (user.account_status === 'PENDING_PROFILE' || !user.name || !user.email || !user.phone) {
+    return { success: false, error: 'Complete your profile before entering the portal', code: 'PROFILE_COMPLETION_REQUIRED' };
+  }
+  if (user.account_status !== 'ACTIVE') {
+    return { success: false, error: 'Your account is not ready for portal access' };
   }
 
   const payload: SessionPayload = {

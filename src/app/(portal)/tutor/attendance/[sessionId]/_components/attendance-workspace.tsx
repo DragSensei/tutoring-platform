@@ -16,9 +16,8 @@ import {
   toggleStudentAttendance,
 } from '@/features/attendance/utils/attendance-review';
 import { formatDateTime, formatTime } from '@/shared/utils/date-format';
-import { resolveEffectiveSessionTiming } from '@/shared/utils/session-timing';
+import { getAttendanceWindowState } from '@/shared/utils/deadline';
 import type { GadwalSessionItem } from '@/features/sessions/types';
-import { getStoredScheduleExceptions } from '../../../dashboard/_components/session-storage';
 
 interface AttendanceWorkspaceProps {
   initialSessions: GadwalSessionItem[];
@@ -29,28 +28,20 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
   const router = useRouter();
   const initialSession = initialSessions.find((item) => item.id === sessionId) || null;
   const session: GadwalSessionItem | null = initialSession;
+  const [now, setNow] = React.useState<number | null>(null);
   const [review, setReview] = React.useState(() =>
-    createAttendanceReviewState(initialSession?.roster || [], initialSession?.status === 'COMPLETED')
+    createAttendanceReviewState(initialSession?.roster || [], Boolean(initialSession?.attendanceSavedAt || initialSession?.status === 'COMPLETED'))
   );
   const [notes, setNotes] = React.useState(initialSession?.attendanceNotes || '');
   const [evidence, setEvidence] = React.useState<LocalEvidenceMetadata | null>(null);
   const [validationError, setValidationError] = React.useState<string | null>(null);
-  const [effectiveStartTime, setEffectiveStartTime] = React.useState(initialSession?.startTime || '');
-  const [effectiveEndTime, setEffectiveEndTime] = React.useState(initialSession?.endTime || '');
   const [isPending, startTransition] = React.useTransition();
 
   React.useEffect(() => {
-    if (initialSession) {
-      const exception = getStoredScheduleExceptions()[initialSession.id];
-      const timing = resolveEffectiveSessionTiming(
-        initialSession.startTime,
-        initialSession.endTime,
-        exception?.effectiveStartTime
-      );
-      setEffectiveStartTime(timing.startTime);
-      setEffectiveEndTime(timing.endTime);
-    }
-  }, [initialSession, initialSessions, sessionId]);
+    setNow(Date.now());
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   if (!session) {
     return (
@@ -65,11 +56,19 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
   }
 
   const roster = session.roster || [];
+  const attendanceWindowState = now === null
+    ? session.attendanceWindowState || 'CLOSED'
+    : getAttendanceWindowState(session.startTime, session.attendanceClosesAt || session.deadline, now);
+  const canEditAttendance = attendanceWindowState === 'OPEN' && session.status !== 'COMPLETED';
+  const isLive = now === null
+    ? false
+    : now >= new Date(session.startTime).getTime() && now < new Date(session.endTime).getTime();
   const presentStudentIds = getPresentStudentIds(roster, review);
   const isComplete = isAttendanceWorkflowComplete(review, notes, Boolean(evidence));
-  const isEditing = session.status === 'COMPLETED';
+  const isEditing = Boolean(session.attendanceSavedAt);
 
   const completeWorkflow = () => {
+    if (!canEditAttendance) return;
     if (!isComplete) {
       setValidationError('Review attendance, add at least 12 characters of notes, and attach screenshot evidence.');
       return;
@@ -106,8 +105,11 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
             </div>
             <h1 className="mt-3 text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl">{session.title}</h1>
             <p className="mt-2 text-sm text-stone-600">
-              {formatDateTime(effectiveStartTime)}–{formatTime(effectiveEndTime)}
-              {effectiveStartTime !== session.startTime ? ` · Recurring ${formatDateTime(session.startTime)}` : ''}
+              {formatDateTime(session.startTime)}–{formatTime(session.endTime)}
+              {session.isRescheduled ? ` · Recurring ${formatDateTime(session.baseStartTime || session.startTime)}` : ''}
+            </p>
+            <p className="mt-1 text-xs font-medium text-stone-500">
+              {attendanceWindowState === 'BEFORE' ? 'Attendance opens when the session starts.' : attendanceWindowState === 'OPEN' ? (isLive ? 'Live now · attendance open' : 'Attendance open during grace') : 'Attendance closed · read-only history'}
             </p>
           </div>
           <div className="flex items-center gap-2 text-sm text-stone-600">
@@ -126,7 +128,7 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
                 {review.isReviewed ? `${presentStudentIds.length} present · ${roster.length - presentStudentIds.length} absent` : 'Review attendance before completing the session.'}
               </p>
             </div>
-            {roster.length > 0 && (
+            {roster.length > 0 && canEditAttendance && (
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" className="min-h-[44px] px-3" onClick={() => { setReview(markAllAttendance(roster, true)); setValidationError(null); }}>
                   Mark all present
@@ -144,16 +146,8 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
             <div className="divide-y divide-stone-100 p-2 sm:p-3">
               {roster.map((student) => {
                 const isPresent = Boolean(review.presenceByStudentId[student.id]);
-                return (
-                  <button
-                    key={student.id}
-                    type="button"
-                    aria-pressed={isPresent}
-                    onClick={() => { setReview((current) => toggleStudentAttendance(current, student.id)); setValidationError(null); }}
-                    className={`flex min-h-[64px] w-full items-center justify-between gap-4 rounded-xl px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary sm:px-4 ${
-                      isPresent ? 'bg-brand-subtle/40' : 'hover:bg-stone-50'
-                    }`}
-                  >
+                const content = (
+                  <>
                     <span className="flex min-w-0 items-center gap-3">
                       <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${isPresent ? 'border-brand-primary bg-brand-primary text-white' : 'border-stone-300 bg-white text-stone-500'}`}>
                         {isPresent ? <Check className="h-5 w-5" aria-hidden="true" /> : student.name.charAt(0)}
@@ -166,7 +160,20 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
                     <span className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-semibold ${isPresent ? 'bg-brand-primary text-white' : 'bg-stone-100 text-stone-600'}`}>
                       {isPresent ? 'Present' : 'Absent'}
                     </span>
-                  </button>
+                  </>
+                );
+                return canEditAttendance ? (
+                  <button
+                    key={student.id}
+                    type="button"
+                    aria-pressed={isPresent}
+                    onClick={() => { setReview((current) => toggleStudentAttendance(current, student.id)); setValidationError(null); }}
+                    className={`flex min-h-[64px] w-full items-center justify-between gap-4 rounded-xl px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary sm:px-4 ${
+                      isPresent ? 'bg-brand-subtle/40' : 'hover:bg-stone-50'
+                    }`}
+                  >{content}</button>
+                ) : (
+                  <div key={student.id} className="flex min-h-[64px] w-full items-center justify-between gap-4 rounded-xl px-3 py-3 text-left sm:px-4">{content}</div>
                 );
               })}
             </div>
@@ -184,6 +191,7 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
               id="session-notes"
               value={notes}
               onChange={(event) => { setNotes(event.target.value); setValidationError(null); }}
+              readOnly={!canEditAttendance}
               minLength={MIN_SESSION_NOTE_LENGTH}
               rows={6}
               placeholder="Summarize progress, material covered, and any follow-up."
@@ -192,7 +200,7 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
             <p className="mt-2 text-xs text-stone-500">At least {MIN_SESSION_NOTE_LENGTH} characters.</p>
           </section>
 
-          <SessionEvidenceUpload value={evidence} onChange={(nextEvidence) => { setEvidence(nextEvidence); setValidationError(null); }} />
+          {canEditAttendance && <SessionEvidenceUpload value={evidence} onChange={(nextEvidence) => { setEvidence(nextEvidence); setValidationError(null); }} />}
 
           <section className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs sm:p-6" aria-labelledby="completion-heading">
             <h2 id="completion-heading" className="text-lg font-semibold text-stone-900">Completion</h2>
@@ -210,12 +218,12 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
             </ul>
             {validationError && <p role="alert" className="mt-4 text-sm font-medium text-brand-primary">{validationError}</p>}
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row">
-              <Link href="/tutor/agenda" className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-stone-300 px-4 text-sm font-medium text-stone-700 hover:bg-stone-50">Cancel</Link>
-              <Button type="button" className="min-h-[44px] flex-1 gap-2" isLoading={isPending} onClick={completeWorkflow}>
-                <ShieldCheck className="h-4 w-4" aria-hidden="true" /> {isEditing ? 'Save attendance changes' : 'Complete attendance'}
-              </Button>
+              <Link href="/tutor/agenda" className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-stone-300 px-4 text-sm font-medium text-stone-700 hover:bg-stone-50">Back to agenda</Link>
+              {canEditAttendance && <Button type="button" className="min-h-[44px] flex-1 gap-2" isLoading={isPending} onClick={completeWorkflow}>
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" /> {isEditing ? 'Save attendance changes' : 'Save attendance'}
+              </Button>}
             </div>
-            <p className="mt-3 text-xs text-stone-500">Attendance and notes are saved securely. Screenshot evidence remains on this device and is not uploaded.</p>
+            <p className="mt-3 text-xs text-stone-500">Saving attendance does not charge wallets. The finalizer settles the saved roster at the attendance close.</p>
           </section>
         </aside>
       </div>

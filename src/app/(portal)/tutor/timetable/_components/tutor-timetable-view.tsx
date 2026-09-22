@@ -2,17 +2,11 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { SessionRescheduleDialog } from '@/features/sessions/components/session-reschedule-dialog';
-import {
-  WeeklySessionSchedule,
-  type LocalScheduleException,
-  type WeeklyScheduleSession,
-} from '@/features/sessions/components/weekly-session-schedule';
+import { WeeklySessionSchedule, type WeeklyScheduleSession } from '@/features/sessions/components/weekly-session-schedule';
 import type { GadwalSessionItem } from '@/features/sessions/types';
-import {
-  getStoredScheduleExceptions,
-  saveStoredScheduleExceptions,
-} from '../../dashboard/_components/session-storage';
+import { postponeTutorSession } from '../actions';
 
 interface TutorTimetableViewProps {
   tutor: { id: string; name: string };
@@ -20,19 +14,12 @@ interface TutorTimetableViewProps {
 }
 
 export function TutorTimetableView({ tutor, sessions: initialSessions }: TutorTimetableViewProps) {
-  const [exceptions, setExceptions] = React.useState<Record<string, LocalScheduleException>>({});
+  const router = useRouter();
   const [rescheduleSession, setRescheduleSession] = React.useState<WeeklyScheduleSession | null>(null);
 
-  React.useEffect(() => {
-    setExceptions(getStoredScheduleExceptions());
-  }, []);
-
-  const saveException = (sessionId: string, exception: LocalScheduleException) => {
-    setExceptions((current) => {
-      const next = { ...current, [sessionId]: exception };
-      saveStoredScheduleExceptions(next);
-      return next;
-    });
+  const saveException = async (sessionId: string, input: { startTime: string; endTime: string; reason: string }) => {
+    await postponeTutorSession(sessionId, input);
+    router.refresh();
   };
 
   return (
@@ -50,19 +37,17 @@ export function TutorTimetableView({ tutor, sessions: initialSessions }: TutorTi
 
       <WeeklySessionSchedule
         sessions={initialSessions}
-        exceptions={exceptions}
         onReschedule={setRescheduleSession}
         heading="Weekly recurring schedule"
-        description="Review scheduled times and apply a local exception to one occurrence without changing the recurring series."
+        description="Review concrete occurrences and postpone one occurrence without changing the weekly series."
       />
 
       <p className="rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-600">
-        One-occurrence changes are stored in this browser for demonstration only. Backend recurrence remains unchanged.
+        Postponing updates this concrete Session only. The weekly recurrence continues to materialize future occurrences normally.
       </p>
 
       <SessionRescheduleDialog
         session={rescheduleSession}
-        existingException={rescheduleSession ? exceptions[rescheduleSession.id] : undefined}
         onClose={() => setRescheduleSession(null)}
         onSave={saveException}
       />

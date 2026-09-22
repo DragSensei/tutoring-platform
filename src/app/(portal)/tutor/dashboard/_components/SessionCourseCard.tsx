@@ -4,7 +4,6 @@ import * as React from 'react';
 import { Users, Calendar, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { formatDateTime } from '@/shared/utils/date-format';
 import { formatSessionCode } from '@/shared/utils/session-code';
-import { CopyTokenButton } from '@/features/sessions/components/copy-token-button';
 import type { GadwalSessionItem } from '@/features/sessions/types';
 
 interface SessionCourseCardProps {
@@ -109,11 +108,7 @@ export function SessionCourseCard({
       </div>
 
       {/* Card Footer Actions */}
-      <div className="mt-5 pt-3.5 border-t border-stone-100 flex items-center justify-between">
-        <div onClick={(e) => e.stopPropagation()}>
-          <CopyTokenButton token={session.token} />
-        </div>
-
+      <div className="mt-5 pt-3.5 border-t border-stone-100 flex items-center justify-end">
         <span className="inline-flex items-center gap-1 text-xs font-semibold text-stone-700 group-hover:text-red-600 transition-colors">
           {isSelected ? (
             <span className="inline-flex items-center gap-1 text-red-600 font-bold">

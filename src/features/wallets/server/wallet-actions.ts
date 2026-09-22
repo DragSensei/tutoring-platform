@@ -164,9 +164,9 @@ export async function getAllWalletsWithUsers() {
   return wallets.map((w) => ({
     id: w.id,
     userId: w.user_id,
-    userName: w.user.name,
-    userEmail: w.user.email,
-    userPhone: w.user.phone,
+    userName: w.user.name ?? 'Not provided',
+    userEmail: w.user.email ?? 'Not provided',
+    userPhone: w.user.phone ?? 'Not provided',
     role: w.user.role,
     balance: Number(w.balance),
     isFlaggedOverdraft: w.is_flagged_overdraft,

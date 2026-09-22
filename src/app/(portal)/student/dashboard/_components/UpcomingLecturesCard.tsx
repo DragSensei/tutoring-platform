@@ -16,7 +16,6 @@ export interface ScheduledLecture {
   startTime: string;
   endTime: string;
   deadline: string;
-  token: string;
   price: number;
   sessionType: string;
   isWithinActiveWindow: boolean;

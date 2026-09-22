@@ -1,20 +1,64 @@
 /**
- * Deadline and timing utilities for session check-ins.
- * Invariant: Session check-in deadline is strictly start_time + 4 hours.
+ * Canonical attendance timing utilities.
+ * The policy value is a grace period after the concrete Session ends.
  */
 
 export const CHECKIN_WINDOW_HOURS = 4;
 export const CHECKIN_WINDOW_MS = CHECKIN_WINDOW_HOURS * 60 * 60 * 1000; // 14,400,000 ms
 
-export function computeSessionDeadline(
-  startTime: Date | string | number,
+export function computeAttendanceClosesAt(
+  endTime: Date | string | number,
   windowHours: number = CHECKIN_WINDOW_HOURS
 ): Date {
+  const end = new Date(endTime);
+  if (isNaN(end.getTime())) {
+    throw new Error('Invalid end_time provided for attendance close calculation');
+  }
+  return new Date(end.getTime() + windowHours * 60 * 60 * 1000);
+}
+
+/**
+ * `deadline` is the legacy database field name. It stores attendanceClosesAt.
+ */
+export function computeSessionDeadline(
+  endTime: Date | string | number,
+  windowHours: number = CHECKIN_WINDOW_HOURS
+): Date {
+  return computeAttendanceClosesAt(endTime, windowHours);
+}
+
+export function computeAttendanceOpensAt(startTime: Date | string | number): Date {
   const start = new Date(startTime);
   if (isNaN(start.getTime())) {
-    throw new Error('Invalid start_time provided for deadline calculation');
+    throw new Error('Invalid start_time provided for attendance open calculation');
   }
-  return new Date(start.getTime() + windowHours * 60 * 60 * 1000);
+  return start;
+}
+
+export type AttendanceWindowState = 'BEFORE' | 'OPEN' | 'CLOSED';
+
+export function getAttendanceWindowState(
+  startTime: Date | string | number,
+  closesAt: Date | string | number,
+  currentTime: Date | string | number = new Date()
+): AttendanceWindowState {
+  const now = new Date(currentTime).getTime();
+  const start = new Date(startTime).getTime();
+  const close = new Date(closesAt).getTime();
+  if (!Number.isFinite(now) || !Number.isFinite(start) || !Number.isFinite(close)) {
+    throw new Error('Invalid attendance timing provided');
+  }
+  if (now < start) return 'BEFORE';
+  if (now <= close) return 'OPEN';
+  return 'CLOSED';
+}
+
+export function isAttendanceWindowOpen(
+  startTime: Date | string | number,
+  closesAt: Date | string | number,
+  currentTime: Date | string | number = new Date()
+): boolean {
+  return getAttendanceWindowState(startTime, closesAt, currentTime) === 'OPEN';
 }
 
 export function isCheckInExpired(

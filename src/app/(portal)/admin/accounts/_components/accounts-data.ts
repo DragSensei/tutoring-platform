@@ -1,4 +1,4 @@
-import type { Role, SessionStatus, SessionType, TransactionType } from '@prisma/client';
+import type { AccountStatus, Role, SessionStatus, SessionType, TransactionType } from '@prisma/client';
 import { requireAuth } from '@/features/auth/server/session';
 import { prisma } from '@/shared/lib/prisma';
 
@@ -10,11 +10,12 @@ const ROLE_LABELS: Record<Role, string> = {
 
 export interface AccountListItem {
   id: string;
-  name: string;
-  email: string;
-  phone: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
   role: Role;
   roleLabel: string;
+  accountStatus: AccountStatus;
   createdAt: string;
 }
 
@@ -38,7 +39,7 @@ export interface StudentAccountDetail extends CommonAccountDetail {
       sessionTitle: string;
       sessionType: SessionType;
       sessionStart: string;
-      tutorName: string;
+      tutorName: string | null;
     }>;
   };
 }
@@ -68,7 +69,7 @@ export interface AdminAccountDetail extends CommonAccountDetail {
       amount: number;
       transactionType: TransactionType;
       createdAt: string;
-      studentName: string;
+      studentName: string | null;
     }>;
   };
 }
@@ -92,6 +93,7 @@ export async function getAccounts(): Promise<AccountListItem[]> {
       email: true,
       phone: true,
       role: true,
+      account_status: true,
       created_at: true,
     },
     orderBy: [{ created_at: 'desc' }, { name: 'asc' }],
@@ -104,6 +106,7 @@ export async function getAccounts(): Promise<AccountListItem[]> {
     phone: account.phone,
     role: account.role,
     roleLabel: getAccountRoleLabel(account.role),
+    accountStatus: account.account_status,
     createdAt: account.created_at.toISOString(),
   }));
 }
@@ -119,6 +122,7 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
       email: true,
       phone: true,
       role: true,
+      account_status: true,
       created_at: true,
       updated_at: true,
     },
@@ -133,6 +137,7 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
     phone: account.phone,
     role: account.role,
     roleLabel: getAccountRoleLabel(account.role),
+    accountStatus: account.account_status,
     createdAt: account.created_at.toISOString(),
     updatedAt: account.updated_at.toISOString(),
   };

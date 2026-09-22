@@ -76,6 +76,7 @@ describe('Admin account data access', () => {
       email: true,
       phone: true,
       role: true,
+      account_status: true,
       created_at: true,
     });
     expect(query?.select).not.toHaveProperty('password_hash');

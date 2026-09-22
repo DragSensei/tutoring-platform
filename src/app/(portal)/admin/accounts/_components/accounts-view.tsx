@@ -13,6 +13,7 @@ import { useTablePagination } from '@/shared/hooks/use-table-pagination';
 import { TableToolbar } from '@/shared/components/table-toolbar';
 import { matchesTableSearch } from '@/shared/utils/table-search';
 import type { AccountListItem } from './accounts-data';
+import { AccountCreateForm } from './account-create-form';
 
 interface AccountsViewProps {
   accounts: AccountListItem[];
@@ -63,6 +64,8 @@ export function AccountsView({ accounts }: AccountsViewProps) {
         </div>
       </div>
 
+      <AccountCreateForm />
+
       {accounts.length === 0 ? (
         <Card className="w-full rounded-2xl border-stone-200/80 bg-white shadow-xs">
           <CardContent className="flex flex-col items-center justify-center py-14 text-center">
@@ -112,18 +115,18 @@ export function AccountsView({ accounts }: AccountsViewProps) {
                       key={account.id}
                       role="link"
                       tabIndex={0}
-                      aria-label={`View ${account.name}'s account`}
+                      aria-label={`View ${account.name || 'incomplete profile'} account`}
                       onClick={() => openAccount(account.id)}
                       onKeyDown={(event) => handleRowKeyDown(event, account.id)}
                       className="min-h-[56px] cursor-pointer transition-colors hover:bg-stone-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-primary"
                     >
                       <td className="px-5 py-4">
-                        <div className="font-semibold text-stone-900">{account.name}</div>
-                        <div className="mt-0.5 text-xs text-stone-500 break-all">{account.email}</div>
+                        <div className="font-semibold text-stone-900">{account.name || 'Profile incomplete'}</div>
+                        <div className="mt-0.5 text-xs text-stone-500 break-all">{account.email || 'Email not provided'}</div>
                       </td>
-                      <td className="px-5 py-4 text-stone-600">{account.phone}</td>
+                      <td className="px-5 py-4 text-stone-600">{account.phone || 'Phone not provided'}</td>
                       <td className="px-5 py-4">
-                        <Badge variant={getRoleBadgeVariant(account.role)}>{account.roleLabel}</Badge>
+                        <div className="flex flex-wrap gap-2"><Badge variant={getRoleBadgeVariant(account.role)}>{account.roleLabel}</Badge><Badge variant="outline">{account.accountStatus.toLowerCase().replaceAll('_', ' ')}</Badge></div>
                       </td>
                       <td className="px-5 py-4 text-stone-600 tabular-nums">
                         {formatDateTime(account.createdAt, { includeYear: true })}
@@ -146,12 +149,13 @@ export function AccountsView({ accounts }: AccountsViewProps) {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-stone-900">{account.name}</span>
+                      <span className="font-semibold text-stone-900">{account.name || 'Profile incomplete'}</span>
                       <Badge variant={getRoleBadgeVariant(account.role)}>{account.roleLabel}</Badge>
+                      <Badge variant="outline">{account.accountStatus.toLowerCase().replaceAll('_', ' ')}</Badge>
                     </div>
-                    <p className="mt-1 break-all text-xs text-stone-500">{account.email}</p>
+                    <p className="mt-1 break-all text-xs text-stone-500">{account.email || 'Email not provided'}</p>
                     <p className="mt-1 text-xs text-stone-500">
-                      {account.phone} · Registered {formatDateTime(account.createdAt, { includeYear: true })}
+                      {account.phone || 'Phone not provided'} · Registered {formatDateTime(account.createdAt, { includeYear: true })}
                     </p>
                   </div>
                   <ArrowRight className="h-4 w-4 shrink-0 text-stone-400" aria-hidden="true" />

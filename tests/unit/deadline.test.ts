@@ -1,67 +1,43 @@
 import { describe, it, expect } from 'vitest';
 import {
-  computeSessionDeadline,
-  isCheckInExpired,
+  computeAttendanceClosesAt,
+  getAttendanceWindowState,
   getRemainingCheckInTime,
+  isAttendanceWindowOpen,
+  isCheckInExpired,
   CHECKIN_WINDOW_MS,
 } from '@/shared/utils/deadline';
 
-describe('4-Hour Check-in Deadline Utilities', () => {
-  it('strictly computes deadline as start_time + 4 hours', () => {
-    const startTime = new Date('2026-10-01T10:00:00.000Z');
-    const deadline = computeSessionDeadline(startTime);
-
-    expect(deadline.getTime() - startTime.getTime()).toBe(CHECKIN_WINDOW_MS);
-    expect(deadline.toISOString()).toBe('2026-10-01T14:00:00.000Z');
+describe('Attendance timing utilities', () => {
+  it('computes close as end_time plus the configured grace period', () => {
+    const end = new Date('2026-10-01T12:00:00.000Z');
+    const close = computeAttendanceClosesAt(end);
+    expect(close.getTime() - end.getTime()).toBe(CHECKIN_WINDOW_MS);
+    expect(close.toISOString()).toBe('2026-10-01T16:00:00.000Z');
   });
 
-  it('rejects invalid start time input', () => {
-    expect(() => computeSessionDeadline('invalid-date-string')).toThrowError(
-      'Invalid start_time provided'
+  it('rejects invalid end time input', () => {
+    expect(() => computeAttendanceClosesAt('invalid-date-string')).toThrowError(
+      'Invalid end_time provided for attendance close calculation'
     );
   });
 
-  it('correctly evaluates check-in expiration status across boundary conditions', () => {
-    const startTime = new Date('2026-10-01T10:00:00.000Z');
-    const deadline = computeSessionDeadline(startTime); // 14:00:00.000Z
-
-    // Before deadline (1 hour after start)
-    const checkIn1 = new Date('2026-10-01T11:00:00.000Z');
-    expect(isCheckInExpired(deadline, checkIn1)).toBe(false);
-
-    // 1 millisecond before deadline
-    const checkInBefore = new Date(deadline.getTime() - 1);
-    expect(isCheckInExpired(deadline, checkInBefore)).toBe(false);
-
-    // Exact deadline timestamp
-    expect(isCheckInExpired(deadline, deadline)).toBe(false);
-
-    // 1 millisecond after deadline (EXPIRED -> Must trigger 403)
-    const checkInAfter = new Date(deadline.getTime() + 1);
-    expect(isCheckInExpired(deadline, checkInAfter)).toBe(true);
-
-    // 1 hour after deadline
-    const checkInLate = new Date('2026-10-01T15:00:00.000Z');
-    expect(isCheckInExpired(deadline, checkInLate)).toBe(true);
+  it('opens at start, stays open through exact close, then closes', () => {
+    const start = new Date('2026-10-01T10:00:00.000Z');
+    const end = new Date('2026-10-01T12:00:00.000Z');
+    const close = computeAttendanceClosesAt(end);
+    expect(getAttendanceWindowState(start, close, new Date('2026-10-01T09:59:59.999Z'))).toBe('BEFORE');
+    expect(isAttendanceWindowOpen(start, close, start)).toBe(true);
+    expect(getAttendanceWindowState(start, close, end)).toBe('OPEN');
+    expect(getAttendanceWindowState(start, close, close)).toBe('OPEN');
+    expect(getAttendanceWindowState(start, close, new Date(close.getTime() + 1))).toBe('CLOSED');
   });
 
-  it('computes remaining time countdown breakdown accurately', () => {
-    const deadline = new Date('2026-10-01T14:00:00.000Z');
-
-    // 1 hour 30 minutes 15 seconds remaining
-    const current = new Date(deadline.getTime() - (1 * 3600 + 30 * 60 + 15) * 1000);
-    const res = getRemainingCheckInTime(deadline, current);
-
-    expect(res.isExpired).toBe(false);
-    expect(res.hours).toBe(1);
-    expect(res.minutes).toBe(30);
-    expect(res.seconds).toBe(15);
-    expect(res.formatted).toBe('1h 30m 15s');
-
-    // When time has passed
-    const past = new Date(deadline.getTime() + 1000);
-    const expiredRes = getRemainingCheckInTime(deadline, past);
-    expect(expiredRes.isExpired).toBe(true);
-    expect(expiredRes.formatted).toBe('Expired');
+  it('keeps legacy expiration/countdown helpers aligned to the close boundary', () => {
+    const close = new Date('2026-10-01T16:00:00.000Z');
+    expect(isCheckInExpired(close, close)).toBe(false);
+    expect(isCheckInExpired(close, new Date(close.getTime() + 1))).toBe(true);
+    const remaining = getRemainingCheckInTime(close, new Date('2026-10-01T14:29:45.000Z'));
+    expect(remaining).toMatchObject({ hours: 1, minutes: 30, seconds: 15, isExpired: false });
   });
 });

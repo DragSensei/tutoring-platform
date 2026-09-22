@@ -231,6 +231,87 @@ Persists the authenticated Tutor's complete attendance decision and required ses
 }
 ```
 
+## 6. Weekly Recurrence Contracts
+
+```typescript
+export type SeriesStatus = 'ACTIVE' | 'ENDED' | 'CANCELLED';
+
+export interface SessionSeriesContract {
+  id: string;
+  tutorId: string;
+  title: string;
+  sessionType: SessionType;
+  weekday: number; // 0 = Sunday ... 6 = Saturday, academy calendar
+  startMinute: number; // 0..1439, Africa/Cairo wall-clock time
+  durationMinutes: number; // 30..480
+  startsOn: Date; // academy-calendar date, normalized to UTC midnight
+  endsOn?: Date | null;
+  status: SeriesStatus;
+  participants: string[]; // normal Student roster
+}
+
+export interface SessionOccurrenceContract extends SessionContract {
+  seriesId?: string | null;
+  occurrenceDate?: Date | null; // unique series/week key, normalized date
+  seriesException: boolean;
+}
+```
+
+- `SessionSeries` is the canonical recurring assignment. `Session` remains the
+  concrete occurrence for attendance, check-in, completion, wallet, cancellation,
+  and audit history.
+- The materializer keeps a bounded 12-week horizon. It uses one shared helper for
+  Admin, Tutor, Student, and series creation reads; no dashboard computes dates.
+- `@@unique([series_id, occurrence_date])` plus `createMany({ skipDuplicates: true })`
+  makes materialization idempotent and safe under concurrent requests.
+- Series rosters are copied into each occurrence at materialization. Future-only
+  series edits update/delete only occurrences with no attendance or financial
+  history; completed/history-bearing occurrences are never rewritten.
+- Edit scope is `THIS`, `THIS_AND_FUTURE`, or `ENTIRE_SERIES`. `THIS` sets a
+  concrete occurrence exception; future scopes update the series and rematerialize
+  safe future occurrences. Cancel scope has the same values; cancellation never
+  rewrites completed or financial history.
+- `Africa/Cairo` is the current academy wall-clock timezone already used by the
+  shared date formatters. Occurrence timestamps are stored as instants; the series
+  stores calendar weekday/minute so DST or server timezone does not alter the rule.
+
+## 7. Account Provisioning & Credential Contracts
+
+```typescript
+export type AccountStatus = 'PENDING_CREDENTIALS' | 'PENDING_PROFILE' | 'ACTIVE';
+
+export interface CreateAccountInput {
+  role: Extract<Role, 'TUTOR' | 'STUDENT'>;
+  name?: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface AccountSetupTokenContract {
+  userId: string;
+  purpose: 'SETUP' | 'PASSWORD_RESET';
+  tokenHash: string; // SHA-256 digest only; raw token is returned once to setup UI
+  expiresAt: Date;
+  consumedAt?: Date | null;
+}
+```
+
+- Only an authenticated Admin can provision Tutor or Student accounts. Admin
+  accounts are managed outside this provisioning flow.
+- `User.name`, `User.email`, `User.phone`, and `User.password_hash` are nullable
+  so a partial Student can contain only known information. `account_status` is
+  explicit; a password without the required profile remains `PENDING_PROFILE` and
+  cannot receive a normal portal session.
+- Admin account lists/details never select or return `password_hash`, token hashes,
+  raw setup tokens, or existing credentials. `SETUP` tokens are limited to pending
+  Tutor/Student onboarding and may complete the required profile. `PASSWORD_RESET`
+  tokens are limited to active Tutor/Student accounts and may change only the
+  password. Both use a random one-time token whose hash is stored, purpose-scoped
+  revocation, short expiry, and atomic consumption.
+- Authentication is fail-closed for `PENDING_CREDENTIALS` and
+  `PENDING_PROFILE`; only `ACTIVE` accounts with a stored hash and complete profile
+  can receive a signed portal session.
+
 ### `POST /api/admin/wallets/deposit`
 Direct administrative wallet credit top-up.
 - **Status:** `200 OK`

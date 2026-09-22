@@ -1,7 +1,12 @@
+'use client';
+
+import * as React from 'react';
 import Link from 'next/link';
-import { ArrowLeft, BookOpenCheck, GraduationCap, ReceiptText, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, BookOpenCheck, Check, Copy, GraduationCap, ReceiptText, ShieldCheck } from 'lucide-react';
 import { Badge } from '@/shared/components/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/card';
+import { Button } from '@/shared/components/button';
+import { issueAdminAccountSetupLink, issueAdminPasswordResetLink } from '../../actions';
 import { formatEGP } from '@/shared/utils/currency';
 import { formatDateTime } from '@/shared/utils/date-format';
 import type {
@@ -21,6 +26,47 @@ function InfoField({ label, value }: { label: string; value: string }) {
       <dt className="text-xs font-semibold uppercase tracking-wider text-stone-500">{label}</dt>
       <dd className="mt-1 break-words text-sm font-medium text-stone-900">{value}</dd>
     </div>
+  );
+}
+
+function SetupLinkPanel({ account }: { account: AccountDetail }) {
+  const [isPending, startTransition] = React.useTransition();
+  const [accessUrl, setAccessUrl] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [copied, setCopied] = React.useState(false);
+
+  if (account.role === 'ADMIN') return null;
+  const isActive = account.accountStatus === 'ACTIVE';
+
+  function issueLink() {
+    setError(null);
+    setAccessUrl(null);
+    setCopied(false);
+    startTransition(async () => {
+      try {
+        if (isActive) {
+          const result = await issueAdminPasswordResetLink(account.id);
+          setAccessUrl(`${window.location.origin}/login/reset?token=${encodeURIComponent(result.resetToken)}`);
+        } else {
+          const result = await issueAdminAccountSetupLink(account.id);
+          setAccessUrl(`${window.location.origin}/login/setup?token=${encodeURIComponent(result.setupToken)}`);
+        }
+      } catch (actionError) {
+        setError(actionError instanceof Error ? actionError.message : 'Unable to issue this access link');
+      }
+    });
+  }
+
+  return (
+    <Card className="rounded-2xl border-stone-200/80 bg-white shadow-xs">
+      <CardHeader className="border-b border-stone-100"><CardTitle className="text-lg">{isActive ? 'Password reset access' : 'Account setup access'}</CardTitle></CardHeader>
+      <CardContent className="space-y-3 pt-6">
+        <p className="text-sm text-stone-600">{isActive ? 'Issue a one-time password reset link for this account. Reset changes only the password; profile, role, and lifecycle status are unchanged.' : `Issue a new one-time setup link if this ${account.role === 'TUTOR' ? 'Tutor' : 'Student'} has not finished setup.`} Existing passwords and token values are never shown.</p>
+        <Button type="button" variant="outline" className="min-h-[44px]" onClick={issueLink} disabled={isPending}>{isPending ? 'Issuing…' : isActive ? 'Issue / reissue password reset link' : 'Issue / reissue setup link'}</Button>
+        {accessUrl && <div className="flex flex-col gap-2 sm:flex-row"><code className="min-h-[44px] min-w-0 flex-1 break-all rounded-lg border border-brand-border/70 bg-brand-subtle px-3 py-2.5 text-xs text-stone-700">{accessUrl}</code><Button type="button" variant="outline" className="min-h-[44px] shrink-0" onClick={() => { void navigator.clipboard.writeText(accessUrl).then(() => setCopied(true)); }}>{copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}{copied ? 'Copied' : 'Copy link'}</Button></div>}
+        {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-800">{error}</p>}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -71,7 +117,7 @@ function StudentDetails({ account }: { account: StudentAccountDetail }) {
             <div>
               <p className="font-semibold text-stone-900">{attendance.sessionTitle}</p>
               <p className="mt-1 text-xs text-stone-500">
-                {attendance.sessionType} · Faculty mentor: {attendance.tutorName}
+                {attendance.sessionType} · Faculty mentor: {attendance.tutorName || 'Profile incomplete'}
               </p>
             </div>
             <div className="text-left text-xs text-stone-500 tabular-nums sm:text-right">
@@ -153,7 +199,7 @@ function AdminDetails({ account }: { account: AdminAccountDetail }) {
             <div className="flex items-start gap-3">
               <ReceiptText className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" />
               <div>
-                <p className="font-semibold text-stone-900">{transaction.studentName}</p>
+                <p className="font-semibold text-stone-900">{transaction.studentName || 'Profile incomplete'}</p>
                 <p className="mt-1 text-xs text-stone-500">
                   {transaction.transactionType.replaceAll('_', ' ')}
                 </p>
@@ -208,8 +254,8 @@ export function AccountDetailView({ account }: AccountDetailViewProps) {
             </span>
             <Badge variant="outline">{account.roleLabel}</Badge>
           </div>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-stone-900 sm:text-3xl">{account.name}</h1>
-          <p className="mt-1 break-all text-xs text-stone-500 sm:text-sm">{account.email}</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-stone-900 sm:text-3xl">{account.name || 'Profile incomplete'}</h1>
+          <p className="mt-1 break-all text-xs text-stone-500 sm:text-sm">{account.email || 'Email not provided'}</p>
         </div>
         <Link
           href="/admin/accounts"
@@ -226,10 +272,11 @@ export function AccountDetailView({ account }: AccountDetailViewProps) {
         </CardHeader>
         <CardContent className="pt-6">
           <dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            <InfoField label="Name" value={account.name} />
-            <InfoField label="Email" value={account.email} />
-            <InfoField label="Phone" value={account.phone} />
+            <InfoField label="Name" value={account.name || 'Not provided'} />
+            <InfoField label="Email" value={account.email || 'Not provided'} />
+            <InfoField label="Phone" value={account.phone || 'Not provided'} />
             <InfoField label="Account type" value={account.roleLabel} />
+            <InfoField label="Lifecycle" value={account.accountStatus.replaceAll('_', ' ')} />
             <InfoField
               label="Registered"
               value={formatDateTime(account.createdAt, { includeYear: true })}
@@ -241,6 +288,8 @@ export function AccountDetailView({ account }: AccountDetailViewProps) {
           </dl>
         </CardContent>
       </Card>
+
+      <SetupLinkPanel account={account} />
 
       {account.role === 'STUDENT' && <StudentDetails account={account} />}
       {account.role === 'TUTOR' && <TutorDetails account={account} />}

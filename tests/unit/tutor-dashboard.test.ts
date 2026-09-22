@@ -75,10 +75,52 @@ describe('Tutor Dashboard Closest Session Due Calculation', () => {
 
     const countdown = computeSessionCountdown(target, now);
     expect(countdown.isPast).toBe(false);
+    expect(countdown.days).toBe(0);
     expect(countdown.hours).toBe(2);
     expect(countdown.minutes).toBe(15);
     expect(countdown.seconds).toBe(30);
-    expect(countdown.formatted).toBe('02:15:30');
+    expect(countdown.formatted).toBe('00:02:15:30');
+  });
+
+  it('normalizes countdown units into days, 24-hour hours, minutes, and seconds', () => {
+    const now = new Date('2026-09-17T12:00:00.000Z');
+    const hours = 3_600_000;
+
+    expect(computeSessionCountdown(new Date(now.getTime() + 141 * hours), now)).toMatchObject({
+      days: 5,
+      hours: 21,
+      minutes: 0,
+      seconds: 0,
+      formatted: '05:21:00:00',
+    });
+    expect(computeSessionCountdown(new Date(now.getTime() + 25 * hours + 3 * 60_000 + 2_000), now)).toMatchObject({
+      days: 1,
+      hours: 1,
+      minutes: 3,
+      seconds: 2,
+      formatted: '01:01:03:02',
+    });
+    expect(computeSessionCountdown(new Date(now.getTime() + 23 * hours), now)).toMatchObject({
+      days: 0,
+      hours: 23,
+      minutes: 0,
+      seconds: 0,
+      formatted: '00:23:00:00',
+    });
+  });
+
+  it('returns a four-unit zero countdown after the target has passed', () => {
+    const countdown = computeSessionCountdown('2026-09-17T12:00:00.000Z', '2026-09-17T12:00:01.000Z');
+
+    expect(countdown).toEqual({
+      isPast: true,
+      totalMs: 0,
+      days: 0,
+      hours: 0,
+      minutes: 0,
+      seconds: 0,
+      formatted: '00:00:00:00',
+    });
   });
 
   it('returns null gracefully when no sessions exist or all are expired', () => {
@@ -92,6 +134,30 @@ describe('Tutor Dashboard Closest Session Due Calculation', () => {
     const now = new Date('2026-09-17T12:00:00.000Z');
     const closest = findClosestSessionDue([expiredSession], now);
     expect(closest).toBeNull();
+  });
+
+  it('advances at the concrete end time and ignores completed or cancelled rows', () => {
+    const ended = {
+      ...baseSession,
+      id: 's-ended',
+      startTime: '2026-09-17T10:00:00.000Z',
+      endTime: '2026-09-17T12:00:00.000Z',
+      status: 'SCHEDULED' as const,
+    };
+    const next = {
+      ...baseSession,
+      id: 's-next',
+      startTime: '2026-09-17T14:00:00.000Z',
+      endTime: '2026-09-17T16:00:00.000Z',
+      status: 'SCHEDULED' as const,
+    };
+    const completed = { ...next, id: 's-completed', status: 'COMPLETED' as const, startTime: '2026-09-17T13:00:00.000Z', endTime: '2026-09-17T13:30:00.000Z' };
+    const cancelled = { ...next, id: 's-cancelled', status: 'CANCELLED' as const, startTime: '2026-09-17T13:30:00.000Z', endTime: '2026-09-17T14:00:00.000Z' };
+
+    const closest = findClosestSessionDue([ended, completed, cancelled, next], new Date('2026-09-17T12:00:00.000Z'));
+
+    expect(closest?.id).toBe('s-next');
+    expect(closest?.isCurrentlyActive).toBe(false);
   });
 
   it('propagates sessionCode and assignedStudents when present', () => {
@@ -126,11 +192,17 @@ describe('Tutor Dashboard Closest Session Due Calculation', () => {
     expect(closest?.isCurrentlyActive).toBe(false);
   });
 
-  it('uses a one-off effective occurrence without mutating the recurring start', () => {
+  it('uses the persisted effective occurrence while retaining the recurring base', () => {
     const closest = findClosestSessionDue(
-      [baseSession],
-      new Date('2026-09-17T12:00:00.000Z'),
-      { 's-1': { effectiveStartTime: '2026-09-18T16:00:00.000Z', reason: 'Tutor unavailable' } }
+      [{
+        ...baseSession,
+        startTime: '2026-09-18T16:00:00.000Z',
+        endTime: '2026-09-18T18:00:00.000Z',
+        baseStartTime: baseSession.startTime,
+        isRescheduled: true,
+        rescheduleReason: 'Tutor unavailable',
+      }],
+      new Date('2026-09-17T12:00:00.000Z')
     );
 
     expect(closest?.isRescheduled).toBe(true);

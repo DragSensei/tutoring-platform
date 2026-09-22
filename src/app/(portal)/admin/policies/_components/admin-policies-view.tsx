@@ -152,17 +152,17 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
               </div>
               <div>
                 <h2 className="text-base font-bold text-stone-900">
-                  1. Check-in Deadline Window Duration
+                  1. Attendance Grace Period
                 </h2>
                 <p className="text-xs text-stone-500">
-                  Defines the permissible duration post-start time before session attendance strictly locks (HTTP 403).
+                  Defines the grace period after the concrete session end before Tutor attendance strictly locks.
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 self-end sm:self-auto">
               <span className="text-xs font-mono font-bold text-brand-primary bg-brand-subtle px-2.5 py-1 rounded-md">
-                deadline = start + {policies.checkInWindowHours}h
+                attendance closes = end + {policies.checkInWindowHours}h grace
               </span>
             </div>
           </div>
@@ -191,11 +191,11 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
                   }
                   className="min-h-[44px] w-32 px-3 py-2 text-sm font-semibold border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-colors bg-stone-50/50"
                 />
-                <span className="text-xs text-stone-500">hours from session start</span>
+                <span className="text-xs text-stone-500">hours after session end</span>
               </div>
             </div>
             <p className="text-xs text-stone-500 self-center leading-relaxed">
-              Sessions scheduled in Gadwal dynamically adopt this window. Once elapsed, all verification endpoints strictly reject check-in requests.
+              Sessions scheduled in Gadwal dynamically adopt this grace period. Tutor attendance opens at the concrete start and closes after the concrete end plus this value.
             </p>
           </div>
         </motion.div>
@@ -211,7 +211,7 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
                 2. Unidirectional Pricing Governance
               </h2>
               <p className="text-xs text-stone-500">
-                Configures standard session debit deductions atomically debited from student wallets upon check-in.
+                Configures the standard session settlement reconciled from the final Tutor attendance at the grace close.
               </p>
             </div>
           </div>
@@ -240,7 +240,7 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
                 className="min-h-[44px] w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white transition-colors"
               />
               <span className="text-[11px] text-stone-500 block">
-                Standard STEM cohort rate debited per student check-in.
+                Standard STEM cohort rate charged once for each final PRESENT decision.
               </span>
             </div>
 
@@ -267,7 +267,7 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
                 className="min-h-[44px] w-full px-3 py-2 text-sm font-semibold border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white transition-colors"
               />
               <span className="text-[11px] text-stone-500 block">
-                Custom individual mentorship rate debited upon verification.
+                Custom individual mentorship rate charged once for a final PRESENT decision.
               </span>
             </div>
           </div>
@@ -284,7 +284,7 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
                 3. Overdraft Tolerance Sentinel
               </h2>
               <p className="text-xs text-stone-500">
-                Determines whether students with low balance can check in into negative balances.
+                Determines whether final PRESENT settlement may place a Student wallet below zero.
               </p>
             </div>
           </div>
@@ -307,7 +307,7 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
                   Permit Negative Balances (Automatic Overdraft Flagging)
                 </span>
                 <span className="text-xs text-stone-500 leading-relaxed block mt-1">
-                  When enabled, transactions that exceed account balance complete atomically and flag the student wallet (<code className="font-mono text-stone-700 bg-stone-100 px-1 py-0.5 rounded text-[11px]">is_flagged_overdraft = true</code>) for administrative top-up reconciliation. When disabled, check-ins are strictly blocked with an HTTP 402 Payment Required error.
+                  When enabled, final PRESENT settlement may complete atomically and flag the student wallet (<code className="font-mono text-stone-700 bg-stone-100 px-1 py-0.5 rounded text-[11px]">is_flagged_overdraft = true</code>) for administrative top-up reconciliation. When disabled, settlement is blocked with an HTTP 402 Payment Required error.
                 </span>
               </div>
             </label>

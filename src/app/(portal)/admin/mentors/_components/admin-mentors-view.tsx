@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Users, Mail, Phone, CalendarDays, ArrowRight } from 'lucide-react';
+import { Cpu, Mail, Phone, CalendarDays, ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export interface MentorItem {
@@ -89,8 +89,9 @@ export function AdminMentorsView({ mentors }: AdminMentorsViewProps) {
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-stone-900">{mentor.name}</h2>
-                  <span className="inline-block text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md mt-0.5">
-                    Active Faculty
+                  <span className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-brand-border/70 bg-brand-subtle px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-brand-primary">
+                    <Cpu className="h-3 w-3" strokeWidth={2.5} />
+                    Engineer · Tutor
                   </span>
                 </div>
               </div>
