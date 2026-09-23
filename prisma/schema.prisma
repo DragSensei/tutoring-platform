@@ -49,27 +49,85 @@ enum TransactionType {
   REFUND
 }
 
-model User {
-  id             String        @id @default(cuid())
-  name           String?
-  phone          String?       @unique
-  email          String?       @unique
-  password_hash  String?
-  role           Role          @default(STUDENT)
-  account_status AccountStatus @default(ACTIVE)
-  created_at     DateTime      @default(now())
-  updated_at     DateTime      @updatedAt
+enum CommissionBasis {
+  FINALIZED_SESSION_WALLET_CHARGE
+}
 
-  wallet               Wallet?
-  tutored_sessions     Session[]                  @relation("TutorSessions")
-  tutored_series       SessionSeries[]            @relation("TutorSeries")
-  attendances          AttendanceRecord[]         @relation("StudentAttendances")
-  session_participants SessionParticipant[]
-  series_participants  SessionSeriesParticipant[]
-  setup_tokens         AccountSetupToken[]
-  created_transactions WalletTransaction[]        @relation("AdminCreatedTransactions")
+enum ReferralSourceKind {
+  DIRECT
+  REFERRAL
+  SALES
+}
+
+enum StudentImportRowOutcome {
+  CREATED
+  UPDATED
+  MATCHED
+  SKIPPED
+  CONFLICT
+  INVALID
+}
+
+model User {
+  id                         String          @id @default(cuid())
+  name                       String?
+  phone                      String?         @unique
+  email                      String?         @unique
+  password_hash              String?
+  role                       Role            @default(STUDENT)
+  account_status             AccountStatus   @default(ACTIVE)
+  referral_source_id         String?
+  referral_source            ReferralSource? @relation("StudentReferralSource", fields: [referral_source_id], references: [id], onDelete: Restrict)
+  tutor_hourly_rate_override Decimal?        @db.Decimal(10, 2)
+  created_at                 DateTime        @default(now())
+  updated_at                 DateTime        @updatedAt
+
+  wallet                     Wallet?
+  tutored_sessions           Session[]                      @relation("TutorSessions")
+  tutored_series             SessionSeries[]                @relation("TutorSeries")
+  attendances                AttendanceRecord[]             @relation("StudentAttendances")
+  session_participants       SessionParticipant[]
+  series_participants        SessionSeriesParticipant[]
+  setup_tokens               AccountSetupToken[]
+  created_transactions       WalletTransaction[]            @relation("AdminCreatedTransactions")
+  created_student_imports    StudentImportBatch[]           @relation("StudentImportCreator")
+  imported_student_rows      StudentImportRow[]             @relation("ImportedStudent")
+  tutor_compensation_entries TutorCompensationLedgerEntry[] @relation("CompensationTutor")
+  commission_entries         CommissionLedgerEntry[]        @relation("CommissionStudent")
+  commission_policy_updates  PlatformPolicy[]               @relation("CommissionPolicyUpdater")
 
   @@index([role])
+  @@index([referral_source_id])
+}
+
+model ReferralSource {
+  id              String             @id @default(cuid())
+  name            String             @unique
+  normalized_name String             @unique
+  kind            ReferralSourceKind
+  is_active       Boolean            @default(true)
+  created_at      DateTime           @default(now())
+  updated_at      DateTime           @updatedAt
+
+  students           User[]                  @relation("StudentReferralSource")
+  commission_entries CommissionLedgerEntry[] @relation("CommissionRecipientSource")
+
+  @@index([is_active, name])
+}
+
+model PricingProfile {
+  id                    String   @id @default(cuid())
+  name                  String   @unique
+  private_session_price Decimal  @db.Decimal(10, 2)
+  group_session_price   Decimal  @db.Decimal(10, 2)
+  is_active             Boolean  @default(true)
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+
+  series   SessionSeries[] @relation("SeriesPricingProfile")
+  sessions Session[]       @relation("SessionPricingProfile")
+
+  @@index([is_active, name])
 }
 
 model Wallet {
@@ -88,30 +146,37 @@ model Wallet {
 }
 
 model Session {
-  id               String         @id @default(cuid())
-  tutor_id         String
-  tutor            User           @relation("TutorSessions", fields: [tutor_id], references: [id], onDelete: Restrict)
-  series_id        String?
-  series           SessionSeries? @relation(fields: [series_id], references: [id], onDelete: SetNull)
-  occurrence_date  DateTime?
-  series_exception Boolean        @default(false)
-  title            String
-  session_type     SessionType
-  start_time       DateTime
-  end_time         DateTime
-  deadline         DateTime // legacy field name; attendance closes at end_time + policy grace
-  token            String?        @unique // retained only for historical attendance-link data
-  status           SessionStatus  @default(SCHEDULED)
-  attendance_notes String?        @db.Text
-  attendance_saved_at DateTime?
-  attendance_finalized_at DateTime?
-  series_exception_reason String?
-  created_at       DateTime       @default(now())
-  updated_at       DateTime       @updatedAt
+  id                            String          @id @default(cuid())
+  tutor_id                      String
+  tutor                         User            @relation("TutorSessions", fields: [tutor_id], references: [id], onDelete: Restrict)
+  series_id                     String?
+  series                        SessionSeries?  @relation(fields: [series_id], references: [id], onDelete: SetNull)
+  occurrence_date               DateTime?
+  series_exception              Boolean         @default(false)
+  title                         String
+  session_type                  SessionType
+  start_time                    DateTime
+  end_time                      DateTime
+  deadline                      DateTime // legacy field name; attendance closes at end_time + policy grace
+  token                         String?         @unique // retained only for historical attendance-link data
+  status                        SessionStatus   @default(SCHEDULED)
+  historical_only               Boolean         @default(false)
+  pricing_profile_id            String?
+  pricing_profile               PricingProfile? @relation("SessionPricingProfile", fields: [pricing_profile_id], references: [id], onDelete: Restrict)
+  pricing_profile_name_snapshot String?
+  student_price_snapshot        Decimal?        @db.Decimal(10, 2)
+  attendance_notes              String?         @db.Text
+  attendance_saved_at           DateTime?
+  attendance_finalized_at       DateTime?
+  series_exception_reason       String?
+  created_at                    DateTime        @default(now())
+  updated_at                    DateTime        @updatedAt
 
-  attendances  AttendanceRecord[]
-  participants SessionParticipant[]
-  transactions WalletTransaction[]
+  attendances        AttendanceRecord[]
+  participants       SessionParticipant[]
+  transactions       WalletTransaction[]
+  tutor_compensation TutorCompensationLedgerEntry?
+  commission_entries CommissionLedgerEntry[]
 
   @@unique([series_id, occurrence_date])
   @@index([tutor_id])
@@ -121,19 +186,21 @@ model Session {
 }
 
 model SessionSeries {
-  id               String              @id @default(cuid())
-  tutor_id         String
-  tutor            User                @relation("TutorSeries", fields: [tutor_id], references: [id], onDelete: Restrict)
-  title            String
-  session_type     SessionType
-  weekday          Int
-  start_minute     Int
-  duration_minutes Int
-  starts_on        DateTime
-  ends_on          DateTime?
-  status           SessionSeriesStatus @default(ACTIVE)
-  created_at       DateTime            @default(now())
-  updated_at       DateTime            @updatedAt
+  id                 String              @id @default(cuid())
+  tutor_id           String
+  tutor              User                @relation("TutorSeries", fields: [tutor_id], references: [id], onDelete: Restrict)
+  title              String
+  session_type       SessionType
+  weekday            Int
+  start_minute       Int
+  duration_minutes   Int
+  starts_on          DateTime
+  ends_on            DateTime?
+  status             SessionSeriesStatus @default(ACTIVE)
+  pricing_profile_id String?
+  pricing_profile    PricingProfile?     @relation("SeriesPricingProfile", fields: [pricing_profile_id], references: [id], onDelete: Restrict)
+  created_at         DateTime            @default(now())
+  updated_at         DateTime            @updatedAt
 
   participants SessionSeriesParticipant[]
   occurrences  Session[]
@@ -178,16 +245,17 @@ model AttendanceRecord {
 }
 
 model WalletTransaction {
-  id                 String          @id @default(cuid())
+  id                 String                 @id @default(cuid())
   wallet_id          String
-  wallet             Wallet          @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
-  amount             Decimal         @db.Decimal(10, 2) // positive for deposit/refund, negative for deduction
+  wallet             Wallet                 @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
+  amount             Decimal                @db.Decimal(10, 2) // positive for deposit/refund, negative for deduction
   transaction_type   TransactionType
   session_id         String?
-  session            Session?        @relation(fields: [session_id], references: [id], onDelete: SetNull)
+  session            Session?               @relation(fields: [session_id], references: [id], onDelete: SetNull)
   created_by_user_id String?
-  created_by         User?           @relation("AdminCreatedTransactions", fields: [created_by_user_id], references: [id], onDelete: SetNull)
-  created_at         DateTime        @default(now())
+  created_by         User?                  @relation("AdminCreatedTransactions", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  created_at         DateTime               @default(now())
+  commission_entry   CommissionLedgerEntry?
 
   @@index([wallet_id])
   @@index([session_id])
@@ -195,24 +263,102 @@ model WalletTransaction {
 }
 
 model PlatformPolicy {
-  id                    String   @id @default("default")
-  check_in_window_hours Int      @default(4)
-  group_session_price   Decimal  @default(375.00) @db.Decimal(10, 2)
-  private_session_price Decimal  @default(500.00) @db.Decimal(10, 2)
-  allow_overdraft       Boolean  @default(true)
-  created_at            DateTime @default(now())
-  updated_at            DateTime @updatedAt
+  id                            String          @id @default("default")
+  check_in_window_hours         Int             @default(4)
+  group_session_price           Decimal         @default(375.00) @db.Decimal(10, 2)
+  private_session_price         Decimal         @default(500.00) @db.Decimal(10, 2)
+  allow_overdraft               Boolean         @default(true)
+  default_tutor_hourly_rate     Decimal         @default(0.00) @db.Decimal(10, 2)
+  commission_enabled            Boolean         @default(false)
+  commission_basis              CommissionBasis @default(FINALIZED_SESSION_WALLET_CHARGE)
+  commission_rate_bps           Int             @default(0)
+  commission_rule_version       Int             @default(1)
+  commission_updated_by_user_id String?
+  commission_updated_at         DateTime?
+  commission_updated_by         User?           @relation("CommissionPolicyUpdater", fields: [commission_updated_by_user_id], references: [id], onDelete: SetNull)
+  created_at                    DateTime        @default(now())
+  updated_at                    DateTime        @updatedAt
+
+  @@index([commission_updated_by_user_id])
+}
+
+model TutorCompensationLedgerEntry {
+  id                String   @id @default(cuid())
+  session_id        String   @unique
+  session           Session  @relation(fields: [session_id], references: [id], onDelete: Restrict)
+  tutor_id          String
+  tutor             User     @relation("CompensationTutor", fields: [tutor_id], references: [id], onDelete: Restrict)
+  delivered_minutes Int
+  hourly_rate       Decimal  @db.Decimal(10, 2)
+  amount            Decimal  @db.Decimal(10, 2)
+  created_at        DateTime @default(now())
+
+  @@index([tutor_id, created_at])
+}
+
+model CommissionLedgerEntry {
+  id                             String            @id @default(cuid())
+  session_id                     String
+  session                        Session           @relation(fields: [session_id], references: [id], onDelete: Restrict)
+  student_id                     String
+  student                        User              @relation("CommissionStudent", fields: [student_id], references: [id], onDelete: Restrict)
+  source_wallet_transaction_id   String            @unique
+  source_wallet_transaction      WalletTransaction @relation(fields: [source_wallet_transaction_id], references: [id], onDelete: Restrict)
+  recipient_source_id            String
+  recipient_source               ReferralSource    @relation("CommissionRecipientSource", fields: [recipient_source_id], references: [id], onDelete: Restrict)
+  recipient_source_name_snapshot String
+  basis                          CommissionBasis   @default(FINALIZED_SESSION_WALLET_CHARGE)
+  basis_amount                   Decimal           @db.Decimal(10, 2)
+  rate_bps                       Int
+  amount                         Decimal           @db.Decimal(10, 2)
+  rule_version                   Int
+  created_at                     DateTime          @default(now())
+
+  @@unique([session_id, student_id])
+  @@index([student_id, created_at])
+  @@index([recipient_source_id, created_at])
+  @@index([session_id])
+}
+
+model StudentImportBatch {
+  id                 String   @id @default(cuid())
+  idempotency_key    String   @unique
+  created_by_user_id String
+  created_by         User     @relation("StudentImportCreator", fields: [created_by_user_id], references: [id], onDelete: Restrict)
+  row_count          Int
+  confirmed_at       DateTime @default(now())
+  created_at         DateTime @default(now())
+
+  rows StudentImportRow[]
+
+  @@index([created_by_user_id, created_at])
+}
+
+model StudentImportRow {
+  id              String                  @id @default(cuid())
+  batch_id        String
+  batch           StudentImportBatch      @relation(fields: [batch_id], references: [id], onDelete: Restrict)
+  row_number      Int
+  outcome         StudentImportRowOutcome
+  reason_code     String?
+  matched_user_id String?
+  matched_user    User?                   @relation("ImportedStudent", fields: [matched_user_id], references: [id], onDelete: SetNull)
+  created_at      DateTime                @default(now())
+
+  @@unique([batch_id, row_number])
+  @@index([batch_id, outcome])
+  @@index([matched_user_id])
 }
 
 model AccountSetupToken {
-  id          String    @id @default(cuid())
+  id          String              @id @default(cuid())
   user_id     String
-  user        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user        User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
   purpose     AccountTokenPurpose @default(SETUP)
-  token_hash  String    @unique
+  token_hash  String              @unique
   expires_at  DateTime
   consumed_at DateTime?
-  created_at  DateTime  @default(now())
+  created_at  DateTime            @default(now())
 
   @@index([user_id, purpose, expires_at])
   @@index([expires_at, consumed_at])

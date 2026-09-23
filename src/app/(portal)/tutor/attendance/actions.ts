@@ -65,11 +65,12 @@ async function persistTutorAttendance(
   input: TutorAttendanceInput & { tutorId: string; currentTime: Date }
 ) {
   const session = await tx.session.findFirst({
-    where: { id: input.sessionId, tutor_id: input.tutorId },
-    select: { id: true, status: true, start_time: true, end_time: true, attendance_finalized_at: true },
+    where: { id: input.sessionId, tutor_id: input.tutorId, historical_only: false },
+    select: { id: true, status: true, start_time: true, end_time: true, attendance_finalized_at: true, historical_only: true },
   });
 
   if (!session) throw new AttendanceAccessError();
+  if (session.historical_only) throw new AttendanceStateError('Historical schedule records cannot record attendance.');
   if (session.status === 'CANCELLED') {
     throw new AttendanceStateError('Cancelled sessions cannot record attendance.');
   }

@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { Search, ChevronDown, Check, X } from 'lucide-react';
+import { useFloatingPanel } from '@/shared/hooks/use-floating-panel';
 
 export interface ComboboxOption {
   value: string;
@@ -35,77 +36,6 @@ export interface MultiComboboxProps {
   className?: string;
 }
 
-interface MenuPosition {
-  top: number;
-  left: number;
-  width: number;
-  maxHeight: number;
-}
-
-const VIEWPORT_MARGIN = 8;
-const MENU_GAP = 6;
-const useIsomorphicLayoutEffect = typeof window === 'undefined' ? React.useEffect : React.useLayoutEffect;
-
-function useFloatingMenu(
-  isOpen: boolean,
-  triggerRef: React.RefObject<HTMLElement>,
-  menuRef: React.RefObject<HTMLElement>,
-  contentKey: string | number,
-) {
-  const [position, setPosition] = React.useState<MenuPosition | null>(null);
-
-  const updatePosition = React.useCallback(() => {
-    if (!isOpen || !triggerRef.current || typeof window === 'undefined') {
-      setPosition(null);
-      return;
-    }
-
-    const trigger = triggerRef.current.getBoundingClientRect();
-    const availableWidth = Math.max(window.innerWidth - VIEWPORT_MARGIN * 2, 0);
-    const width = Math.min(trigger.width, availableWidth);
-    const maxLeft = Math.max(VIEWPORT_MARGIN, window.innerWidth - width - VIEWPORT_MARGIN);
-    const left = Math.min(Math.max(trigger.left, VIEWPORT_MARGIN), maxLeft);
-    const menuHeight = menuRef.current?.getBoundingClientRect().height ?? 0;
-    const belowTop = trigger.bottom + MENU_GAP;
-    const canFitBelow = menuHeight === 0 || belowTop + menuHeight <= window.innerHeight - VIEWPORT_MARGIN;
-    const canFitAbove = menuHeight > 0 && trigger.top - MENU_GAP - menuHeight >= VIEWPORT_MARGIN;
-    const top = canFitBelow
-      ? belowTop
-      : canFitAbove
-        ? trigger.top - MENU_GAP - menuHeight
-        : Math.max(VIEWPORT_MARGIN, Math.min(belowTop, window.innerHeight - VIEWPORT_MARGIN - menuHeight));
-
-    setPosition({
-      top,
-      left,
-      width,
-      maxHeight: Math.max(window.innerHeight - top - VIEWPORT_MARGIN, 1),
-    });
-  }, [isOpen, menuRef, triggerRef]);
-
-  useIsomorphicLayoutEffect(() => {
-    updatePosition();
-  }, [contentKey, updatePosition]);
-
-  React.useEffect(() => {
-    if (!isOpen || typeof window === 'undefined') return;
-
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
-
-    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updatePosition);
-    if (resizeObserver && menuRef.current) resizeObserver.observe(menuRef.current);
-
-    return () => {
-      window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', updatePosition, true);
-      resizeObserver?.disconnect();
-    };
-  }, [isOpen, menuRef, updatePosition]);
-
-  return position;
-}
-
 export function Combobox({
   options,
   value,
@@ -136,7 +66,7 @@ export function Combobox({
         (opt.sublabel && opt.sublabel.toLowerCase().includes(query))
     );
   }, [options, searchQuery]);
-  const menuPosition = useFloatingMenu(isOpen, triggerRef, menuRef, filteredOptions.length);
+  const menuPosition = useFloatingPanel(isOpen, triggerRef, menuRef, filteredOptions.length);
 
   // Click outside to close
   React.useEffect(() => {
@@ -355,7 +285,7 @@ export function MultiCombobox({
     if (!query) return options;
     return options.filter((option) => option.label.toLowerCase().includes(query) || option.sublabel?.toLowerCase().includes(query));
   }, [options, searchQuery]);
-  const menuPosition = useFloatingMenu(isOpen, triggerRef, menuRef, filteredOptions.length);
+  const menuPosition = useFloatingPanel(isOpen, triggerRef, menuRef, filteredOptions.length);
 
   React.useEffect(() => {
     function handleClickOutside(event: MouseEvent) {

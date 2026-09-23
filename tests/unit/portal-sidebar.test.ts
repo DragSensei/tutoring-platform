@@ -89,6 +89,7 @@ describe('Portal Sidebar Architectural Primitive', () => {
         '/admin',
         '/admin/gadwal',
         '/admin/accounts',
+        '/admin/finances',
         '/admin/wallets',
         '/admin/mentors',
         '/admin/policies',

@@ -32,6 +32,10 @@ function commonAccount(role: 'ADMIN' | 'TUTOR' | 'STUDENT') {
     role,
     created_at: createdAt,
     updated_at: updatedAt,
+    account_status: 'ACTIVE',
+    referral_source_id: null,
+    referral_source: null,
+    tutor_hourly_rate_override: null,
   };
 }
 
@@ -77,6 +81,8 @@ describe('Admin account data access', () => {
       phone: true,
       role: true,
       account_status: true,
+      referral_source_id: true,
+      referral_source: { select: { id: true, name: true, kind: true } },
       created_at: true,
     });
     expect(query?.select).not.toHaveProperty('password_hash');
@@ -152,6 +158,7 @@ describe('Admin account data access', () => {
           },
         ],
         _count: { tutored_sessions: 7 },
+        tutor_hourly_rate_override: null,
       } as never);
 
     const result = await getAccountDetail('tutor-1');
@@ -160,6 +167,7 @@ describe('Admin account data access', () => {
     if (result?.role !== 'TUTOR') throw new Error('Expected a tutor detail');
     expect(result.roleLabel).toBe('Faculty Mentor');
     expect(result.tutor.sessionCount).toBe(7);
+    expect(result.tutor.hourlyRateOverride).toBeNull();
     expect(result.tutor.recentSessions[0]).toMatchObject({
       title: 'Private Coding',
       attendanceCount: 1,

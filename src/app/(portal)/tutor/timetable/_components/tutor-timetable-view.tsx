@@ -36,7 +36,7 @@ export function TutorTimetableView({ tutor, sessions: initialSessions }: TutorTi
       </header>
 
       <WeeklySessionSchedule
-        sessions={initialSessions}
+        sessions={initialSessions.filter((session) => !session.historicalOnly)}
         onReschedule={setRescheduleSession}
         heading="Weekly recurring schedule"
         description="Review concrete occurrences and postpone one occurrence without changing the weekly series."

@@ -6,9 +6,10 @@
 // Roles
 export type Role = 'ADMIN' | 'TUTOR' | 'STUDENT';
 
-// Session Types & Fixed Pricing Matrix (EGP)
+// Session Types & platform-fallback prices (EGP)
 export type SessionType = 'PRIVATE' | 'GROUP';
 
+// These values are the PlatformPolicy fallback when a series has no profile.
 export const SESSION_PRICING: Record<SessionType, number> = {
   PRIVATE: 500.00,
   GROUP: 375.00,
@@ -19,15 +20,35 @@ export type SessionStatus = 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
 
 // Ledger Transaction Types
 export type TransactionType = 'ADMIN_DEPOSIT' | 'SESSION_DEDUCTION' | 'REFUND';
+export type ReferralSourceKind = 'DIRECT' | 'REFERRAL' | 'SALES';
+export type CommissionBasis = 'FINALIZED_SESSION_WALLET_CHARGE';
+export type StudentImportRowOutcome = 'CREATED' | 'UPDATED' | 'MATCHED' | 'SKIPPED' | 'CONFLICT' | 'INVALID';
+export type Money = string; // Decimal serialized as a base-10 string at API boundaries.
+
+export interface ReferralSourceContract {
+  id: string;
+  name: string;
+  kind: ReferralSourceKind;
+  isActive: boolean;
+}
+
+export interface PricingProfileContract {
+  id: string;
+  name: string;
+  privateSessionPrice: Money;
+  groupSessionPrice: Money;
+  isActive: boolean;
+}
 
 // User Schema (Prisma)
 export interface UserContract {
   id: string;
-  name: string;
-  phone: string; // Unique
-  email: string; // Unique
-  passwordHash: string;
+  name: string | null;
+  phone: string | null; // Unique when present
+  email: string | null; // Unique when present
   role: Role;
+  referralSourceId?: string | null; // Student attribution only; null is the explicit None option.
+  tutorHourlyRateOverride?: Money | null; // Tutor only; null uses PlatformPolicy default.
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,7 +57,7 @@ export interface UserContract {
 export interface WalletContract {
   id: string;
   userId: string;
-  balance: number; // NUMERIC(10, 2)
+  balance: Money; // NUMERIC(10, 2)
   isFlaggedOverdraft: boolean; // Overdraft policy: true when balance < 0
   createdAt: Date;
   updatedAt: Date;
@@ -50,9 +71,13 @@ export interface SessionContract {
   sessionType: SessionType;
   startTime: Date;
   endTime: Date;
-  deadline: Date; // Computed: startTime + 4 hours
-  token: string; // UUID, Unique
+  deadline: Date; // Attendance closes at endTime + configured grace.
+  token?: string | null; // Historical compatibility field; no public attendance flow.
   status: SessionStatus;
+  historicalOnly: boolean; // Historical backfill rows never create finance.
+  pricingProfileId?: string | null;
+  pricingProfileNameSnapshot?: string | null;
+  studentPriceSnapshot?: Money | null; // Set once at durable financial settlement.
   attendanceNotes?: string | null; // Required when Tutor records attendance
   createdAt: Date;
   updatedAt: Date;
@@ -78,7 +103,7 @@ export interface AttendanceRecordContract {
 export interface WalletTransactionContract {
   id: string;
   walletId: string;
-  amount: number; // +/- NUMERIC(10, 2)
+  amount: Money; // +/- NUMERIC(10, 2)
   transactionType: TransactionType;
   sessionId?: string | null;
   createdByUserId?: string | null;
@@ -88,6 +113,29 @@ export interface WalletTransactionContract {
 // Provenance: attendance reconciliation entries leave createdByUserId null;
 // Admin-created deposits/refunds carry the authenticated Admin user ID and
 // are never included in Tutor attendance net-charge reconciliation.
+
+export interface TutorCompensationLedgerEntryContract {
+  sessionId: string; // Unique: at most one accrual per delivered Session.
+  tutorId: string;
+  deliveredMinutes: number;
+  hourlyRate: Money; // Snapshot: Tutor override or PlatformPolicy default.
+  amount: Money;
+  createdAt: Date;
+}
+
+export interface CommissionLedgerEntryContract {
+  sessionId: string;
+  studentId: string;
+  sourceWalletTransactionId: string; // A real negative SESSION_DEDUCTION event.
+  recipientSourceId: string; // The Student's eligible ReferralSource, never an auth role.
+  recipientSourceNameSnapshot: string;
+  basis: CommissionBasis;
+  basisAmount: Money;
+  rateBps: number;
+  amount: Money;
+  ruleVersion: number;
+  createdAt: Date;
+}
 ```
 
 ---
@@ -107,24 +155,25 @@ export interface WalletTransactionContract {
 
 ## 3. Unidirectional Data Flows
 
-### Student Check-In & Wallet Deduction Flow:
+### Tutor Attendance, Wallet Settlement, and Finance Accrual Flow:
 ```
-Client Request (GET /attend/[token] or POST /api/attend/[token])
+Authenticated Tutor server-action request { sessionId, presentStudentIds, notes }
   │
-  ├── 1. Auth Guard (Extract Session / Student ID)
+  ├── 1. Require Tutor identity and scope Session to authenticated tutor_id
   │
-  ├── 2. Reject CANCELLED or COMPLETED sessions (finalized attendance is immutable to Student check-in)
+  ├── 2. Read the durable SessionParticipant roster; reject IDs outside the roster
   │
-  ├── 3. Deadline Verification: NOW() <= session.deadline (start_time + 4h)
-  │      └── If NOW() > deadline: ABORT with HTTP 403 Forbidden.
+  ├── 3. Save final Tutor attendance; editing closes at end_time + policy grace
   │
-  └── 4. Isolated Database Transaction (prisma.$transaction):
-         ├── Check: Student belongs to SessionParticipant roster
-         ├── Check: Has student already checked in? (Throw 409 if duplicate)
-         ├── Mutate: INSERT into AttendanceRecords(session_id, student_id, attended_at)
-         └── Reconcile final PRESENT financial state through the shared attendance billing owner
+  └── 4. At due finalization, one serializable transaction:
+         ├── Re-read and lock current Session, policy, profile, Tutor, and roster
+         ├── Skip finance when Session.historical_only = true
+         ├── Reconcile each Student's final net charge in WalletTransaction
+         ├── Snapshot the resolved per-student price/profile on Session once
+         ├── Create one Tutor compensation entry only with explicit saved attendance
+         └── Create commission only for eligible REFERRAL/SALES sources and a real negative charge row
   │
-  └── 5. Success Response: HTTP 200 { success: true, deductedAmount, newBalance, isOverdraft }
+  └── 5. Repeated/concurrent finalization creates no duplicate wallet, tutor-pay, or commission entries
 ```
 
 ### Tutor Attendance Persistence Flow:
@@ -154,17 +203,22 @@ Client server-action request { sessionId, presentStudentIds, notes }
 
 ## 4. Failure Modes & Mitigations
 
-1. **Race Condition on Check-In or Finalization:**
-   - *Risk:* A student attempts multiple simultaneous requests or a Tutor saves the same final state concurrently.
+Feature authorization imports the canonical `requireAuth` owner from
+`src/shared/server/session.ts`. The auth feature keeps a compatibility facade
+for app callers and owns password authentication; domain features do not import
+other feature implementations for authorization.
+
+1. **Race Condition on Attendance Finalization or Accrual:**
+   - *Risk:* A Tutor saves the same final state concurrently or two finalizers settle the same Session.
    - *Mitigation:* Database composite unique indexes plus serializable Prisma transactions. Any conflicting request rolls back all attendance, wallet, and ledger mutations.
 
 2. **Negative Balance / Overdraft Exploitation:**
    - *Risk:* A student with 0.00 EGP attends multiple high-value private sessions (500.00 EGP each).
    - *Mitigation:* System intentionally allows negative balance per business rules (credit/post-paid sessions) while atomically setting `is_flagged_overdraft = true`. Flagged accounts appear immediately on the Admin Wallets review dashboard.
 
-3. **Clock Skew & Expired Token Submissions:**
-   - *Risk:* Check-in attempt submitted after 4-hour window due to client-side clock tampering.
-   - *Mitigation:* The 4-hour expiration check (`NOW() > session.deadline`) evaluates using the database server / server-side timestamp, strictly returning HTTP 403.
+3. **Late Attendance Mutation:**
+   - *Risk:* A client submits a Tutor attendance edit after the allowed window.
+   - *Mitigation:* The server checks the Session end time plus configured grace; client time is never authoritative.
 
 4. **Tutor IDOR / Roster Injection:**
    - *Risk:* A Tutor submits another Tutor's session ID or adds arbitrary student IDs.
@@ -173,19 +227,6 @@ Client server-action request { sessionId, presentStudentIds, notes }
 ---
 
 ## 5. REST API Endpoints & Request/Response Contracts
-
-### `POST /api/attend/[token]`
-Records student session check-in using unique session token, updates student wallet balance, and creates an audit ledger transaction.
-- The token identifies the Session; the authenticated `STUDENT` session identifies the Student. Client-provided student IDs are not accepted.
-- **Status:** `200 OK`
-```json
-{
-  "success": true,
-  "deductedAmount": 375,
-  "newBalance": 1125,
-  "isOverdraft": false
-}
-```
 
 ### `GET /api/sessions`
 Retrieves scheduled tutoring sessions for agenda and calendar dashboards.
@@ -244,6 +285,7 @@ export interface SessionSeriesContract {
   weekday: number; // 0 = Sunday ... 6 = Saturday, academy calendar
   startMinute: number; // 0..1439, Africa/Cairo wall-clock time
   durationMinutes: number; // 30..480
+  pricingProfileId: string | null; // null explicitly selects PlatformPolicy fallback pricing.
   startsOn: Date; // academy-calendar date, normalized to UTC midnight
   endsOn?: Date | null;
   status: SeriesStatus;
@@ -274,6 +316,18 @@ export interface SessionOccurrenceContract extends SessionContract {
 - `Africa/Cairo` is the current academy wall-clock timezone already used by the
   shared date formatters. Occurrence timestamps are stored as instants; the series
   stores calendar weekday/minute so DST or server timezone does not alter the rule.
+- Admin series input serializes `pricingProfileId: string | null`; the form option
+  `Platform pricing` maps to null. A selected ID points to an active named profile.
+- Materialized Sessions copy the selected profile ID only. They do not freeze an
+  unfinalized charge: `student_price_snapshot` and `pricing_profile_name_snapshot`
+  remain null until durable financial settlement resolves the current profile or
+  PlatformPolicy fallback. The settlement transaction writes the price/name once.
+- Profile changes can therefore affect unfinalized Sessions. A completed financial
+  snapshot is immutable and is the source for later reporting.
+- `historical_only = true` is reserved for explicit pre-system history imports;
+  those Sessions remain visible for scheduling/history but produce no wallet,
+  Tutor-pay, or commission ledger entries. Existing Sessions default false and
+  are not reclassified by migration.
 
 ## 7. Account Provisioning & Credential Contracts
 
@@ -285,6 +339,7 @@ export interface CreateAccountInput {
   name?: string;
   email?: string;
   phone?: string;
+  referralSourceId?: string | null; // Student only; null is explicit None, Direct is a seeded source.
 }
 
 export interface AccountSetupTokenContract {
@@ -311,6 +366,21 @@ export interface AccountSetupTokenContract {
 - Authentication is fail-closed for `PENDING_CREDENTIALS` and
   `PENDING_PROFILE`; only `ACTIVE` accounts with a stored hash and complete profile
   can receive a signed portal session.
+
+### Student CSV Import
+
+- Only an authenticated Admin can confirm a batch. Header parsing, column mapping,
+  preview, validation, conflict reporting, and dry-run are non-mutating.
+- Confirmation revalidates the mapped canonical fields server-side and creates
+  partial Students as `PENDING_CREDENTIALS`; it never accepts a password or raw
+  setup token from CSV.
+- Email and phone are normalized and matched independently. A row is a conflict
+  when they identify different accounts, a non-Student, or an ambiguous identity.
+  Updating a matched Student requires an explicit per-row update selection.
+- `StudentImportBatch` and `StudentImportRow` persist actor, time, idempotency key,
+  row number, outcome, fixed reason code, and matched User link only. They never
+  persist CSV bytes, raw row JSON, passwords, or setup secrets. Outcome counts are
+  aggregated from row records; dry-runs create no batch or row records.
 
 ### `POST /api/admin/wallets/deposit`
 Direct administrative wallet credit top-up.
@@ -359,16 +429,45 @@ terminates current session and clears authentication cookie.
 export interface PlatformPolicyContract {
   id: string; // 'default'
   checkInWindowHours: number; // e.g., 4
-  groupSessionPrice: number; // e.g., 375.00
-  privateSessionPrice: number; // e.g., 500.00
+  groupSessionPrice: Money; // Platform fallback; a named profile may override at settlement.
+  privateSessionPrice: Money;
   allowOverdraft: boolean; // default: true
+  defaultTutorHourlyRate: Money; // Default zero until Admin configures an approved rate.
+  commissionEnabled: boolean; // default false
+  commissionBasis: CommissionBasis;
+  commissionRateBps: number;
+  commissionRuleVersion: number;
+  commissionUpdatedByUserId: string | null;
   updatedAt: Date;
 }
 ```
 
 ### Server Actions: `src/features/policies/server/policy-actions.ts`
-- `getPlatformPolicies()`: Fetches active system policy singleton, seeding defaults (`check_in_window_hours: 4`, `group_session_price: 375`, `private_session_price: 500`, `allow_overdraft: true`) if non-existent.
-- `updatePlatformPolicies(data)`: Validates input with `updatePolicySchema` (`zod`), persists to DB, and executes `revalidatePath` across `/admin/policies`, `/admin/gadwal`, and `/tutor/agenda`.
+- `getPlatformPolicies()`: Fetches the singleton, seeding fallback prices, a zero hourly Tutor rate, disabled commission, zero basis points, and the fixed commission basis when absent.
+- `getActivePricingProfiles()`: Admin-only read returning serializable `{ id, name, privateSessionPrice, groupSessionPrice }` rows; money is a decimal string.
+- `updatePlatformPolicies(data)`: Validates money and basis-point bounds, stores the authenticated Admin as commission-rule updater, increments the rule version when terms change, and revalidates Admin policies, scheduling, and finance routes.
+- Named Pricing Profiles store PRIVATE/GROUP prices. A nullable `SessionSeries.pricing_profile_id` selects one; null means PlatformPolicy fallback. Prices are resolved at final settlement, not occurrence materialization.
+
+## 8. Finance Reporting and Ledger Contracts
+
+- Only Admin routes/actions can read or change finance policy/reporting. Tutor and Student identities cannot submit ledger writes or choose another account's IDs.
+- Money remains Prisma `Decimal(10,2)` through all domain calculations. API/UI DTOs serialize decimal values as strings; never derive accounting amounts from JS floating-point arithmetic.
+- `WalletTransaction` is the Student wallet ledger. `TutorCompensationLedgerEntry` is the Tutor accrual ledger with one row per Session. `CommissionLedgerEntry` is separate and links one unique session/student event to the exact source wallet transaction.
+- Tutor pay is accrued only when finalization has an explicit saved Tutor attendance decision and the Session is not historical-only. Delivered minutes, hourly rate (Tutor override or PlatformPolicy default), and resulting amount are immutable ledger snapshots. The default hourly rate is zero until Admin configures a real rate.
+- Commission is disabled by default. When enabled, it is a percentage of a finalized negative `SESSION_DEDUCTION` wallet transaction, using `commission_rate_bps`. The source must be the Student's `REFERRAL` or `SALES` ReferralSource. None/null and DIRECT never accrue. The recipient is the named ReferralSource assigned to that Student, snapshotted with the transaction and rule version.
+- `FINALIZED_SESSION_WALLET_CHARGE` records an internal Student wallet charge, not proof that external cash was received. The current ledger has no payment-provider capture event. If a future commission agreement requires cash collection, accrual must remain disabled until that event exists.
+- `historical_only = true` Sessions never create wallet reconciliation, Tutor compensation, or commission ledger entries. Migrations leave existing Session rows at the default false; only explicit pre-system history backfills set true. No finance ledger rows are backfilled.
+- Date filters use finance ledger `created_at` settlement time; report totals are aggregates of ledger rows and snapshots, never recomputed from current policy/rates/prices. Each detail row includes Session, Tutor/Student, settlement timestamp, and source transaction/rule provenance.
+- Unique Session and Session/Student keys, serializable transactions, source-event links, and re-reading policy/Session state inside the transaction make repeated or concurrent settlement idempotent. Ledger rows are append-only; correction requires a new balancing event with provenance.
+- Finance Session drill-down is `/admin/finances/sessions/[sessionId]`, a read-only Admin route. It loads the Session by ID only after `ADMIN` authorization and exposes the stored price/profile, Tutor pay, wallet charge, commission, roster, and source-event snapshots. It does not link finalized Sessions to the schedule editor.
+- `getAdminFinanceSessionDetail(sessionId)` is the server data owner for that route. Missing IDs return not-found; malformed IDs fail before lookup. Monetary DTO values are decimal strings, and linked User/source records use their canonical Admin account routes.
+
+## 9. Student Import Provenance
+
+- Parsing and column mapping occur in memory. Preview, validation, conflict detection, and dry-run have no database writes; only explicit confirmation creates a batch.
+- A confirmed batch revalidates on the server. `CREATED` rows create partial Student accounts with `PENDING_CREDENTIALS`; setup credentials are issued only through the existing one-time hashed-token flow. Existing matches are `MATCHED`, `UPDATED`, or `SKIPPED` according to the explicit per-row choice. Conflicts across email/phone identities fail closed.
+- Batch idempotency key, Admin actor, confirmed time, row number, fixed outcome/reason code, and matched User ID are durable provenance. Outcome aggregates provide created, updated, matched, skipped, conflict, and invalid/error counts.
+- No CSV bytes, arbitrary row JSON, passwords, raw setup tokens, or secrets are stored or logged.
 
 ## 5. Client Table Pagination Contract
 

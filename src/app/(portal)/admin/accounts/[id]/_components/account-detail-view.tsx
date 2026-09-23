@@ -257,13 +257,10 @@ export function AccountDetailView({ account }: AccountDetailViewProps) {
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-stone-900 sm:text-3xl">{account.name || 'Profile incomplete'}</h1>
           <p className="mt-1 break-all text-xs text-stone-500 sm:text-sm">{account.email || 'Email not provided'}</p>
         </div>
-        <Link
-          href="/admin/accounts"
-          className="inline-flex min-h-[44px] items-center justify-center gap-2 self-start rounded-lg border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Accounts
-        </Link>
+        <div className="flex flex-col gap-2 self-start sm:flex-row">
+          {account.role !== 'ADMIN' && <Link href={`/admin/accounts/${account.id}/edit`} className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white">Edit account</Link>}
+          <Link href="/admin/accounts" className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary"><ArrowLeft className="h-4 w-4" />Back to Accounts</Link>
+        </div>
       </div>
 
       <Card className="rounded-2xl border-stone-200/80 bg-white shadow-xs">
@@ -277,6 +274,8 @@ export function AccountDetailView({ account }: AccountDetailViewProps) {
             <InfoField label="Phone" value={account.phone || 'Not provided'} />
             <InfoField label="Account type" value={account.roleLabel} />
             <InfoField label="Lifecycle" value={account.accountStatus.replaceAll('_', ' ')} />
+            {account.role === 'STUDENT' && <InfoField label="Referral / sales source" value={account.referralSourceName ? `${account.referralSourceName} · ${account.referralSourceKind?.toLowerCase()}` : 'None'} />}
+            {account.role === 'TUTOR' && <InfoField label="Hourly rate override" value={account.tutor.hourlyRateOverride ? `${formatEGP(account.tutor.hourlyRateOverride)} per hour` : 'Uses platform default'} />}
             <InfoField
               label="Registered"
               value={formatDateTime(account.createdAt, { includeYear: true })}

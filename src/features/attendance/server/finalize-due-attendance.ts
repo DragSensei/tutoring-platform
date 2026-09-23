@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/shared/lib/prisma';
 import { computeAttendanceClosesAt } from '@/shared/utils/deadline';
 import type { SessionType } from '@/shared/types';
-import { reconcileSessionFinancialState } from './session-financials';
+import { accrueTutorCompensation, reconcileSessionFinancialState } from './session-financials';
 
 export interface AttendanceFinalizerPolicy {
   checkInWindowHours: number;
@@ -22,6 +22,7 @@ async function finalizeOneDueAttendance(sessionId: string, currentTime: Date, po
         end_time: true,
         session_type: true,
         status: true,
+        historical_only: true,
         attendance_saved_at: true,
         attendance_finalized_at: true,
         participants: { select: { student_id: true } },
@@ -31,6 +32,7 @@ async function finalizeOneDueAttendance(sessionId: string, currentTime: Date, po
 
     if (
       !candidate ||
+      candidate.historical_only ||
       candidate.status === 'CANCELLED' ||
       candidate.status === 'COMPLETED' ||
       !candidate.attendance_saved_at ||
@@ -45,6 +47,7 @@ async function finalizeOneDueAttendance(sessionId: string, currentTime: Date, po
     const claim = await tx.session.updateMany({
       where: {
         id: sessionId,
+        historical_only: false,
         status: { in: ['SCHEDULED', 'ACTIVE'] },
         attendance_saved_at: { not: null },
         attendance_finalized_at: null,
@@ -64,6 +67,8 @@ async function finalizeOneDueAttendance(sessionId: string, currentTime: Date, po
       });
     }
 
+    await accrueTutorCompensation(tx, candidate.id, currentTime);
+
     await tx.session.update({
       where: { id: candidate.id },
       data: { status: 'COMPLETED' },
@@ -79,6 +84,7 @@ export async function finalizeDueAttendance(
   const candidates = await prisma.session.findMany({
     where: {
       status: { in: ['SCHEDULED', 'ACTIVE'] },
+      historical_only: false,
       attendance_saved_at: { not: null },
       attendance_finalized_at: null,
     },

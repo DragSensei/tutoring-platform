@@ -1,4 +1,4 @@
-import type { AccountStatus, Role, SessionStatus, SessionType, TransactionType } from '@prisma/client';
+import type { AccountStatus, ReferralSourceKind, Role, SessionStatus, SessionType, TransactionType } from '@prisma/client';
 import { requireAuth } from '@/features/auth/server/session';
 import { prisma } from '@/shared/lib/prisma';
 
@@ -16,6 +16,9 @@ export interface AccountListItem {
   role: Role;
   roleLabel: string;
   accountStatus: AccountStatus;
+  referralSourceId: string | null;
+  referralSourceName: string | null;
+  referralSourceKind: ReferralSourceKind | null;
   createdAt: string;
 }
 
@@ -48,6 +51,7 @@ export interface TutorAccountDetail extends CommonAccountDetail {
   role: 'TUTOR';
   tutor: {
     sessionCount: number;
+    hourlyRateOverride: string | null;
     recentSessions: Array<{
       id: string;
       title: string;
@@ -94,6 +98,8 @@ export async function getAccounts(): Promise<AccountListItem[]> {
       phone: true,
       role: true,
       account_status: true,
+      referral_source_id: true,
+      referral_source: { select: { id: true, name: true, kind: true } },
       created_at: true,
     },
     orderBy: [{ created_at: 'desc' }, { name: 'asc' }],
@@ -107,6 +113,9 @@ export async function getAccounts(): Promise<AccountListItem[]> {
     role: account.role,
     roleLabel: getAccountRoleLabel(account.role),
     accountStatus: account.account_status,
+    referralSourceId: account.referral_source_id,
+    referralSourceName: account.referral_source?.name ?? null,
+    referralSourceKind: account.referral_source?.kind ?? null,
     createdAt: account.created_at.toISOString(),
   }));
 }
@@ -123,6 +132,9 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
       phone: true,
       role: true,
       account_status: true,
+      referral_source_id: true,
+      referral_source: { select: { id: true, name: true, kind: true } },
+      tutor_hourly_rate_override: true,
       created_at: true,
       updated_at: true,
     },
@@ -138,6 +150,9 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
     role: account.role,
     roleLabel: getAccountRoleLabel(account.role),
     accountStatus: account.account_status,
+    referralSourceId: account.referral_source_id,
+    referralSourceName: account.referral_source?.name ?? null,
+    referralSourceKind: account.referral_source?.kind ?? null,
     createdAt: account.created_at.toISOString(),
     updatedAt: account.updated_at.toISOString(),
   };
@@ -219,6 +234,7 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
           },
         },
         _count: { select: { tutored_sessions: true } },
+        tutor_hourly_rate_override: true,
       },
     });
 
@@ -229,6 +245,7 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
       role: 'TUTOR',
       tutor: {
         sessionCount: tutor._count.tutored_sessions,
+        hourlyRateOverride: tutor.tutor_hourly_rate_override?.toFixed(2) ?? null,
         recentSessions: tutor.tutored_sessions.map((session) => ({
           id: session.id,
           title: session.title,

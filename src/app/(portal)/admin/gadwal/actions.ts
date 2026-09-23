@@ -16,6 +16,7 @@ import {
   createSessionSeries,
   getAdminWeeklySchedule,
   getSessionSeries,
+  previewHistoricalSeries,
   updateSessionSeries,
 } from '@/features/sessions/server/series-actions';
 import type { CreateSessionInput, RecurrenceScope, SessionSeriesInput } from '@/features/sessions/schemas';
@@ -69,9 +70,14 @@ export async function getAdminSession(sessionId: string) {
   return getSessionRecord(sessionId, await getPlatformPolicies());
 }
 
-export async function createAdminSeries(input: SessionSeriesInput) {
+export async function previewAdminHistoricalSeries(input: SessionSeriesInput, seriesId?: string) {
   await requireAuth(['ADMIN']);
-  const result = await createSessionSeries(input, await getPlatformPolicies());
+  return previewHistoricalSeries(input, seriesId);
+}
+
+export async function createAdminSeries(input: SessionSeriesInput, confirmedHistoricalDates?: string[]) {
+  await requireAuth(['ADMIN']);
+  const result = await createSessionSeries(input, await getPlatformPolicies(), confirmedHistoricalDates);
   revalidateSessionSurfaces();
   return result;
 }
@@ -81,9 +87,10 @@ export async function updateAdminSeries(
   input: SessionSeriesInput,
   scope: RecurrenceScope,
   effectiveOccurrenceId?: string,
+  confirmedHistoricalDates?: string[],
 ) {
   await requireAuth(['ADMIN']);
-  const result = await updateSessionSeries(seriesId, input, scope, await getPlatformPolicies(), effectiveOccurrenceId);
+  const result = await updateSessionSeries(seriesId, input, scope, await getPlatformPolicies(), effectiveOccurrenceId, confirmedHistoricalDates);
   revalidateSessionSurfaces();
   return result;
 }

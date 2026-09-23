@@ -14,9 +14,14 @@ import { TableToolbar } from '@/shared/components/table-toolbar';
 import { matchesTableSearch } from '@/shared/utils/table-search';
 import type { AccountListItem } from './accounts-data';
 import { AccountCreateForm } from './account-create-form';
+import { ReferralSourceManager } from './referral-source-manager';
+import { StudentCsvImport } from './student-csv-import';
+import type { ReferralSourceItem } from '@/features/accounts/server/account-actions';
 
 interface AccountsViewProps {
   accounts: AccountListItem[];
+  referralSources: ReferralSourceItem[];
+  initialReferralSourceId: string;
 }
 
 function getRoleBadgeVariant(role: AccountListItem['role']): BadgeProps['variant'] {
@@ -25,13 +30,14 @@ function getRoleBadgeVariant(role: AccountListItem['role']): BadgeProps['variant
   return 'outline';
 }
 
-export function AccountsView({ accounts }: AccountsViewProps) {
+export function AccountsView({ accounts, referralSources, initialReferralSourceId }: AccountsViewProps) {
   const router = useRouter();
   const [search, setSearch] = React.useState('');
   const [roleFilter, setRoleFilter] = React.useState('');
+  const [sourceFilter, setSourceFilter] = React.useState(initialReferralSourceId);
   const filteredAccounts = accounts.filter((account) =>
-    matchesTableSearch([account.name, account.email, account.phone, account.roleLabel], search) &&
-    (!roleFilter || account.role === roleFilter)
+    matchesTableSearch([account.name, account.email, account.phone, account.roleLabel, account.referralSourceName], search) &&
+    (!roleFilter || account.role === roleFilter) && (!sourceFilter || (sourceFilter === '__none__' ? !account.referralSourceId : account.referralSourceId === sourceFilter))
   );
   const pagination = useTablePagination(filteredAccounts);
 
@@ -64,7 +70,9 @@ export function AccountsView({ accounts }: AccountsViewProps) {
         </div>
       </div>
 
-      <AccountCreateForm />
+      <AccountCreateForm referralSources={referralSources} />
+      <ReferralSourceManager sources={referralSources} />
+      <StudentCsvImport />
 
       {accounts.length === 0 ? (
         <Card className="w-full rounded-2xl border-stone-200/80 bg-white shadow-xs">
@@ -88,9 +96,12 @@ export function AccountsView({ accounts }: AccountsViewProps) {
               searchValue={search}
               onSearchChange={setSearch}
               resultCount={filteredAccounts.length}
-              onClear={() => { setSearch(''); setRoleFilter(''); }}
+              onClear={() => { setSearch(''); setRoleFilter(''); setSourceFilter(''); }}
               searchPlaceholder="Search accounts, email, or phone"
-              filters={[{ id: 'role', label: 'role', value: roleFilter, onChange: setRoleFilter, options: [{ value: 'ADMIN', label: 'Admin' }, { value: 'TUTOR', label: 'Faculty mentor' }, { value: 'STUDENT', label: 'Student' }] }]}
+              filters={[
+                { id: 'role', label: 'role', value: roleFilter, onChange: setRoleFilter, options: [{ value: 'ADMIN', label: 'Admin' }, { value: 'TUTOR', label: 'Faculty mentor' }, { value: 'STUDENT', label: 'Student' }] },
+                { id: 'referralSource', label: 'source', value: sourceFilter, onChange: setSourceFilter, options: [{ value: '__none__', label: 'None' }, ...referralSources.map((source) => ({ value: source.id, label: `${source.name} · ${source.kind.toLowerCase()}` }))] },
+              ]}
             />
             {filteredAccounts.length === 0 ? (
               <div className="px-4 py-10 text-center text-sm text-stone-500">No accounts match these filters.</div>
@@ -103,6 +114,7 @@ export function AccountsView({ accounts }: AccountsViewProps) {
                     <th className="px-5 py-3">Account</th>
                     <th className="px-5 py-3">Phone</th>
                     <th className="px-5 py-3">Type</th>
+                    <th className="px-5 py-3">Student source</th>
                     <th className="px-5 py-3">Registered</th>
                     <th className="w-16 px-5 py-3">
                       <span className="sr-only">Open account</span>
@@ -128,6 +140,7 @@ export function AccountsView({ accounts }: AccountsViewProps) {
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap gap-2"><Badge variant={getRoleBadgeVariant(account.role)}>{account.roleLabel}</Badge><Badge variant="outline">{account.accountStatus.toLowerCase().replaceAll('_', ' ')}</Badge></div>
                       </td>
+                      <td className="px-5 py-4 text-stone-600">{account.role === 'STUDENT' ? account.referralSourceName || 'None' : '—'}</td>
                       <td className="px-5 py-4 text-stone-600 tabular-nums">
                         {formatDateTime(account.createdAt, { includeYear: true })}
                       </td>
@@ -157,6 +170,7 @@ export function AccountsView({ accounts }: AccountsViewProps) {
                     <p className="mt-1 text-xs text-stone-500">
                       {account.phone || 'Phone not provided'} · Registered {formatDateTime(account.createdAt, { includeYear: true })}
                     </p>
+                    {account.role === 'STUDENT' && <p className="mt-1 text-xs text-stone-500">Source: {account.referralSourceName || 'None'}</p>}
                   </div>
                   <ArrowRight className="h-4 w-4 shrink-0 text-stone-400" aria-hidden="true" />
                 </Link>

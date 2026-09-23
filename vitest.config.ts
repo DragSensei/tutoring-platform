@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    // Integration files share the guarded test database and global finalizer.
+    fileParallelism: false,
   },
   resolve: {
     alias: {

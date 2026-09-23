@@ -11,12 +11,14 @@ const {
   academyDateTime,
   materializeSessionSeries,
 } = await import('@/features/sessions/server/recurrence');
+const { addCalendarDays, formatCalendarDate } = await import('@/shared/utils/calendar-date');
 const {
   cancelSessionSeries,
   createSessionSeries,
   getAdminSeries,
   getStudentSeries,
   getTutorSeries,
+  previewHistoricalSeries,
   updateSessionSeries,
 } = await import('@/features/sessions/server/series-actions');
 const { rescheduleSessionOccurrence } = await import('@/features/sessions/server/session-actions');
@@ -55,6 +57,8 @@ function baseInput(tutorId: string, studentId: string, title = `${prefix}weekly`
     durationMinutes: 90,
     startsOn: startsOn.toISOString().slice(0, 10),
     endsOn: undefined,
+    pricingProfileId: null,
+    historicalStartsOn: null,
   };
 }
 
@@ -98,6 +102,41 @@ describe('recurring weekly sessions', () => {
     const repeated = await occurrences(created.id);
     expect(repeated).toHaveLength(first.length);
     expect(repeated.reduce((sum, item) => sum + item.participants.length, 0)).toBe(first.length);
+  });
+
+  it('previews, confirms, and idempotently backfills only marked pre-system occurrences', async () => {
+    const tutor = await createUser('TUTOR');
+    const student = await createUser('STUDENT');
+    const today = currentCalendarDate();
+    const historicalStartsOn = addCalendarDays(today, -28);
+    const startsOn = addCalendarDays(today, 21);
+    const input = {
+      ...baseInput(tutor.id, student.id, `${prefix}historical`),
+      startsOn: formatCalendarDate(startsOn),
+      weekday: today.getUTCDay(),
+      historicalStartsOn: formatCalendarDate(historicalStartsOn),
+    };
+    const preview = await previewHistoricalSeries(input);
+    expect(preview).toHaveLength(4);
+    expect(preview.every((date) => date < formatCalendarDate(today))).toBe(true);
+
+    const staleInput = { ...input, weekday: (input.weekday + 1) % 7 };
+    await expect(createSessionSeries(staleInput, policy, preview)).rejects.toThrow('preview has expired');
+
+    const created = await createSessionSeries(input, policy, preview);
+    const history = await prisma.session.findMany({
+      where: { series_id: created.id, historical_only: true },
+      orderBy: { occurrence_date: 'asc' },
+      select: { occurrence_date: true, status: true, historical_only: true, attendance_finalized_at: true },
+    });
+    expect(history.map((session) => session.occurrence_date && formatCalendarDate(session.occurrence_date))).toEqual(preview);
+    expect(history.every((session) => session.historical_only && session.status === 'SCHEDULED' && !session.attendance_finalized_at)).toBe(true);
+
+    const repeatedPreview = await previewHistoricalSeries(input, created.id);
+    expect(repeatedPreview).toEqual([]);
+    await updateSessionSeries(created.id, input, 'ENTIRE_SERIES', policy, undefined, repeatedPreview);
+    const afterRepeat = await prisma.session.findMany({ where: { series_id: created.id, historical_only: true } });
+    expect(afterRepeat).toHaveLength(preview.length);
   });
 
   it('survives concurrent materialization without duplicate sessions or participants', async () => {

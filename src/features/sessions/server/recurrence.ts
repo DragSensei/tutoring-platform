@@ -1,10 +1,14 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { computeAttendanceClosesAt } from '@/shared/utils/deadline';
+import { addCalendarDays, addCalendarMonthsClamped, parseCalendarDate } from '@/shared/utils/calendar-date';
 import { prisma } from '@/shared/lib/prisma';
+
+export { addCalendarDays, parseCalendarDate } from '@/shared/utils/calendar-date';
 
 export const ACADEMY_TIME_ZONE = 'Africa/Cairo';
 // ponytail: twelve weeks keeps reads bounded; add a scheduler only when request-time materialization is insufficient.
 export const RECURRENCE_HORIZON_WEEKS = 12;
+export const MAX_HISTORICAL_BACKFILL_MONTHS = 12;
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
 
@@ -22,6 +26,7 @@ export interface SeriesMaterializationInput {
   duration_minutes: number;
   starts_on: Date;
   ends_on: Date | null;
+  pricing_profile_id: string | null;
   status: 'ACTIVE' | 'ENDED' | 'CANCELLED';
   participants: Array<{ student_id: string }>;
 }
@@ -48,20 +53,6 @@ function getCalendarParts(input: Date) {
     hour: parts.hour,
     minute: parts.minute,
   };
-}
-
-export function parseCalendarDate(value: string): Date {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) throw new Error('Use a valid calendar date');
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-  if (date.getUTCFullYear() !== Number(match[1]) || date.getUTCMonth() !== Number(match[2]) - 1 || date.getUTCDate() !== Number(match[3])) {
-    throw new Error('Use a valid calendar date');
-  }
-  return date;
-}
-
-export function addCalendarDays(date: Date, days: number): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
 }
 
 export function academyCalendarDate(input = new Date()): Date {
@@ -105,6 +96,32 @@ export function occurrenceDates(
   return dates;
 }
 
+export function historicalOccurrenceDates(
+  series: Pick<SeriesMaterializationInput, 'weekday' | 'starts_on'>,
+  historicalStartsOn: string,
+  now = new Date(),
+): Date[] {
+  if (!Number.isInteger(series.weekday) || series.weekday < 0 || series.weekday > 6) {
+    throw new Error('Use a valid series weekday');
+  }
+
+  const startsOn = academyCalendarDate(series.starts_on);
+  const today = academyCalendarDate(now);
+  const cutoff = startsOn < today ? startsOn : today;
+  const historyStart = parseCalendarDate(historicalStartsOn);
+  const earliestAllowed = addCalendarMonthsClamped(cutoff, -MAX_HISTORICAL_BACKFILL_MONTHS);
+  if (historyStart >= startsOn) throw new Error('Historical dates must be before the series starts on date');
+  if (historyStart >= today) throw new Error('Historical dates must be before today');
+  if (historyStart < earliestAllowed) throw new Error('Historical backfill is limited to 12 calendar months');
+
+  const dates: Date[] = [];
+  for (let cursor = historyStart; cursor < cutoff; cursor = addCalendarDays(cursor, 1)) {
+    if (cursor.getUTCDay() === series.weekday) dates.push(cursor);
+  }
+  if (dates.length > 54) throw new Error('Historical backfill exceeds the occurrence limit');
+  return dates;
+}
+
 async function materializeOne(
   db: DatabaseClient,
   series: SeriesMaterializationInput,
@@ -124,6 +141,7 @@ async function materializeOne(
         tutor_id: series.tutor_id,
         title: series.title,
         session_type: series.session_type,
+        pricing_profile_id: series.pricing_profile_id,
         start_time: start,
         end_time: end,
         deadline: computeAttendanceClosesAt(end, policy.checkInWindowHours),
@@ -138,6 +156,7 @@ async function materializeOne(
       series_id: series.id,
       occurrence_date: { in: dates },
       series_exception: false,
+      historical_only: false,
     },
     select: { id: true },
   });

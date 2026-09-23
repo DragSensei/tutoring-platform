@@ -31,7 +31,7 @@ export function findClosestSessionDue(
 
   // Timing is intentionally independent from the attendance grace close.
   const candidates = sessions
-    .filter((session) => session.status !== 'CANCELLED' && session.status !== 'COMPLETED')
+    .filter((session) => !session.historicalOnly && session.status !== 'CANCELLED' && session.status !== 'COMPLETED')
     .map((session) => {
       const effectiveStartMs = new Date(session.startTime).getTime();
       const effectiveEndMs = new Date(session.endTime).getTime();

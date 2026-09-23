@@ -28,6 +28,7 @@ export async function getStudentDashboardData() {
   // Query upcoming lectures for this student/academy
   const upcomingSessions = await prisma.session.findMany({
     where: {
+      historical_only: false,
       status: { in: ['SCHEDULED', 'ACTIVE'] },
       end_time: { gte: now },
       participants: { some: { student_id: studentId } },

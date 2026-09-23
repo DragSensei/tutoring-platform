@@ -92,6 +92,7 @@ function serializeSession(
     rescheduleReason: session.series_exception_reason,
     token: session.token,
     status: session.status,
+    historicalOnly: session.historical_only,
     attendeeCount: session._count.attendances,
     participantCount: session.participants.length,
     transactionCount: session._count.transactions,
@@ -133,10 +134,12 @@ export async function createSession(input: CreateSessionInput, policy: SessionPr
 export async function getGadwalSessions(filter: SessionFilterInput | undefined, policy: SessionPricingConfig) {
   const whereClause: {
     tutor_id?: string;
+    historical_only?: boolean;
     status?: 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
     start_time?: { gte?: Date; lte?: Date };
   } = {};
 
+  whereClause.historical_only = false;
   if (filter?.tutorId) whereClause.tutor_id = filter.tutorId;
   if (filter?.status) whereClause.status = filter.status;
   if (filter?.startDate || filter?.endDate) {
@@ -182,6 +185,7 @@ export async function getAdminSession(sessionId: string, policy: SessionPricingC
     include: SESSION_INCLUDE,
   });
   if (!session) throw new Error('Session not found');
+  if (session.historical_only) throw new Error('Historical schedule records are available in Tutor history only');
 
   return serializeSession(session, policy);
 }
@@ -202,6 +206,7 @@ export async function updateSession(
     },
   });
   if (!existing) throw new Error('Session not found');
+  if (existing.historical_only) throw new Error('Historical schedule records cannot be edited');
   if (existing.status === 'COMPLETED' || existing.status === 'CANCELLED') {
     throw new Error('Completed or cancelled sessions cannot be edited');
   }
@@ -242,9 +247,10 @@ export async function updateSession(
 export async function deleteSession(sessionId: string) {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { id: true, status: true, start_time: true, _count: { select: { attendances: true, transactions: true } } },
+    select: { id: true, status: true, start_time: true, historical_only: true, _count: { select: { attendances: true, transactions: true } } },
   });
   if (!session) throw new Error('Session not found');
+  if (session.historical_only) throw new Error('Historical schedule records cannot be deleted');
   const safeToDelete = session.status === 'SCHEDULED'
     && session.start_time > new Date()
     && session._count.attendances === 0
@@ -256,8 +262,9 @@ export async function deleteSession(sessionId: string) {
 }
 
 export async function cancelSession(sessionId: string) {
-  const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true, status: true } });
+  const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true, status: true, historical_only: true } });
   if (!session) throw new Error('Session not found');
+  if (session.historical_only) throw new Error('Historical schedule records cannot be cancelled');
   if (session.status === 'COMPLETED') throw new Error('Completed sessions cannot be cancelled');
 
   await prisma.session.update({ where: { id: sessionId }, data: { status: 'CANCELLED' } });
@@ -283,12 +290,14 @@ export async function rescheduleSessionOccurrence(
       id: true,
       tutor_id: true,
       status: true,
+      historical_only: true,
       _count: { select: { attendances: true, transactions: true } },
     },
   });
   if (!existing || (actor.role === 'TUTOR' && existing.tutor_id !== actor.id)) {
     throw new Error('Session is not available to this user');
   }
+  if (existing.historical_only) throw new Error('Historical schedule records cannot be postponed');
   if (existing.status === 'COMPLETED' || existing.status === 'CANCELLED') {
     throw new Error('Completed or cancelled sessions cannot be postponed');
   }
@@ -363,6 +372,7 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
       rescheduleReason: s.series_exception_reason,
       token: s.token,
       status: s.status,
+      historicalOnly: s.historical_only,
       attendeeCount: s._count.attendances,
       attendanceNotes: s.attendance_notes,
       assignedStudents,
@@ -387,17 +397,18 @@ export async function getTutorKPIs(tutorId: string): Promise<TutorVolumeKPIs> {
 
   // Lifetime counts
   const lifetimeSessionCount = await prisma.session.count({
-    where: { tutor_id: tutorId },
+    where: { tutor_id: tutorId, historical_only: false },
   });
 
   const lifetimeAttendedStudents = await prisma.attendanceRecord.count({
-    where: { session: { tutor_id: tutorId } },
+    where: { session: { tutor_id: tutorId, historical_only: false } },
   });
 
   // Monthly counts
   const monthlySessionCount = await prisma.session.count({
     where: {
       tutor_id: tutorId,
+      historical_only: false,
       start_time: { gte: startOfMonth },
     },
   });
@@ -406,6 +417,7 @@ export async function getTutorKPIs(tutorId: string): Promise<TutorVolumeKPIs> {
     where: {
       session: {
         tutor_id: tutorId,
+        historical_only: false,
         start_time: { gte: startOfMonth },
       },
     },

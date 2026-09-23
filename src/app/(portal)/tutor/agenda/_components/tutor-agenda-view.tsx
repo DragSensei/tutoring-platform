@@ -39,12 +39,13 @@ export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashb
   );
   const activeSessions = React.useMemo(
     () => sessionsAtNow
-      .filter((session) => session.status !== 'COMPLETED' && session.status !== 'CANCELLED' && new Date(session.endTime).getTime() > now)
+      .filter((session) => !session.historicalOnly && session.status !== 'COMPLETED' && session.status !== 'CANCELLED' && new Date(session.endTime).getTime() > now)
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
     [sessionsAtNow, now]
   );
   const needsAttentionSessions = React.useMemo(
     () => sessionsAtNow
+      .filter((session) => !session.historicalOnly)
       .filter((session) => session.status !== 'COMPLETED' && session.status !== 'CANCELLED')
       .filter((session) => new Date(session.endTime).getTime() <= now && (
         session.attendanceWindowState === 'OPEN'
@@ -53,7 +54,7 @@ export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashb
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
     [sessionsAtNow, now]
   );
-  const completedSessions = sessionsAtNow.filter((session) => session.status === 'COMPLETED');
+  const completedSessions = sessionsAtNow.filter((session) => !session.historicalOnly && session.status === 'COMPLETED');
   const closestSession = React.useMemo(
     () => findClosestSessionDue(activeSessions, now),
     [activeSessions, now]
@@ -64,7 +65,7 @@ export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashb
   const attendanceSession = nextSession?.attendanceWindowState === 'OPEN' ? nextSession : null;
   const completedId = searchParams.get('completed');
   const completedSession = completedId
-    ? allSessions.find((session) => session.id === completedId)
+    ? allSessions.find((session) => session.id === completedId && !session.historicalOnly)
     : null;
   const presentCount = Number(searchParams.get('present') || 0);
 

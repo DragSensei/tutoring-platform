@@ -1,4 +1,4 @@
-import { getPlatformPolicies } from '@/features/policies/server/policy-actions';
+import { getActivePricingProfiles, getPlatformPolicies } from '@/features/policies/server/policy-actions';
 import { requireAuth } from '@/features/auth/server/session';
 import { prisma } from '@/shared/lib/prisma';
 
@@ -23,4 +23,12 @@ export async function getAdminSessionFormData() {
     students: students.flatMap((person) => person.name && person.email ? [{ id: person.id, name: person.name, email: person.email }] : []),
     policy,
   };
+}
+
+export async function getAdminSeriesFormData() {
+  const [sessionFormData, pricingProfiles] = await Promise.all([
+    getAdminSessionFormData(),
+    getActivePricingProfiles(),
+  ]);
+  return { ...sessionFormData, pricingProfiles };
 }

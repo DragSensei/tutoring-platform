@@ -4,14 +4,23 @@ const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
 if (!testDatabaseUrl) throw new Error('TEST_DATABASE_URL is required for database-backed integration tests');
 process.env.DATABASE_URL = testDatabaseUrl;
 process.env.DIRECT_URL = process.env.TEST_DIRECT_DATABASE_URL?.trim() || testDatabaseUrl;
+const authMocks = vi.hoisted(() => ({ requireAuth: vi.fn(), setSessionCookie: vi.fn() }));
 
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/features/auth/server/session', async () => {
   const actual = await vi.importActual<typeof import('@/features/auth/server/session')>('@/features/auth/server/session');
-  return { ...actual, requireAuth: vi.fn(), setSessionCookie: vi.fn() };
+  return { ...actual, requireAuth: authMocks.requireAuth, setSessionCookie: authMocks.setSessionCookie };
+});
+vi.mock('@/shared/server/session', async () => {
+  const actual = await vi.importActual<typeof import('@/shared/server/session')>('@/shared/server/session');
+  return { ...actual, requireAuth: authMocks.requireAuth, setSessionCookie: authMocks.setSessionCookie };
 });
 
 const cookieStore = { get: vi.fn(), set: vi.fn(), delete: vi.fn() };
 vi.mock('next/headers', () => ({ cookies: vi.fn(() => cookieStore) }));
+authMocks.setSessionCookie.mockImplementation(async () => {
+  cookieStore.set('tp_session_token', 'test-session-token');
+});
 
 const { prisma } = await import('@/shared/lib/prisma');
 const { authenticateUser, requireAuth, setSessionCookie } = await import('@/features/auth/server/session');

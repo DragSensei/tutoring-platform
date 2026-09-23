@@ -1,14 +1,18 @@
 import crypto from 'node:crypto';
-import type { Prisma } from '@prisma/client';
+import { Prisma, type ReferralSourceKind } from '@prisma/client';
 import { prisma } from '@/shared/lib/prisma';
+import { requireAuth } from '@/shared/server/session';
 import type { Role } from '@/shared/types';
 import {
   accountSetupSchema,
   createAccountSchema,
+  createReferralSourceSchema,
   passwordResetSchema,
   type AccountSetupInput,
   type CreateAccountInput,
   type PasswordResetInput,
+  updateAccountProfileSchema,
+  type UpdateAccountProfileInput,
 } from '../schemas';
 
 export const ACCOUNT_SETUP_TTL_MINUTES = 30;
@@ -33,6 +37,111 @@ function profileComplete(profile: { name: string | null; email: string | null; p
   return Boolean(profile.name && profile.email && profile.phone);
 }
 
+function dataSourceId(value?: string | null) {
+  return normalize(value ?? undefined);
+}
+
+async function activeReferralSource(tx: Prisma.TransactionClient, id: string) {
+  const source = await tx.referralSource.findUnique({
+    where: { id },
+    select: { id: true, kind: true, is_active: true },
+  });
+  if (!source || !source.is_active) throw new Error('Choose an active referral source');
+  return source;
+}
+
+export interface ReferralSourceItem {
+  id: string;
+  name: string;
+  kind: ReferralSourceKind;
+  isActive: boolean;
+}
+
+export async function getReferralSources(): Promise<ReferralSourceItem[]> {
+  await requireAuth(['ADMIN']);
+  const direct = await prisma.referralSource.upsert({
+    where: { id: 'direct' },
+    create: { id: 'direct', name: 'Direct', normalized_name: 'direct', kind: 'DIRECT' },
+    update: { is_active: true },
+    select: { name: true, normalized_name: true, kind: true, is_active: true },
+  });
+  if (direct.name !== 'Direct' || direct.normalized_name !== 'direct' || direct.kind !== 'DIRECT') {
+    throw new Error('The canonical Direct referral source is invalid');
+  }
+  const sources = await prisma.referralSource.findMany({
+    where: { is_active: true },
+    select: { id: true, name: true, kind: true, is_active: true },
+    orderBy: [{ kind: 'asc' }, { name: 'asc' }],
+  });
+  return sources.map((source) => ({ id: source.id, name: source.name, kind: source.kind, isActive: source.is_active }));
+}
+
+export async function createReferralSource(input: unknown) {
+  await requireAuth(['ADMIN']);
+  const parsed = createReferralSourceSchema.safeParse(input);
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message || 'Invalid referral source');
+  const name = parsed.data.name.replace(/\s+/g, ' ');
+  const normalizedName = name.toLocaleLowerCase('en');
+  if (!name || normalizedName === 'direct') {
+    throw new Error('Provide a distinct source name and choose Referral or Sales');
+  }
+  const source = await prisma.referralSource.create({
+    data: { name, normalized_name: normalizedName, kind: parsed.data.kind },
+    select: { id: true, name: true, kind: true, is_active: true },
+  });
+  return { id: source.id, name: source.name, kind: source.kind, isActive: source.is_active };
+}
+
+export async function updateAccountProfileTx(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  input: UpdateAccountProfileInput,
+) {
+  const parsed = updateAccountProfileSchema.safeParse(input);
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message || 'Invalid account details');
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, role: true } });
+  if (!user || user.role === 'ADMIN') throw new Error('Only Tutor and Student accounts can be edited here');
+
+  const data: Prisma.UserUpdateInput = {};
+  if (parsed.data.name !== undefined) data.name = normalize(parsed.data.name);
+  if (parsed.data.email !== undefined) data.email = normalize(parsed.data.email)?.toLowerCase() || null;
+  if (parsed.data.phone !== undefined) data.phone = normalize(parsed.data.phone);
+  if (parsed.data.referralSourceId !== undefined) {
+    if (user.role !== 'STUDENT') throw new Error('Referral attribution applies to Student accounts only');
+    const referralSourceId = dataSourceId(parsed.data.referralSourceId);
+    if (referralSourceId) {
+      const source = await activeReferralSource(tx, referralSourceId);
+      data.referral_source = { connect: { id: source.id } };
+    } else {
+      data.referral_source = { disconnect: true };
+    }
+  }
+  if (parsed.data.tutorHourlyRateOverride !== undefined) {
+    if (user.role !== 'TUTOR') throw new Error('Hourly rate override applies to Tutor accounts only');
+    data.tutor_hourly_rate_override = parsed.data.tutorHourlyRateOverride === null
+      ? null
+      : new Prisma.Decimal(parsed.data.tutorHourlyRateOverride);
+  }
+  if (!Object.keys(data).length) throw new Error('No account changes were provided');
+
+  const duplicateConditions: Prisma.UserWhereInput[] = [];
+  if (typeof data.email === 'string') duplicateConditions.push({ email: data.email });
+  if (typeof data.phone === 'string') duplicateConditions.push({ phone: data.phone });
+  if (duplicateConditions.length) {
+    const duplicate = await tx.user.findFirst({
+      where: { AND: [{ id: { not: userId } }, { OR: duplicateConditions }] },
+      select: { id: true },
+    });
+    if (duplicate) throw new Error('Another account already uses that email or phone');
+  }
+
+  return tx.user.update({
+    where: { id: userId },
+    data,
+    select: { id: true, role: true, name: true, email: true, phone: true, referral_source_id: true, tutor_hourly_rate_override: true },
+  });
+}
+
 async function issueAccountToken(tx: Prisma.TransactionClient, userId: string, purpose: AccountTokenPurpose) {
   const now = new Date();
   const ttlMinutes = purpose === 'SETUP' ? ACCOUNT_SETUP_TTL_MINUTES : ACCOUNT_PASSWORD_RESET_TTL_MINUTES;
@@ -44,8 +153,10 @@ async function issueAccountToken(tx: Prisma.TransactionClient, userId: string, p
 }
 
 export async function createAccount(input: CreateAccountInput) {
+  await requireAuth(['ADMIN']);
   const parsed = createAccountSchema.safeParse(input);
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message || 'Invalid account details');
+  const referralSourceId = dataSourceId(parsed.data.referralSourceId);
   const data = {
     role: parsed.data.role,
     name: normalize(parsed.data.name),
@@ -61,7 +172,16 @@ export async function createAccount(input: CreateAccountInput) {
       ? await tx.user.findFirst({ where: { OR: duplicateConditions }, select: { id: true } })
       : null;
     if (duplicate) throw new Error('An account already uses that email or phone');
-    const user = await tx.user.create({ data: { ...data, password_hash: null, account_status: 'PENDING_CREDENTIALS' } });
+    const referralSource = referralSourceId ? await activeReferralSource(tx, referralSourceId) : null;
+    const user = await tx.user.create({
+      data: {
+        ...data,
+        password_hash: null,
+        account_status: 'PENDING_CREDENTIALS',
+        referral_source_id: parsed.data.role === 'STUDENT' ? referralSource?.id ?? null : null,
+      },
+      select: { id: true, role: true, account_status: true, name: true, email: true, phone: true, referral_source_id: true },
+    });
     const setup = await issueAccountToken(tx, user.id, 'SETUP');
     return { user, setup };
   });
@@ -73,12 +193,14 @@ export async function createAccount(input: CreateAccountInput) {
     name: account.user.name,
     email: account.user.email,
     phone: account.user.phone,
+    referralSourceId: account.user.referral_source_id,
     setupToken: account.setup.raw,
     setupExpiresAt: account.setup.expiresAt.toISOString(),
   };
 }
 
 export async function initiateAccountSetup(userId: string) {
+  await requireAuth(['ADMIN']);
   const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, role: true, account_status: true } });
     if (!user) throw new Error('Account not found');
@@ -90,6 +212,7 @@ export async function initiateAccountSetup(userId: string) {
 }
 
 export async function initiatePasswordReset(userId: string) {
+  await requireAuth(['ADMIN']);
   const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, role: true, account_status: true } });
     if (!user || user.role === 'ADMIN' || user.account_status !== 'ACTIVE') {

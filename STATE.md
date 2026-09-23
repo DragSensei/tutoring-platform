@@ -1,9 +1,8 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Active Branch:** `002-backend-recurring-sessions-and-accounts`
-- **Latest Completed Task:** Final Tutor attendance/scheduling behavior pass is complete pending final checkpoint review; Iteration 001 remains committed at `08e0164`.
-- **Last Completed Work:** Added bounded recurring-session materialization, scoped weekly Gadwal reads, complete edit/cancel scope handling, and secure Admin Tutor/Student account setup:
+- **Latest Completed Task:** Iteration 003 scheduling history, finance, Student source attribution, named pricing profiles, and safe CSV import implementation.
+- **Last Completed Work:** Added bounded recurring-session materialization, secure Admin account setup, and Iteration 003 finance/account/import operations:
   1. `SessionSeries` owns weekly assignments; concrete `Session` rows remain authoritative for attendance, wallets, completion, cancellation, and audit history.
   2. Materialization is Cairo-aware, bounded to 12 weeks, idempotent, concurrency-tested, and stops for ended/cancelled series.
   3. Admin Gadwal supports Tutor filtering, clearing, and all edit/cancel scopes while preserving history-bearing occurrences.
@@ -13,17 +12,29 @@
   7. Tutor attendance is manual, opens at the concrete Session start, remains editable through end plus policy grace, and finalizes wallet state only after the grace close.
   8. Concrete Session rows now own effective one-occurrence postpones; the weekly SessionSeries pattern remains unchanged.
   9. Public/student attendance-link behavior and new token issuance were removed while historical token storage remains intact.
-- **Immediate Next Move:** Review the final checkpoint evidence and commit only if the requested release decision is affirmative; do not push automatically.
-- **Blockers / Open Decisions:** Production Prisma migration history remains unresolved; production deployment still requires an explicit migration strategy and a scheduled authenticated POST to `/api/internal/attendance/finalize` with `CRON_SECRET`. Development schema changes were applied additively after database identity checks; no destructive history cleanup was performed.
+- **Immediate Next Move:** Establish the production Prisma migration baseline and configure the authenticated attendance-finalizer scheduler before deployment.
+- **Blockers / Open Decisions:** Production Prisma migration history remains unresolved. The additive SQL is a non-deployable draft and was not applied; dev and isolated test schemas were synchronized through the established guarded workflows. Production deployment still needs a migration baseline strategy and an authenticated scheduler POST to `/api/internal/attendance/finalize` with `CRON_SECRET`. Commission basis is a settled internal wallet charge and does not prove external cash receipt.
+
+## Iteration 003 — Finance, Student Attribution, and Import
+- Student accounts can carry an optional `ReferralSource` attribution, with canonical `Direct` and explicit `None`; auth roles do not encode referral identity. Admin create/detail/edit and the canonical update transaction own source and Tutor-rate changes.
+- `PlatformPolicy.default_tutor_hourly_rate` defaults to zero; zero/unset does not create fake Tutor pay. Delivered sessions without a configured positive rate remain visible in the Finance rate-review queue and accrue no compensation ledger row.
+- Commission is disabled by default, uses the fixed `FINALIZED_SESSION_WALLET_CHARGE` basis, and pays only the eligible referral/sales source assigned to each Student. Rule updater/time/version and per-entry source, rate, basis, and amount are snapshotted. Existing ledgers do not change after policy edits.
+- Named Pricing Profiles are selected by nullable `SessionSeries.pricing_profile_id`; null selects PlatformPolicy. Occurrences do not snapshot prices. Session profile name and student price are snapshotted at durable financial settlement.
+- `Session.historical_only` defaults false on all existing rows. Only explicit pre-system backfills set it true; those rows do not create wallet, Tutor-pay, or commission finance. No historical finance backfill was run.
+- CSV parsing is bounded and in-memory. Admin previews manual mapping of canonical Student fields plus an optional active source, fail-closed email/phone matching, row conflicts, and exact existing-account changes. Dry-run persists nothing. Confirm is idempotent, revalidates identity in a serializable transaction, stores only actor/batch/row outcome provenance, and creates partial Students without passwords or raw setup secrets.
+- Finance Session links use read-only `/admin/finances/sessions/[sessionId]` with Admin authorization and immutable charge/compensation/commission/source snapshots; finalized rows no longer lead to the schedule editor.
+- **Current verification:** Fresh guarded verification and authenticated UI review passed for the working checkpoint. `.git/tier2-evidence.json` stores machine-derived test counts and Git identity; release status is derived from Git.
+- **Test isolation:** The due-attendance finalizer scans all due Sessions, so concurrent test files with past-dated fixtures can finalize one another's rows. Vitest file serialization isolates these DB fixtures; the full guarded suite passed with this setting.
+- **Database provenance:** `DATABASE_URL` was verified as `tutoring_platform_db`; `TEST_DATABASE_URL` was verified as distinct `tutoring_platform_test`. DB integration and test-schema synchronization use the canonical guard. No URLs or credentials were printed.
 
 ## Tier 2 Verification
-- **Security:** Repository secret/env sentinel clean (machine-verified); the secure due-attendance finalizer exists, with Tutor ownership, pre-start/after-close fail-closed attendance mutation, Student mutation removal, authenticated scheduler trigger, finalizer idempotency, and history-preserving cleanup agent-reviewed.
-- **Performance:** Frontend static architecture checks pass (machine-verified); recurrence materialization remains bounded to 12 weeks and scoped to the selected Tutor. Runtime latency is not-verified at this tier.
-- **Tests:** Full Vitest suite passing (144/144, machine-verified) against isolated `tutoring_platform_test`, distinct from `tutoring_platform_db`; attendance regression verification remains green, covering attendance-window boundaries, final-state wallet settlement, concurrent finalization, recurring occurrence edits, postpone isolation, scheduler authentication, and timer boundaries.
-- **Visual:** Authenticated `/tutor/agenda`, `/tutor/attendance/[sessionId]`, and `/tutor/timetable` audits passed at 375px, 768px, and 1440px with zero horizontal spill and 100% measured touch/font compliance; screenshots were manually inspected.
-- **Revisor:** Token purity, route isolation, UI architecture, and concrete-occurrence ownership pass (machine-verified); completed/cancelled timetable rows no longer expose a misleading postpone affordance.
-- **Database:** Test verification used only `tutoring_platform_test`. Development identity was separately proved as `tutoring_platform_db`; two named stale Sessions were retained because each had attendance history, and the named Robotics Session was deleted only after proving zero attendance, financial, participant, and audit dependencies. Schema changes were additive.
-- **Checkpoint:** Prisma validation, TypeScript, lint, isolated full tests, production build, diff-check, authenticated Tutor visual audit, and checkpoint Tier-2 machine evidence are green after the final UI correction; no commit or push performed.
+- **Security:** Repository secret/env sentinel passed. Authorization boundaries, import input validation, and finance provenance were agent-reviewed; dynamic penetration testing is not verified.
+- **Performance:** Frontend static architecture checks passed. Recurrence materialization remains bounded to 12 weeks; runtime latency is not verified.
+- **Tests:** The fresh guarded full Vitest suite passed against the isolated test database. Machine-derived counts are recorded in `.git/tier2-evidence.json`, not maintained as permanent project facts.
+- **Visual:** Authenticated `/admin/finances` and `/admin/gadwal` audits passed at 375px, 768px, and 1440px with zero horizontal overflow and compliant measured mobile touch targets. Finance date selection submitted the chosen From/To values and resynchronized after month navigation. The recurring-session cancellation dialog was opened; its scope text and action matched, Escape closed without confirming, and focus returned to the trigger.
+- **Revisor:** Frontend route isolation, page size, and token-purity checks passed; no native browser alert/confirm/prompt calls remain.
+- **Database:** Credential-free identities are `tutoring_platform_db` (development) and `tutoring_platform_test` (test); they are distinct. Tests ran through the canonical database guard.
+- **Checkpoint:** Prisma validation, TypeScript, lint, guarded tests, production build, `git diff --check`, working-tree Tier-2 evidence, and the Admin Finance/Gadwal visual checks passed. Production migration baseline and scheduler requirements remain open; production readiness is not claimed.
 
 ## Final Tutor Attendance/Scheduling Pass
 - **Attendance timing:** `attendanceOpensAt = Session.start_time`; `attendanceClosesAt = Session.end_time + PlatformPolicy.checkInWindowHours`.

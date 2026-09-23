@@ -40,10 +40,10 @@ export async function getAdminOverviewData(): Promise<AdminOverviewData> {
     recentSessionsRaw,
   ] = await Promise.all([
     prisma.session.count({
-      where: { status: { in: ['SCHEDULED', 'ACTIVE'] } },
+      where: { historical_only: false, status: { in: ['SCHEDULED', 'ACTIVE'] } },
     }),
     prisma.session.count({
-      where: { status: 'COMPLETED' },
+      where: { historical_only: false, status: 'COMPLETED' },
     }),
     prisma.user.count({
       where: { role: 'STUDENT' },
@@ -51,7 +51,7 @@ export async function getAdminOverviewData(): Promise<AdminOverviewData> {
     prisma.user.count({
       where: { role: 'TUTOR' },
     }),
-    prisma.attendanceRecord.count(),
+    prisma.attendanceRecord.count({ where: { session: { historical_only: false } } }),
     prisma.wallet.findMany({
       where: { is_flagged_overdraft: true },
       include: {
@@ -61,6 +61,7 @@ export async function getAdminOverviewData(): Promise<AdminOverviewData> {
       take: 5,
     }),
     prisma.session.findMany({
+      where: { historical_only: false },
       take: 4,
       orderBy: { start_time: 'desc' },
       include: {

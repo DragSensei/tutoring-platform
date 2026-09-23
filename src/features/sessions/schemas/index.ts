@@ -48,6 +48,8 @@ export const sessionSeriesSchema = z.object({
   durationMinutes: z.number().int().min(30).max(480),
   startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a valid start date'),
   endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a valid end date').optional().or(z.literal('')),
+  pricingProfileId: z.string().min(1).nullable(),
+  historicalStartsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a valid historical start date').nullable(),
 }).superRefine((input, context) => {
   const participantCount = new Set(input.participantIds).size;
   if (input.sessionType === 'PRIVATE' && participantCount !== 1) {
@@ -55,6 +57,9 @@ export const sessionSeriesSchema = z.object({
   }
   if (input.endsOn && input.endsOn < input.startsOn) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['endsOn'], message: 'End date must be on or after the start date' });
+  }
+  if (input.historicalStartsOn && input.historicalStartsOn >= input.startsOn) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['historicalStartsOn'], message: 'Historical dates must be before the series starts on date' });
   }
 });
 

@@ -41,7 +41,7 @@ export function AdminGadwalView({ series, tutorFilter }: AdminGadwalViewProps) {
     >
       <motion.div
         variants={itemVariants}
-        className="flex flex-col gap-4 border-b border-stone-200/80 pb-5 sm:flex-row sm:items-center sm:justify-between"
+        className="flex flex-col gap-4 border-b border-stone-200/80 pb-5 lg:flex-row lg:items-center lg:justify-between"
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -50,10 +50,10 @@ export function AdminGadwalView({ series, tutorFilter }: AdminGadwalViewProps) {
             </span>
             <span className="text-xs font-semibold text-stone-500">Timetable & Schedule</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 mt-1 truncate">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 mt-1">
             Admin Gadwal Management (إدارة الجدول)
           </h1>
-          <p className="text-xs sm:text-sm text-stone-500 mt-1 line-clamp-2">
+          <p className="text-xs sm:text-sm text-stone-500 mt-1">
             Weekly teaching assignments materialize concrete occurrences for attendance, completion, and wallet history.
           </p>
         </div>

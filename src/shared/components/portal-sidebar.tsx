@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   CalendarDays,
   Wallet,
+  CircleDollarSign,
   Users,
   UserRoundSearch,
   SlidersHorizontal,
@@ -59,6 +60,7 @@ export const adminNavigation: PortalNavigationConfig = {
     {
       title: 'FINANCIALS',
       items: [
+        { label: 'Finances', href: '/admin/finances', icon: CircleDollarSign },
         { label: 'Wallets & Balance', href: '/admin/wallets', icon: Wallet },
       ],
     },

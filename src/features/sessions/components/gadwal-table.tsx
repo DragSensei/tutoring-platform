@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Ban, Edit3, Loader2, Trash2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/shared/components/card';
 import { Badge } from '@/shared/components/badge';
+import { ConfirmDialog } from '@/shared/components/confirm-dialog';
 import { formatEGP } from '@/shared/utils/currency';
 import { formatDateTime } from '@/shared/utils/date-format';
 import { TablePagination } from '@/shared/components/table-pagination';
@@ -38,6 +39,7 @@ export interface GadwalSessionItem {
   isRescheduled?: boolean;
   rescheduleReason?: string | null;
   status: SessionStatus;
+  historicalOnly?: boolean;
   attendeeCount: number;
   participantCount?: number;
   transactionCount?: number;
@@ -74,22 +76,22 @@ export function GadwalTable({ sessions, showTutorColumn = true, showAdminActions
   const [typeFilter, setTypeFilter] = React.useState('');
   const [pendingAction, setPendingAction] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [confirmation, setConfirmation] = React.useState<{ session: GadwalSessionItem; mode: 'delete' | 'cancel' } | null>(null);
   const filteredSessions = sessions.filter((session) =>
     matchesTableSearch([session.title, session.tutorName, session.sessionType, session.status], search) &&
     (!statusFilter || session.status === statusFilter) &&
     (!typeFilter || session.sessionType === typeFilter)
   );
   const pagination = useTablePagination(filteredSessions);
-  async function handleMutation(session: GadwalSessionItem, mode: 'delete' | 'cancel') {
-    const confirmation = mode === 'delete'
-      ? `Delete ${session.title}? This will remove the unstarted session.`
-      : `Cancel ${session.title}? Its history will be preserved.`;
-    if (!window.confirm(confirmation)) return;
+  async function handleMutation() {
+    if (!confirmation) return;
+    const { session, mode } = confirmation;
     setPendingAction(`${mode}:${session.id}`);
     setActionError(null);
     try {
       if (mode === 'delete') await onDeleteSession?.(session.id);
       else await onCancelSession?.(session.id);
+      setConfirmation(null);
       window.location.reload();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Unable to update this session');
@@ -111,6 +113,7 @@ export function GadwalTable({ sessions, showTutorColumn = true, showAdminActions
   };
 
   return (
+    <>
     <Card className="w-full min-w-0 max-w-full rounded-2xl border-stone-200/80 bg-white shadow-xs overflow-hidden">
       <CardHeader>
         <CardTitle className="text-xl">Gadwal Timetable (جدول الحصص)</CardTitle>
@@ -175,7 +178,7 @@ export function GadwalTable({ sessions, showTutorColumn = true, showAdminActions
                           const canDelete = s.status === 'SCHEDULED' && new Date(s.startTime).getTime() > Date.now() && s.attendeeCount === 0 && (s.transactionCount || 0) === 0;
                           const mode = canDelete ? 'delete' : 'cancel';
                           const isPending = pendingAction === `${mode}:${s.id}`;
-                          return <button type="button" disabled={Boolean(pendingAction)} onClick={() => void handleMutation(s, mode)} className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-3 text-sm font-semibold ${canDelete ? 'text-rose-700 hover:bg-rose-50' : 'text-amber-700 hover:bg-amber-50'}`} title={canDelete ? 'Delete unstarted session' : 'Cancel and preserve history'}>
+                          return <button type="button" disabled={Boolean(pendingAction)} onClick={() => setConfirmation({ session: s, mode })} className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-3 text-sm font-semibold ${canDelete ? 'text-rose-700 hover:bg-rose-50' : 'text-amber-700 hover:bg-amber-50'}`} title={canDelete ? 'Delete unstarted session' : 'Cancel and preserve history'}>
                             {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : canDelete ? <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> : <Ban className="h-3.5 w-3.5" aria-hidden="true" />}
                             {canDelete ? 'Delete' : 'Cancel'}
                           </button>;
@@ -187,7 +190,7 @@ export function GadwalTable({ sessions, showTutorColumn = true, showAdminActions
               </tbody>
               </table>
               </div>
-              {actionError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm font-medium text-rose-800">{actionError}</p>}
+              {actionError && !confirmation && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm font-medium text-rose-800">{actionError}</p>}
               <TablePagination
                 itemCount={filteredSessions.length}
                 page={pagination.page}
@@ -199,7 +202,21 @@ export function GadwalTable({ sessions, showTutorColumn = true, showAdminActions
             )}
           </>
         )}
-      </CardContent>
+    </CardContent>
     </Card>
+    <ConfirmDialog
+      open={Boolean(confirmation)}
+      title={confirmation?.mode === 'delete' ? 'Delete scheduled session?' : 'Cancel scheduled session?'}
+      description={confirmation?.mode === 'delete'
+        ? `Delete ${confirmation.session.title}? This will remove the unstarted session.`
+        : confirmation ? `Cancel ${confirmation.session.title}? Its history will be preserved.` : ''}
+      confirmLabel={confirmation?.mode === 'delete' ? 'Delete session' : 'Cancel session'}
+      cancelLabel="Keep session"
+      pending={Boolean(pendingAction)}
+      error={actionError}
+      onCancel={() => { setConfirmation(null); setActionError(null); }}
+      onConfirm={() => void handleMutation()}
+    />
+    </>
   );
 }

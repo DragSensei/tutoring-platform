@@ -26,7 +26,7 @@ interface AttendanceWorkspaceProps {
 
 export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWorkspaceProps) {
   const router = useRouter();
-  const initialSession = initialSessions.find((item) => item.id === sessionId) || null;
+  const initialSession = initialSessions.find((item) => item.id === sessionId && !item.historicalOnly) || null;
   const session: GadwalSessionItem | null = initialSession;
   const [now, setNow] = React.useState<number | null>(null);
   const [review, setReview] = React.useState(() =>

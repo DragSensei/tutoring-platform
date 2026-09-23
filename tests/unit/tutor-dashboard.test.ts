@@ -50,6 +50,26 @@ describe('Tutor Dashboard Closest Session Due Calculation', () => {
     expect(closest?.isCurrentlyActive).toBe(false);
   });
 
+  it('never treats a historical-only row as an upcoming timer candidate', () => {
+    const historical = {
+      ...baseSession,
+      id: 'historical-future-defense',
+      historicalOnly: true,
+      startTime: '2026-09-18T14:00:00.000Z',
+      endTime: '2026-09-18T16:00:00.000Z',
+    };
+    const liveSession = {
+      ...historical,
+      id: 'live-future-session',
+      historicalOnly: false,
+      startTime: '2026-09-19T14:00:00.000Z',
+      endTime: '2026-09-19T16:00:00.000Z',
+    };
+
+    const closest = findClosestSessionDue([historical, liveSession], new Date('2026-09-17T12:00:00.000Z'));
+    expect(closest?.id).toBe('live-future-session');
+  });
+
   it('marks an in-progress session as active when current time is between start and end', () => {
     const sessionActive: GadwalSessionItem = {
       ...baseSession,
