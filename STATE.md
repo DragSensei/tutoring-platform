@@ -1,8 +1,8 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Latest Completed Task:** Iteration 003 scheduling history, finance, Student source attribution, named pricing profiles, and safe CSV import implementation.
-- **Last Completed Work:** Added bounded recurring-session materialization, secure Admin account setup, and Iteration 003 finance/account/import operations:
+- **Latest Completed Task:** Isolated Next.js verification output from the long-lived development server before Tutor release.
+- **Previous Feature Work:** Added bounded recurring-session materialization, secure Admin account setup, and Iteration 003 finance/account/import operations:
   1. `SessionSeries` owns weekly assignments; concrete `Session` rows remain authoritative for attendance, wallets, completion, cancellation, and audit history.
   2. Materialization is Cairo-aware, bounded to 12 weeks, idempotent, concurrency-tested, and stops for ended/cancelled series.
   3. Admin Gadwal supports Tutor filtering, clearing, and all edit/cancel scopes while preserving history-bearing occurrences.
@@ -14,6 +14,14 @@
   9. Public/student attendance-link behavior and new token issuance were removed while historical token storage remains intact.
 - **Immediate Next Move:** Establish the production Prisma migration baseline and configure the authenticated attendance-finalizer scheduler before deployment.
 - **Blockers / Open Decisions:** Production Prisma migration history remains unresolved. The additive SQL is a non-deployable draft and was not applied; dev and isolated test schemas were synchronized through the established guarded workflows. Production deployment still needs a migration baseline strategy and an authenticated scheduler POST to `/api/internal/attendance/finalize` with `CRON_SECRET`. Commission basis is a settled internal wallet charge and does not prove external cash receipt.
+
+## Next.js artifact isolation — release blocker
+
+- **Root cause:** The unconfigured Next.js 14 `distDir` made `next dev` and `next build` write to the same `.next` tree. Production builds could replace files behind a live dev server, explaining 200 HTML with 404 JavaScript/CSS chunks across Admin routes.
+- **Canonical fix:** Tutor's `next.config.mjs` sends development to `.next` and production build/start to `.next-build`. `npm run dev:verify` starts a temporary server on port 3001 with `.next-verify`; TypeScript includes generated types from all three directories. No workspace OS change was needed because Tier-2 and visual-audit tools do not themselves run Next builds or mutate `.next`.
+- **Runtime verification:** A controlled dev server on port 3000 continued serving `/login`, `main-app.js`, and `layout.css` with HTTP 200 during and after a production build, TypeScript check, and Tier-2 run. The previously missing Admin layout and Gadwal chunks also returned HTTP 200. A simultaneous temporary server on port 3001 served its own chunks. Authenticated `/admin/gadwal` audits passed on both servers, and `/admin/accounts` passed on port 3000, at 375px, 768px, and 1440px with zero horizontal overflow and compliant measured mobile touch targets; screenshots were inspected.
+- **Checkpoint:** Prisma validation, TypeScript, lint, production build, and the guarded full Vitest suite passed (178/178). Working-tree Tier-2 evidence passed all four pillars; staged-commit evidence is collected by the release hook.
+- **Operational limit:** A dev server already running before this config change must restart once to load it. Two plain `next dev` processes still share `.next`; temporary audit servers must use `npm run dev:verify`.
 
 ## Iteration 003 — Finance, Student Attribution, and Import
 - Student accounts can carry an optional `ReferralSource` attribution, with canonical `Direct` and explicit `None`; auth roles do not encode referral identity. Admin create/detail/edit and the canonical update transaction own source and Tutor-rate changes.

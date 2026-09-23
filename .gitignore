@@ -8,6 +8,8 @@
 
 # Next.js build output
 /.next/
+/.next-build/
+/.next-verify/
 /out/
 /build
 

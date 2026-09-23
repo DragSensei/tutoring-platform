@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:verify": "node scripts/dev-verify.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . && node scripts/verify-frontend.mjs && node ../../../_shared-skills/scripts/lint-ui-architecture.mjs && node ../../../_shared-skills/scripts/token-lint.mjs",

@@ -46,6 +46,8 @@ npm run dev
 
 The development server runs at `http://localhost:3000`. To create/update a local development schema, first confirm the configured development database identity, then run `npm run prisma:push`. There is no supported seed command in this repository.
 
+`next dev` writes to `.next`; `npm run build` writes to `.next-build`, so a production build can run while the development server stays open. TypeScript includes generated types from both directories. For a temporary visual-audit server, run `npm run dev:verify` and audit `http://localhost:3001`; it writes to `.next-verify`. Do not launch a second plain `npm run dev` against the same `.next` directory while the human server is running. `next start` reads the production output in `.next-build`. Restart any dev server that was already running before this configuration change once so it loads the new config.
+
 ## Verification
 
 Run from this project directory unless a command shows a workspace-relative path:
