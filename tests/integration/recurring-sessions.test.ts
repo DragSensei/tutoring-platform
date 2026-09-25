@@ -16,6 +16,7 @@ const {
   cancelSessionSeries,
   createSessionSeries,
   getAdminSeries,
+  getSessionSeriesHistory,
   getStudentSeries,
   getTutorSeries,
   previewHistoricalSeries,
@@ -259,6 +260,55 @@ describe('recurring weekly sessions', () => {
     await cancelSessionSeries(entire.id, 'ENTIRE_SERIES', policy);
     expect((await occurrences(entire.id)).every((item) => item.status === 'CANCELLED')).toBe(true);
     expect((await prisma.sessionSeries.findUniqueOrThrow({ where: { id: entire.id } })).status).toBe('CANCELLED');
+  });
+
+  it('rejects edits and cancellations after a series has ended', async () => {
+    const tutor = await createUser('TUTOR');
+    const student = await createUser('STUDENT');
+    const series = await createSeries(tutor.id, student.id, `${prefix}archived-guard`);
+    const rows = await occurrences(series.id);
+    await prisma.sessionSeries.update({ where: { id: series.id }, data: { status: 'ENDED' } });
+
+    await expect(updateSessionSeries(series.id, { ...baseInput(tutor.id, student.id, `${prefix}should-not-edit`), startMinute: 16 * 60 }, 'ENTIRE_SERIES', policy)).rejects.toThrow('Ended or cancelled schedules cannot be edited or reactivated');
+    await expect(updateSessionSeries(series.id, { ...baseInput(tutor.id, student.id, `${prefix}should-not-edit-this`), startMinute: 16 * 60 }, 'THIS', policy, rows[0].id)).rejects.toThrow('Ended or cancelled schedules cannot be edited or reactivated');
+    await expect(cancelSessionSeries(series.id, 'THIS', policy, rows[0].id)).rejects.toThrow('Ended or cancelled schedules cannot be cancelled again');
+    expect((await prisma.sessionSeries.findUniqueOrThrow({ where: { id: series.id } })).status).toBe('ENDED');
+    expect((await prisma.session.findUniqueOrThrow({ where: { id: rows[0].id } })).status).toBe('SCHEDULED');
+  });
+
+  it('preserves sessions with saved all-absent attendance in single and multi-scope cancellation', async () => {
+    const tutor = await createUser('TUTOR');
+    const student = await createUser('STUDENT');
+    const series = await createSeries(tutor.id, student.id, `${prefix}absent-history`);
+    const rows = await occurrences(series.id);
+    const savedAt = new Date();
+    await prisma.session.update({ where: { id: rows[0].id }, data: { attendance_saved_at: savedAt } });
+
+    expect(await prisma.attendanceRecord.count({ where: { session_id: rows[0].id } })).toBe(0);
+    await expect(cancelSessionSeries(series.id, 'THIS', policy, rows[0].id)).rejects.toThrow('Occurrences with attendance or financial history cannot be cancelled');
+    await expect(cancelSessionSeries(series.id, 'THIS_AND_FUTURE', policy, rows[0].id)).rejects.toThrow('Occurrences with attendance or financial history cannot be cancelled');
+    const unchanged = await prisma.session.findUniqueOrThrow({ where: { id: rows[0].id } });
+    expect(unchanged.status).toBe('SCHEDULED');
+    expect(unchanged.attendance_saved_at).toEqual(savedAt);
+    expect((await prisma.sessionSeries.findUniqueOrThrow({ where: { id: series.id } })).status).toBe('ACTIVE');
+  });
+
+  it('returns read-only series history with cancelled occurrences and attendance provenance', async () => {
+    const tutor = await createUser('TUTOR');
+    const student = await createUser('STUDENT');
+    const series = await createSeries(tutor.id, student.id, `${prefix}history`);
+    const rows = await occurrences(series.id);
+    await prisma.attendanceRecord.create({ data: { session_id: rows[0].id, student_id: student.id } });
+    await prisma.session.updateMany({ where: { series_id: series.id }, data: { status: 'CANCELLED' } });
+    await prisma.sessionSeries.update({ where: { id: series.id }, data: { status: 'CANCELLED' } });
+
+    const history = await getSessionSeriesHistory(series.id);
+    expect(history.status).toBe('CANCELLED');
+    expect(history.tutorName).toContain('TUTOR');
+    expect(history.occurrences).toHaveLength(rows.length);
+    expect(history.occurrences[0]).toMatchObject({ status: 'CANCELLED', students: [expect.any(String)] });
+    expect(history.occurrences[0].attendances.map(({ studentName }) => studentName)).toEqual([expect.stringContaining('STUDENT')]);
+    expect(history.occurrences.every((occurrence) => occurrence.status === 'CANCELLED')).toBe(true);
   });
 
   it('marks an active series ended after its end date and materializes no more occurrences', async () => {

@@ -18,6 +18,7 @@ enum AccountStatus {
   PENDING_CREDENTIALS
   PENDING_PROFILE
   ACTIVE
+  DEACTIVATED
 }
 
 enum AccountTokenPurpose {
@@ -95,6 +96,8 @@ model User {
   tutor_compensation_entries TutorCompensationLedgerEntry[] @relation("CompensationTutor")
   commission_entries         CommissionLedgerEntry[]        @relation("CommissionStudent")
   commission_policy_updates  PlatformPolicy[]               @relation("CommissionPolicyUpdater")
+  tutor_payouts              PayoutSettlement[]              @relation("TutorPayoutRecipient")
+  created_payouts            PayoutSettlement[]              @relation("PayoutCreator")
 
   @@index([role])
   @@index([referral_source_id])
@@ -111,6 +114,7 @@ model ReferralSource {
 
   students           User[]                  @relation("StudentReferralSource")
   commission_entries CommissionLedgerEntry[] @relation("CommissionRecipientSource")
+  payouts            PayoutSettlement[]     @relation("SourcePayoutRecipient")
 
   @@index([is_active, name])
 }
@@ -318,6 +322,29 @@ model CommissionLedgerEntry {
   @@index([student_id, created_at])
   @@index([recipient_source_id, created_at])
   @@index([session_id])
+}
+
+model PayoutSettlement {
+  id                 String            @id @default(cuid())
+  tutor_id           String?
+  tutor              User?             @relation("TutorPayoutRecipient", fields: [tutor_id], references: [id], onDelete: Restrict)
+  source_id          String?
+  source             ReferralSource?    @relation("SourcePayoutRecipient", fields: [source_id], references: [id], onDelete: Restrict)
+  amount             Decimal           @db.Decimal(10, 2)
+  paid_at            DateTime          @default(now())
+  created_at         DateTime          @default(now())
+  created_by_user_id String?
+  created_by         User?             @relation("PayoutCreator", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  idempotency_key    String            @unique
+  reference          String?
+  note               String?
+  reversal_of_id     String?           @unique
+  reversal_of        PayoutSettlement? @relation("PayoutReversal", fields: [reversal_of_id], references: [id], onDelete: Restrict)
+  reversed_by        PayoutSettlement? @relation("PayoutReversal")
+
+  @@index([tutor_id, paid_at])
+  @@index([source_id, paid_at])
+  @@index([created_by_user_id, created_at])
 }
 
 model StudentImportBatch {

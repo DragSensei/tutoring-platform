@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/shared/lib/prisma';
 import { parseCalendarDate, academyCalendarDate, academyDateTime, historicalOccurrenceDates, materializeActiveSeriesForStudent, materializeActiveSeriesForTutor, materializeAllActiveSeries, materializeSessionSeries } from './recurrence';
 import { formatCalendarDate } from '@/shared/utils/calendar-date';
@@ -255,6 +255,42 @@ export async function getSessionSeries(seriesId: string, policy: SeriesPricingPo
   return serializeSeries(series, policy);
 }
 
+export async function getSessionSeriesHistory(seriesId: string) {
+  const series = await prisma.sessionSeries.findUnique({
+    where: { id: seriesId },
+    include: {
+      tutor: { select: { name: true } },
+      participants: { include: { student: { select: { name: true } } } },
+      occurrences: {
+        orderBy: [{ start_time: 'asc' }, { id: 'asc' }],
+        include: {
+          participants: { include: { student: { select: { name: true } } } },
+          attendances: { include: { student: { select: { name: true } } }, orderBy: { attended_at: 'asc' } },
+          tutor_compensation: { select: { id: true } },
+          commission_entries: { select: { id: true } },
+          transactions: { select: { id: true } },
+        },
+      },
+    },
+  });
+  if (!series) throw new Error('Session series not found');
+  return {
+    id: series.id, title: series.title, status: series.status,
+    tutorName: series.tutor.name || 'Tutor profile incomplete',
+    students: series.participants.map(({ student }) => student.name || 'Student profile incomplete'),
+    weekday: series.weekday, startMinute: series.start_minute, durationMinutes: series.duration_minutes,
+    startsOn: series.starts_on.toISOString(), endsOn: series.ends_on?.toISOString() ?? null,
+    occurrences: series.occurrences.map((session) => ({
+      id: session.id, title: session.title, status: session.status, startTime: session.start_time.toISOString(),
+      historicalOnly: session.historical_only, exceptionReason: session.series_exception_reason,
+      students: session.participants.map(({ student }) => student.name || 'Student profile incomplete'),
+      attendances: session.attendances.map(({ student, attended_at }) => ({ studentName: student.name || 'Student profile incomplete', attendedAt: attended_at.toISOString() })),
+      hasTutorCompensation: Boolean(session.tutor_compensation), commissionCount: session.commission_entries.length,
+      transactionCount: session.transactions.length,
+    })),
+  };
+}
+
 export async function getAdminSeries(filter: SeriesScheduleFilter | undefined, policy: SeriesPricingPolicy) {
   if (filter?.tutorId) {
     await materializeActiveSeriesForTutor(filter.tutorId, policy);
@@ -299,6 +335,9 @@ export async function updateSessionSeries(
   effectiveOccurrenceId?: string,
   confirmedDates?: string[],
 ) {
+  const lifecycle = await prisma.sessionSeries.findUnique({ where: { id: seriesId }, select: { status: true } });
+  if (!lifecycle) throw new Error('Session series not found');
+  if (lifecycle.status !== 'ACTIVE') throw new Error('Ended or cancelled schedules cannot be edited or reactivated');
   const validScope = recurrenceScopeSchema.parse(scope);
   const validInput = parseSeriesInput(input);
   const now = new Date();
@@ -322,7 +361,7 @@ export async function updateSessionSeries(
       participantIds: validInput.participantIds,
       startTime: start.toISOString(),
       endTime: end.toISOString(),
-    }, policy, { markSeriesException: true });
+    }, policy, { markSeriesException: true, requireActiveSeriesId: seriesId });
   }
 
   const updatedId = await prisma.$transaction(async (tx) => {
@@ -331,6 +370,7 @@ export async function updateSessionSeries(
       include: { participants: { select: { student_id: true } } },
     });
     if (!series) throw new Error('Session series not found');
+    if (series.status !== 'ACTIVE') throw new Error('Ended or cancelled schedules cannot be edited or reactivated');
     await validateSeriesReferences(tx, validInput);
 
     const candidateHistoryDates = validInput.historicalStartsOn
@@ -397,7 +437,7 @@ export async function updateSessionSeries(
       }, historyDates, policy);
     }
     return updated.id;
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
   await materializeSessionSeries(updatedId, policy);
   return getSessionSeries(updatedId, policy);
@@ -419,6 +459,7 @@ export async function cancelSessionSeries(
   await prisma.$transaction(async (tx) => {
     const series = await tx.sessionSeries.findUnique({ where: { id: seriesId } });
     if (!series) throw new Error('Session series not found');
+    if (series.status !== 'ACTIVE') throw new Error('Ended or cancelled schedules cannot be cancelled again');
     const selected = effectiveOccurrenceId
       ? await tx.session.findFirst({ where: { id: effectiveOccurrenceId, series_id: seriesId, historical_only: false }, select: { occurrence_date: true } })
       : null;
@@ -426,9 +467,9 @@ export async function cancelSessionSeries(
     const fromDate = selected?.occurrence_date || academyCalendarDate();
     const occurrences = await tx.session.findMany({
       where: { series_id: seriesId, occurrence_date: { gte: fromDate }, historical_only: false },
-      select: { id: true, status: true, _count: { select: { attendances: true, transactions: true } } },
+      select: { id: true, status: true, attendance_saved_at: true, attendance_finalized_at: true, _count: { select: { attendances: true, transactions: true } } },
     });
-    const protectedOccurrences = occurrences.filter((item) => item.status === 'COMPLETED' || item._count.attendances > 0 || item._count.transactions > 0);
+    const protectedOccurrences = occurrences.filter((item) => item.status === 'COMPLETED' || item.attendance_saved_at || item.attendance_finalized_at || item._count.attendances > 0 || item._count.transactions > 0);
     if (validScope === 'THIS_AND_FUTURE' && protectedOccurrences.length > 0) {
       throw new Error('Occurrences with attendance or financial history cannot be cancelled');
     }
@@ -439,22 +480,30 @@ export async function cancelSessionSeries(
         ? { status: 'CANCELLED' }
         : { status: 'ENDED', ends_on: new Date(fromDate.getTime() - 86_400_000) },
     });
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
   return { success: true, scope: validScope } as const;
 }
 
 async function cancelOccurrence(seriesId: string, sessionId: string) {
-  const occurrence = await prisma.session.findUnique({
-    where: { id: sessionId },
-    select: { id: true, series_id: true, status: true, historical_only: true, _count: { select: { attendances: true, transactions: true } } },
-  });
-  if (!occurrence || occurrence.series_id !== seriesId) throw new Error('The selected occurrence does not belong to this series');
-  if (occurrence.historical_only) throw new Error('Historical schedule records cannot be cancelled');
-  if (occurrence.status === 'COMPLETED' || occurrence._count.attendances > 0 || occurrence._count.transactions > 0) {
-    throw new Error('Occurrences with attendance or financial history cannot be cancelled');
-  }
-  await prisma.session.update({ where: { id: sessionId }, data: { status: 'CANCELLED', series_exception: true } });
+  await prisma.$transaction(async (tx) => {
+    const occurrence = await tx.session.findUnique({
+      where: { id: sessionId },
+      select: { id: true, series_id: true, status: true, historical_only: true, attendance_saved_at: true, attendance_finalized_at: true, series: { select: { status: true } }, _count: { select: { attendances: true, transactions: true } } },
+    });
+    if (!occurrence || occurrence.series_id !== seriesId) throw new Error('The selected occurrence does not belong to this series');
+    if (occurrence.series?.status !== 'ACTIVE') throw new Error('Ended or cancelled schedules cannot be cancelled again');
+    if (occurrence.historical_only) throw new Error('Historical schedule records cannot be cancelled');
+    if (occurrence.status !== 'SCHEDULED' && occurrence.status !== 'ACTIVE') throw new Error('Only scheduled or active sessions can be cancelled');
+    if (occurrence.attendance_saved_at || occurrence.attendance_finalized_at || occurrence._count.attendances > 0 || occurrence._count.transactions > 0) {
+      throw new Error('Occurrences with attendance or financial history cannot be cancelled');
+    }
+    const result = await tx.session.updateMany({
+      where: { id: sessionId, series_id: seriesId, historical_only: false, series: { is: { status: 'ACTIVE' } }, status: { in: ['SCHEDULED', 'ACTIVE'] }, attendance_saved_at: null, attendance_finalized_at: null, attendances: { none: {} }, transactions: { none: {} } },
+      data: { status: 'CANCELLED', series_exception: true },
+    });
+    if (result.count !== 1) throw new Error('Session changed while cancellation was being processed. Review the schedule and try again.');
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function getTutorSeries(tutorId: string, policy: SeriesPricingPolicy) {

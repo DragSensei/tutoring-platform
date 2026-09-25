@@ -14,13 +14,11 @@ export function AccountEditForm({ account, referralSources }: { account: Account
   const [sourceId, setSourceId] = React.useState(account.referralSourceId ?? '__none__');
   const [hourlyRate, setHourlyRate] = React.useState(account.role === 'TUTOR' ? account.tutor.hourlyRateOverride ?? '' : '');
   const [error, setError] = React.useState('');
-  const [saved, setSaved] = React.useState(false);
   const [isPending, startTransition] = React.useTransition();
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
-    setSaved(false);
     const input = {
       name,
       email,
@@ -31,8 +29,7 @@ export function AccountEditForm({ account, referralSources }: { account: Account
     startTransition(async () => {
       try {
         await updateAdminAccount(account.id, input);
-        setSaved(true);
-        router.refresh();
+        router.push('/admin/accounts?updated=1');
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : 'Could not save account changes.');
       }
@@ -46,11 +43,10 @@ export function AccountEditForm({ account, referralSources }: { account: Account
         <label className="text-xs font-semibold text-text-primary">Name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm" /></label>
         <label className="text-xs font-semibold text-text-primary">Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm" /></label>
         <label className="text-xs font-semibold text-text-primary">Phone<input value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={40} className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm" /></label>
-        {account.role === 'STUDENT' && <label className="text-xs font-semibold text-text-primary">Referral / sales source<select value={sourceId} onChange={(event) => setSourceId(event.target.value)} className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm"><option value="__none__">None · no attribution</option>{referralSources.map((source) => <option key={source.id} value={source.id}>{source.name} · {source.kind.toLowerCase()}</option>)}</select></label>}
+        {account.role === 'STUDENT' && <label className="text-xs font-semibold text-text-primary">Referral / sales source<select value={sourceId} onChange={(event) => setSourceId(event.target.value)} className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm"><option value="__none__">None · no attribution</option>{referralSources.filter((source) => source.isActive || source.id === sourceId).map((source) => <option key={source.id} value={source.id}>{source.name} · {source.kind.toLowerCase()}{source.isActive ? '' : ' · inactive'}</option>)}</select></label>}
         {account.role === 'TUTOR' && <label className="text-xs font-semibold text-text-primary">Tutor hourly-rate override (EGP)<input type="number" min="0" step="0.01" value={hourlyRate} onChange={(event) => setHourlyRate(event.target.value)} placeholder="Use platform default" className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm" /><span className="mt-1 block font-normal text-text-muted">Leave blank to use the policy default.</span></label>}
       </div>
       {error && <p role="alert" className="text-sm font-semibold text-brand-primary">{error}</p>}
-      {saved && <p role="status" className="text-sm font-semibold text-brand-primary">Account changes saved.</p>}
       <div className="flex flex-col gap-3 border-t border-border-subtle pt-4 sm:flex-row sm:justify-end">
         <button type="button" onClick={() => router.push(`/admin/accounts/${account.id}`)} className="min-h-[44px] rounded-lg border border-border-strong px-4 text-sm font-semibold text-text-primary">Cancel</button>
         <button type="submit" disabled={isPending} className="min-h-[44px] rounded-lg bg-brand-primary px-5 text-sm font-semibold text-brand-subtle disabled:opacity-60">{isPending ? 'Saving…' : 'Save account'}</button>

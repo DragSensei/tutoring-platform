@@ -10,6 +10,7 @@ vi.mock('@/shared/lib/prisma', () => ({
   prisma: {
     user: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
     },
   },
 }));
@@ -26,6 +27,7 @@ const {
   hashPassword,
   signSessionToken,
   verifySessionToken,
+  getSession,
 } = await import('@/features/auth/server/session');
 
 const testPayload = {
@@ -159,6 +161,18 @@ describe('server authentication contract', () => {
     await clearSessionCookie();
     expect(cookies).toHaveBeenCalled();
     expect(cookieStore.delete).toHaveBeenCalledWith('tp_session_token');
+  });
+
+  it('revalidates live account status and role on every authenticated request', async () => {
+    cookieStore.get.mockReturnValue({ value: await signSessionToken(testPayload) });
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: testPayload.userId, email: 'new@example.com', name: 'Updated Student', role: 'STUDENT', account_status: 'ACTIVE',
+    } as never);
+    await expect(getSession()).resolves.toEqual({ ...testPayload, email: 'new@example.com', name: 'Updated Student' });
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: testPayload.userId, email: testPayload.email, name: testPayload.name, role: 'STUDENT', account_status: 'DEACTIVATED',
+    } as never);
+    await expect(getSession()).resolves.toBeNull();
   });
 
   it('fails closed when production has no sufficiently strong signing secret', async () => {

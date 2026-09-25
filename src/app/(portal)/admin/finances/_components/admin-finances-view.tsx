@@ -4,6 +4,9 @@ import Link from 'next/link';
 import { formatEGP } from '@/shared/utils/currency';
 import { formatDateTime } from '@/shared/utils/date-format';
 import { FinanceDateRangeForm } from './finance-date-range-form';
+import { randomUUID } from 'node:crypto';
+import { PayoutForm } from './payout-form';
+import { describeWalletDeduction } from '@/features/finances/domain/wallet-deduction-copy';
 
 type FinanceReport = Awaited<ReturnType<typeof import('@/features/finances/server/finance-actions').getAdminFinanceReport>>;
 
@@ -13,6 +16,15 @@ function hours(minutes: number) {
 
 function dateTime(value: string | null) {
   return value ? formatDateTime(value, { includeYear: true }) : '—';
+}
+
+function walletDeductionDetail(entry: FinanceReport['charges'][number]) {
+  const copy = describeWalletDeduction({
+    finalizedAt: entry.finalizedAt,
+    formattedPriceSnapshot: entry.priceSnapshot ? formatEGP(entry.priceSnapshot) : null,
+    pricingProfileNameSnapshot: entry.pricingProfileNameSnapshot,
+  });
+  return `${copy.chargeStatus} · ${formatEGP(entry.amount)} · ${copy.pricingSnapshot}`;
 }
 
 function SummaryCard({ label, value, detail }: { label: string; value: string; detail: string }) {
@@ -36,7 +48,7 @@ export function AdminFinancesView({ report }: { report: FinanceReport }) {
           <span className="text-xs font-semibold text-text-muted">Financial operations</span>
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">Finances</h1>
-        <p className="text-sm text-text-muted">Finalized tutor delivery, wallet charges, compensation snapshots, and commission provenance.</p>
+        <p className="text-sm text-text-muted">Lifetime payables and recorded settlements, alongside activity for the selected dates.</p>
       </header>
 
       <Card className="border-border-subtle bg-canvas shadow-xs">
@@ -54,11 +66,31 @@ export function AdminFinancesView({ report }: { report: FinanceReport }) {
       </Card>
 
       <section aria-label="Finance totals" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Tutor delivery" value={hours(report.summary.deliveredMinutes)} detail={`${hours(report.summary.compensatedMinutes)} has a compensation snapshot`} />
-        <SummaryCard label="Tutor compensation" value={formatEGP(report.summary.tutorCompensation)} detail="Immutable tutor ledger entries" />
-        <SummaryCard label="Commission accrued" value={formatEGP(report.summary.commission)} detail={`${report.policy.commissionEnabled ? `${report.policy.commissionRateBps / 100}% enabled` : 'Disabled'} · rule v${report.policy.commissionRuleVersion}`} />
-        <SummaryCard label="System wallet charges" value={formatEGP(report.summary.systemTrackedCharges)} detail="Session deductions linked to non-historical sessions" />
+        <SummaryCard label="Tutor payable" value={formatEGP(report.summary.lifetimeTutorOutstanding)} detail="Lifetime earned less recorded payouts" />
+        <SummaryCard label="Sales & referral commissions payable" value={formatEGP(report.summary.lifetimeSalesOutstanding)} detail="Lifetime earned less recorded payouts" />
+        <SummaryCard label="Student wallet deductions" value={formatEGP(report.summary.systemTrackedCharges)} detail="Internal wallet charges in selected dates" />
+        <SummaryCard label="Needs review" value={String(report.summary.unaccruedSessionCount + report.summary.negativeOutstandingCount)} detail={`${hours(report.summary.needsRateReviewMinutes)} without rate · ${report.summary.negativeOutstandingCount} overpaid balances`} />
       </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-2" aria-label="Lifetime payable balances">
+        <Card className="min-w-0 border-border-subtle bg-canvas shadow-xs"><CardHeader><CardTitle className="text-base">Tutor payables · lifetime</CardTitle></CardHeader><CardContent className="space-y-3">
+          {report.tutorPayables.length ? report.tutorPayables.map((row) => <article key={row.id} className="flex flex-col gap-2 border-b border-stone-100 pb-3 sm:flex-row sm:items-center sm:justify-between"><div><Link href={`/admin/finances/payables/tutor/${encodeURIComponent(row.id)}`} className="inline-flex min-h-[44px] items-center font-semibold text-brand-primary">{row.name}</Link><p className="text-xs text-text-muted">{hours(row.deliveredMinutes)} finalized · earned {formatEGP(row.earned)} · paid {formatEGP(row.paid)}</p></div><p className="text-sm font-bold tabular-nums">Outstanding {formatEGP(row.outstanding)}</p></article>) : <p className="text-sm text-text-muted">No Tutor compensation has accrued.</p>}
+          <p className="text-xs text-text-muted">Lifetime snapshot earnings and recorded payout settlements, independent of the activity date filter.</p>
+        </CardContent></Card>
+        <Card className="min-w-0 border-border-subtle bg-canvas shadow-xs"><CardHeader><CardTitle className="text-base">Sales & referral commissions · lifetime</CardTitle></CardHeader><CardContent className="space-y-3">
+          {report.salesPayables.length ? report.salesPayables.map((row) => <article key={row.id} className="flex flex-col gap-2 border-b border-stone-100 pb-3 sm:flex-row sm:items-center sm:justify-between"><div><Link href={`/admin/finances/payables/source/${encodeURIComponent(row.id)}`} className="inline-flex min-h-[44px] items-center font-semibold text-brand-primary">{row.name}</Link><p className="text-xs text-text-muted">{row.kind} · {formatEGP(row.basisAmount)} finalized wallet-charge basis · earned {formatEGP(row.earned)} · paid {formatEGP(row.paid)}</p></div><p className="text-sm font-bold tabular-nums">Outstanding {formatEGP(row.outstanding)}</p></article>) : <p className="text-sm text-text-muted">No commissions have accrued.</p>}
+          <p className="text-xs text-text-muted">Lifetime snapshot earnings. Wallet-charge basis does not confirm external cash collection.</p>
+        </CardContent></Card>
+      </section>
+
+      <Card className="border-border-subtle bg-canvas shadow-xs"><CardHeader><CardTitle className="text-base">Record a payout</CardTitle></CardHeader><CardContent>
+        <PayoutForm initialKey={randomUUID()} options={[
+          ...report.tutorPayables.filter(({ outstanding }) => Number(outstanding) > 0).map((row) => ({ value: `tutor:${row.id}`, label: `${row.name} · Tutor · ${formatEGP(row.outstanding)} outstanding` })),
+          ...report.salesPayables.filter(({ outstanding }) => Number(outstanding) > 0).map((row) => ({ value: `source:${row.id}`, label: `${row.name} · ${row.kind === 'SALES' ? 'Sales' : 'Referral'} · ${formatEGP(row.outstanding)} outstanding` })),
+        ]} />
+      </CardContent></Card>
+
+      <Ledger title="Payout settlement history · lifetime" empty="No payouts have been recorded." rows={report.payouts.map((entry) => ({ id: entry.id, title: `${entry.recipient} · ${entry.reversal ? 'Reversal' : entry.reversed ? 'Reversed' : 'Payout'}`, detail: [entry.reference, entry.note, entry.createdBy ? `Recorded by ${entry.createdBy}` : null].filter(Boolean).join(' · ') || 'Recorded settlement', amount: formatEGP(entry.reversal ? `-${entry.amount}` : entry.amount), timestamp: entry.paidAt }))} totalCount={report.payoutCount} />
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_2fr]">
         <Card className="border-brand-border bg-brand-subtle shadow-xs">
@@ -110,13 +142,17 @@ export function AdminFinancesView({ report }: { report: FinanceReport }) {
         }))} totalCount={report.displayedRows.commissions} />
       </section>
 
-      <Ledger title="System session charges" empty="No system tracked charges in this date range." rows={report.charges.map((entry) => ({
+      <Ledger title="Student wallet deductions" empty="No wallet deductions in this date range." rows={report.charges.map((entry) => ({
         id: entry.id,
-        title: 'Finalized session wallet deduction',
-        detail: formatEGP(entry.amount),
+        title: `${entry.studentName} · ${entry.sessionTitle}`,
+        detail: walletDeductionDetail(entry),
         amount: formatEGP(entry.amount),
-        timestamp: entry.createdAt,
-        links: entry.sessionId ? [{ label: 'Session record', href: `/admin/finances/sessions/${encodeURIComponent(entry.sessionId)}` }] : [],
+        timestamp: entry.finalizedAt ?? entry.createdAt,
+        timestampLabel: entry.finalizedAt ? 'Finalized' : 'Charge recorded',
+        links: [
+          { label: 'Student', href: `/admin/accounts/${encodeURIComponent(entry.studentId)}` },
+          ...(entry.sessionId ? [{ label: 'Session record', href: `/admin/finances/sessions/${encodeURIComponent(entry.sessionId)}` }] : []),
+        ],
       }))} totalCount={report.displayedRows.charges} />
 
       <p className="text-xs leading-relaxed text-text-muted">Commission basis is a finalized internal wallet charge, not proof of external cash collection. Historical-only sessions are excluded. Ledger entries retain their original rates and amounts when policy changes.</p>
@@ -124,7 +160,7 @@ export function AdminFinancesView({ report }: { report: FinanceReport }) {
   );
 }
 
-function Ledger({ title, empty, rows, totalCount = rows.length }: { title: string; empty: string; rows: Array<{ id: string; title: string; detail: string; amount: string; timestamp: string; provenance?: string; links?: Array<{ label: string; href: string }> }>; totalCount?: number }) {
+function Ledger({ title, empty, rows, totalCount = rows.length }: { title: string; empty: string; rows: Array<{ id: string; title: string; detail: string; amount: string; timestamp: string; timestampLabel?: string; provenance?: string; links?: Array<{ label: string; href: string }> }>; totalCount?: number }) {
   return (
     <Card className="min-w-0 border-border-subtle bg-canvas shadow-xs">
       <CardHeader className="pb-3"><CardTitle className="text-base">{title}</CardTitle></CardHeader>
@@ -135,7 +171,7 @@ function Ledger({ title, empty, rows, totalCount = rows.length }: { title: strin
               <p className="break-words text-sm font-semibold text-text-primary">{row.title}</p>
               <p className="break-words text-xs text-text-muted">{row.detail}</p>
               {row.provenance && <p className="break-all text-[11px] text-text-subtle">{row.provenance}</p>}
-              <p className="text-[11px] text-text-muted">{dateTime(row.timestamp)}</p>
+              <p className="text-[11px] text-text-muted">{row.timestampLabel ?? 'Recorded'} · {dateTime(row.timestamp)}</p>
               {!!row.links?.length && <nav aria-label={`${row.title} drill-down`} className="mt-1 flex flex-wrap gap-x-3 gap-y-1">{row.links.map((link) => <Link key={link.label} href={link.href} className="inline-flex min-h-[44px] items-center text-sm font-semibold text-brand-primary underline-offset-2 hover:underline">{link.label}</Link>)}</nav>}
             </div>
             <p className="shrink-0 tabular-nums text-sm font-bold text-text-primary">{row.amount}</p>

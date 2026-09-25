@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
+import { recentSessionState } from '@/features/sessions/utils/recent-session-presentation';
 
 describe('Admin Overview Data Transformations & Business Rules', () => {
+  it('labels past scheduled sessions according to attendance submission without changing persisted status', () => {
+    const now = new Date('2026-09-25T12:00:00.000Z');
+    expect(recentSessionState('SCHEDULED', '2026-09-24T12:00:00.000Z', false, now)).toBe('Past · attendance not submitted');
+    expect(recentSessionState('SCHEDULED', '2026-09-24T12:00:00.000Z', true, now)).toBe('Past · attendance submitted; finalization pending');
+    expect(recentSessionState('SCHEDULED', '2026-09-26T12:00:00.000Z', false, now)).toBe('scheduled');
+    expect(recentSessionState('COMPLETED', '2026-09-24T12:00:00.000Z', true, now)).toBe('completed');
+  });
   it('correctly aggregates negative student balances into total overdraft debt', () => {
     const wallets = [
       { id: 'w1', studentName: 'Ahmed', studentEmail: 'a@test.com', studentPhone: '010', balanceEgp: -375 },

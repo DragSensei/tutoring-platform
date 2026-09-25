@@ -22,6 +22,7 @@ interface AccountsViewProps {
   accounts: AccountListItem[];
   referralSources: ReferralSourceItem[];
   initialReferralSourceId: string;
+  accountUpdated: boolean;
 }
 
 function getRoleBadgeVariant(role: AccountListItem['role']): BadgeProps['variant'] {
@@ -30,7 +31,7 @@ function getRoleBadgeVariant(role: AccountListItem['role']): BadgeProps['variant
   return 'outline';
 }
 
-export function AccountsView({ accounts, referralSources, initialReferralSourceId }: AccountsViewProps) {
+export function AccountsView({ accounts, referralSources, initialReferralSourceId, accountUpdated }: AccountsViewProps) {
   const router = useRouter();
   const [search, setSearch] = React.useState('');
   const [roleFilter, setRoleFilter] = React.useState('');
@@ -71,6 +72,7 @@ export function AccountsView({ accounts, referralSources, initialReferralSourceI
       </div>
 
       <AccountCreateForm referralSources={referralSources} />
+      {accountUpdated && <p role="status" className="rounded-lg border border-brand-border bg-brand-subtle px-4 py-3 text-sm font-semibold text-brand-primary">Account changes saved.</p>}
       <ReferralSourceManager sources={referralSources} />
       <StudentCsvImport />
 

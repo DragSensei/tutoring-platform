@@ -6,6 +6,8 @@ CREATE TYPE "CommissionBasis" AS ENUM ('FINALIZED_SESSION_WALLET_CHARGE');
 CREATE TYPE "ReferralSourceKind" AS ENUM ('DIRECT', 'REFERRAL', 'SALES');
 CREATE TYPE "StudentImportRowOutcome" AS ENUM ('CREATED', 'UPDATED', 'MATCHED', 'SKIPPED', 'CONFLICT', 'INVALID');
 
+ALTER TYPE "AccountStatus" ADD VALUE 'DEACTIVATED';
+
 CREATE TABLE "ReferralSource" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -166,3 +168,31 @@ ALTER TABLE "TutorCompensationLedgerEntry" ADD CONSTRAINT "TutorCompensationLedg
     CHECK ("delivered_minutes" > 0 AND "hourly_rate" >= 0 AND "amount" >= 0);
 ALTER TABLE "CommissionLedgerEntry" ADD CONSTRAINT "CommissionLedgerEntry_values_check"
     CHECK ("basis_amount" > 0 AND "rate_bps" BETWEEN 1 AND 10000 AND "amount" >= 0 AND "rule_version" >= 1);
+
+-- Append-only actual payouts. The platform currency is EGP; recipient identity
+-- is either a Tutor User or a stable ReferralSource payee.
+CREATE TABLE "PayoutSettlement" (
+    "id" TEXT NOT NULL,
+    "tutor_id" TEXT,
+    "source_id" TEXT,
+    "amount" DECIMAL(10,2) NOT NULL,
+    "paid_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_by_user_id" TEXT,
+    "idempotency_key" TEXT NOT NULL,
+    "reference" TEXT,
+    "note" TEXT,
+    "reversal_of_id" TEXT,
+    CONSTRAINT "PayoutSettlement_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "PayoutSettlement_recipient_check" CHECK (("tutor_id" IS NOT NULL) <> ("source_id" IS NOT NULL)),
+    CONSTRAINT "PayoutSettlement_amount_check" CHECK ("amount" > 0)
+);
+CREATE UNIQUE INDEX "PayoutSettlement_idempotency_key_key" ON "PayoutSettlement"("idempotency_key");
+CREATE UNIQUE INDEX "PayoutSettlement_reversal_of_id_key" ON "PayoutSettlement"("reversal_of_id");
+CREATE INDEX "PayoutSettlement_tutor_id_paid_at_idx" ON "PayoutSettlement"("tutor_id", "paid_at");
+CREATE INDEX "PayoutSettlement_source_id_paid_at_idx" ON "PayoutSettlement"("source_id", "paid_at");
+CREATE INDEX "PayoutSettlement_created_by_user_id_created_at_idx" ON "PayoutSettlement"("created_by_user_id", "created_at");
+ALTER TABLE "PayoutSettlement" ADD CONSTRAINT "PayoutSettlement_tutor_id_fkey" FOREIGN KEY ("tutor_id") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PayoutSettlement" ADD CONSTRAINT "PayoutSettlement_source_id_fkey" FOREIGN KEY ("source_id") REFERENCES "ReferralSource"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PayoutSettlement" ADD CONSTRAINT "PayoutSettlement_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "PayoutSettlement" ADD CONSTRAINT "PayoutSettlement_reversal_of_id_fkey" FOREIGN KEY ("reversal_of_id") REFERENCES "PayoutSettlement"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

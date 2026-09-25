@@ -1,7 +1,7 @@
 'use server';
 
 import { requireAuth } from '@/features/auth/server/session';
-import { createAccount, createReferralSource, initiateAccountSetup, initiatePasswordReset, updateAccountProfileTx } from '@/features/accounts/server/account-actions';
+import { createAccount, createReferralSource, getAccountDeletionImpact, initiateAccountSetup, initiatePasswordReset, permanentlyDeleteAccount, setAccountActive, updateAccountProfileTx, updateReferralSource } from '@/features/accounts/server/account-actions';
 import { confirmStudentImport as confirmImport, previewStudentImport as previewImport } from '@/features/accounts/server/student-import';
 import type { CreateAccountInput, UpdateAccountProfileInput } from '@/features/accounts/schemas';
 import { Prisma } from '@prisma/client';
@@ -39,6 +39,33 @@ export async function createAdminReferralSource(input: { name: string; kind: 'RE
   const source = await createReferralSource(input);
   revalidatePath('/admin/accounts');
   return source;
+}
+
+export async function updateAdminReferralSource(input: { id: string; name?: string; kind?: 'REFERRAL' | 'SALES'; isActive?: boolean }) {
+  await requireAuth(['ADMIN']);
+  const source = await updateReferralSource(input);
+  revalidatePath('/admin/accounts');
+  return source;
+}
+
+export async function setAdminAccountActive(userId: string, active: boolean) {
+  await requireAuth(['ADMIN']);
+  const result = await setAccountActive(userId, active);
+  revalidatePath('/admin/accounts');
+  revalidatePath(`/admin/accounts/${userId}`);
+  return result;
+}
+
+export async function getAdminAccountDeletionImpact(userId: string) {
+  await requireAuth(['ADMIN']);
+  return getAccountDeletionImpact(userId);
+}
+
+export async function permanentlyDeleteAdminAccount(userId: string, phrase: string) {
+  await requireAuth(['ADMIN']);
+  const result = await permanentlyDeleteAccount(userId, phrase);
+  revalidatePath('/admin/accounts');
+  return result;
 }
 
 export async function previewAdminStudentImport(input: unknown) {

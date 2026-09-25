@@ -27,7 +27,7 @@ interface InitialSeries {
   endsOn: string | null;
   pricingProfileId: string | null;
   participantIds: string[];
-  nextOccurrence: { id: string } | null;
+  nextOccurrence: { id: string; startTime: string } | null;
 }
 
 interface SeriesFormProps {
@@ -231,7 +231,7 @@ export function SeriesForm({ mode, tutors, students, policy, pricingProfiles, in
           </section>
         </details>
 
-        {mode === 'edit' && <label className="block min-w-0 border-t border-border-subtle pt-5"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Edit scope</span><Combobox options={[{ value: 'THIS', label: 'This occurrence', sublabel: 'Only the selected next occurrence' }, { value: 'THIS_AND_FUTURE', label: 'This and future occurrences', sublabel: 'Keep earlier history unchanged' }, { value: 'ENTIRE_SERIES', label: 'Entire series', sublabel: 'Rewrite future occurrences; preserve history' }]} value={scope} onChange={(value) => { const next = value as RecurrenceScope; setScope(next); if (next !== 'ENTIRE_SERIES') changeHistorical(false); }} placeholder="Select edit scope" searchPlaceholder="Search edit scopes" required /></label>}
+        {mode === 'edit' && <label className="block min-w-0 border-t border-border-subtle pt-5"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Apply these changes to</span><Combobox options={[{ value: 'THIS', label: 'Only the next session', sublabel: initialSeries?.nextOccurrence ? `Changes ${new Date(initialSeries.nextOccurrence.startTime).toLocaleDateString('en-GB', { timeZone: 'Africa/Cairo', day: 'numeric', month: 'long' })} only; previous and later sessions stay unchanged.` : 'No upcoming session is available to edit.' }, { value: 'THIS_AND_FUTURE', label: 'This session and future sessions', sublabel: 'Changes this session and scheduled ones after it; previous history stays unchanged.' }, { value: 'ENTIRE_SERIES', label: 'Future schedule for this series', sublabel: 'Replaces the remaining schedule; historical sessions stay unchanged.' }]} value={scope} onChange={(value) => { const next = value as RecurrenceScope; setScope(next); if (next !== 'ENTIRE_SERIES') changeHistorical(false); }} placeholder="Select edit scope" searchPlaceholder="Search edit scopes" required /></label>}
         {error && <p role="alert" className="rounded-lg border border-brand-border bg-brand-subtle px-3 py-2.5 text-sm font-medium text-brand-hover">{error}</p>}
         <div className="flex flex-col-reverse gap-3 border-t border-border-subtle pt-5 sm:flex-row sm:justify-end"><Button type="button" variant="ghost" className="min-h-[44px]" onClick={() => router.push('/admin/gadwal')}>Cancel</Button><Button type="submit" disabled={isPending} isLoading={isPending} className="min-h-[44px] gap-2"><Save className="h-4 w-4" /> {historicalEnabled && currentPreview ? `Confirm & save ${currentPreview.dates.length} historical ${currentPreview.dates.length === 1 ? 'session' : 'sessions'}` : mode === 'edit' ? 'Save series' : 'Create weekly series'}</Button></div>
       </form>

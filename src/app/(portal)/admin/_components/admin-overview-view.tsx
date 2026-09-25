@@ -18,6 +18,7 @@ import { formatDateTime } from '@/shared/utils/date-format';
 import { formatEGP } from '@/shared/utils/currency';
 import { motion } from 'motion/react';
 import type { AdminOverviewData } from './admin-overview-data';
+import { recentSessionState } from '@/features/sessions/utils/recent-session-presentation';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -280,7 +281,7 @@ export function AdminOverviewView({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Clock className="h-5 w-5 text-stone-500" />
-            <h2 className="text-base font-bold text-stone-900">Recent Scheduled Sessions</h2>
+            <h2 className="text-base font-bold text-stone-900">Recent sessions</h2>
           </div>
 
           <Link
@@ -294,7 +295,7 @@ export function AdminOverviewView({
 
         {recentSessions.length === 0 ? (
           <div className="p-8 text-center border border-dashed border-stone-200 rounded-xl">
-            <p className="text-sm text-stone-500">No scheduled sessions found in database.</p>
+            <p className="text-sm text-stone-500">No sessions found.</p>
           </div>
         ) : (
           <div className="divide-y divide-stone-100 border border-stone-200/60 rounded-xl overflow-hidden">
@@ -324,17 +325,17 @@ export function AdminOverviewView({
                           : 'bg-amber-100 text-amber-700'
                       }`}
                     >
-                      {session.status}
+                      {recentSessionState(session.status, session.startTime, session.attendanceSaved)}
                     </span>
                   </div>
                   <p className="text-xs text-stone-500 mt-1">
-                    Mentor: <strong className="text-stone-700 font-medium">{session.tutorName}</strong> &bull; Starts: {formatDateTime(session.startTime)}
+                    Tutor: <strong className="text-stone-700 font-medium">{session.tutorName}</strong> &bull; Scheduled start: {formatDateTime(session.startTime)}
                   </p>
                 </div>
 
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-stone-500">
-                    <strong className="font-semibold text-stone-800">{session.attendeeCount}</strong> checked in
+                    <strong className="font-semibold text-stone-800">{session.attendeeCount}</strong> PRESENT attendance records
                   </span>
                   <Link
                     href={`/admin/gadwal?session=${session.id}`}

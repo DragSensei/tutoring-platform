@@ -4,7 +4,7 @@ import type { SessionType, TutorVolumeKPIs } from '@/shared/types';
 import { formatSessionCode } from '@/shared/utils/session-code';
 import { createSessionSchema, type CreateSessionInput, type SessionFilterInput } from '../schemas';
 import { academyDateTime, materializeActiveSeriesForTutor } from './recurrence';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 export interface SessionPricingConfig {
   checkInWindowHours: number;
@@ -194,7 +194,7 @@ export async function updateSession(
   sessionId: string,
   input: CreateSessionInput,
   policy: SessionPricingConfig,
-  options?: { markSeriesException?: boolean },
+  options?: { markSeriesException?: boolean; requireActiveSeriesId?: string },
 ) {
   const validInput = parseSessionInput(input);
   await validateSessionReferences(validInput);
@@ -223,9 +223,16 @@ export async function updateSession(
     throw new Error('Sessions with attendance or financial history can only change their title');
   }
 
-  const updated = await prisma.$transaction(async (tx) => tx.session.update({
-    where: { id: sessionId },
-    data: {
+  const updated = await prisma.$transaction(async (tx) => {
+    if (options?.requireActiveSeriesId) {
+      const current = await tx.session.findUnique({ where: { id: sessionId }, select: { series_id: true, series: { select: { status: true } } } });
+      if (current?.series_id !== options.requireActiveSeriesId || current.series?.status !== 'ACTIVE') {
+        throw new Error('Ended or cancelled schedules cannot be edited or reactivated');
+      }
+    }
+    return tx.session.update({
+      where: { id: sessionId },
+      data: {
       title: validInput.title,
       tutor_id: validInput.tutorId,
       session_type: validInput.sessionType,
@@ -237,9 +244,10 @@ export async function updateSession(
         deleteMany: {},
         create: validInput.participantIds.map((student_id) => ({ student_id })),
       },
-    },
-    include: SESSION_INCLUDE,
-  }));
+      },
+      include: SESSION_INCLUDE,
+    });
+  }, options?.requireActiveSeriesId ? { isolationLevel: Prisma.TransactionIsolationLevel.Serializable } : undefined);
 
   return serializeSession(updated, policy);
 }

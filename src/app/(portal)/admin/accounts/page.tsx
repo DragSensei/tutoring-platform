@@ -4,8 +4,8 @@ import { getReferralSources } from '@/features/accounts/server/account-actions';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminAccountsPage({ searchParams }: { searchParams: { referralSourceId?: string } }) {
+export default async function AdminAccountsPage({ searchParams }: { searchParams: { referralSourceId?: string; updated?: string } }) {
   const [accounts, referralSources] = await Promise.all([getAccounts(), getReferralSources()]);
 
-  return <AccountsView accounts={accounts} referralSources={referralSources} initialReferralSourceId={searchParams.referralSourceId ?? ''} />;
+  return <AccountsView accounts={accounts} referralSources={referralSources} initialReferralSourceId={searchParams.referralSourceId ?? ''} accountUpdated={searchParams.updated === '1'} />;
 }

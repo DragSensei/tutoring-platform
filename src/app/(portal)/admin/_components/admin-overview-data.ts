@@ -26,6 +26,7 @@ export interface AdminOverviewData {
     status: SessionStatus;
     startTime: string;
     attendeeCount: number;
+    attendanceSaved: boolean;
   }>;
 }
 
@@ -64,7 +65,13 @@ export async function getAdminOverviewData(): Promise<AdminOverviewData> {
       where: { historical_only: false },
       take: 4,
       orderBy: { start_time: 'desc' },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        session_type: true,
+        status: true,
+        start_time: true,
+        attendance_saved_at: true,
         tutor: { select: { name: true } },
         _count: { select: { attendances: true } },
       },
@@ -91,6 +98,7 @@ export async function getAdminOverviewData(): Promise<AdminOverviewData> {
     status: s.status as SessionStatus,
     startTime: s.start_time.toISOString(),
     attendeeCount: s._count.attendances,
+    attendanceSaved: Boolean(s.attendance_saved_at),
   }));
 
   return {

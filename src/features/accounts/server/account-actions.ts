@@ -55,6 +55,8 @@ export interface ReferralSourceItem {
   name: string;
   kind: ReferralSourceKind;
   isActive: boolean;
+  attributedStudents?: number;
+  commissionEntries?: number;
 }
 
 export async function getReferralSources(): Promise<ReferralSourceItem[]> {
@@ -69,11 +71,15 @@ export async function getReferralSources(): Promise<ReferralSourceItem[]> {
     throw new Error('The canonical Direct referral source is invalid');
   }
   const sources = await prisma.referralSource.findMany({
-    where: { is_active: true },
-    select: { id: true, name: true, kind: true, is_active: true },
+    where: {},
+    select: { id: true, name: true, kind: true, is_active: true, _count: { select: { students: true, commission_entries: true } } },
     orderBy: [{ kind: 'asc' }, { name: 'asc' }],
   });
-  return sources.map((source) => ({ id: source.id, name: source.name, kind: source.kind, isActive: source.is_active }));
+  return sources.map((source) => ({
+    id: source.id, name: source.name, kind: source.kind, isActive: source.is_active,
+    attributedStudents: source._count.students,
+    commissionEntries: source._count.commission_entries,
+  }));
 }
 
 export async function createReferralSource(input: unknown) {
@@ -89,7 +95,106 @@ export async function createReferralSource(input: unknown) {
     data: { name, normalized_name: normalizedName, kind: parsed.data.kind },
     select: { id: true, name: true, kind: true, is_active: true },
   });
-  return { id: source.id, name: source.name, kind: source.kind, isActive: source.is_active };
+  return { id: source.id, name: source.name, kind: source.kind, isActive: source.is_active, attributedStudents: 0, commissionEntries: 0 };
+}
+
+export async function updateReferralSource(input: { id: string; name?: string; kind?: 'REFERRAL' | 'SALES'; isActive?: boolean }) {
+  await requireAuth(['ADMIN']);
+  if (!input.id || input.id === 'direct') throw new Error('The protected Direct source cannot be changed');
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.referralSource.findUnique({ where: { id: input.id } });
+    if (!current || current.kind === 'DIRECT') throw new Error('Referral source not found or protected');
+    const data: Prisma.ReferralSourceUpdateInput = {};
+    if (input.name !== undefined) {
+      const name = input.name.trim().replace(/\s+/g, ' ');
+      if (!name || name.toLocaleLowerCase('en') === 'direct') throw new Error('Choose a distinct source name');
+      data.name = name;
+      data.normalized_name = name.toLocaleLowerCase('en');
+    }
+    if (input.kind !== undefined && input.kind !== current.kind) {
+      const [students, commissions] = await Promise.all([
+        tx.user.count({ where: { referral_source_id: current.id } }),
+        tx.commissionLedgerEntry.count({ where: { recipient_source_id: current.id } }),
+      ]);
+      if (students || commissions) throw new Error('Source type is fixed after student attribution or commission history exists');
+      data.kind = input.kind;
+    }
+    if (input.isActive !== undefined) data.is_active = input.isActive;
+    if (!Object.keys(data).length) throw new Error('No source changes were provided');
+    const updated = await tx.referralSource.update({ where: { id: input.id }, data });
+    return { id: updated.id, name: updated.name, kind: updated.kind, isActive: updated.is_active };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+export async function setAccountActive(userId: string, active: boolean) {
+  await requireAuth(['ADMIN']);
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, role: true, account_status: true } });
+    if (!user || user.role === 'ADMIN') throw new Error('Only Tutor and Student accounts can be deactivated');
+    if (active) {
+      if (user.account_status !== 'DEACTIVATED') throw new Error('This account is not deactivated');
+      await tx.user.update({ where: { id: userId }, data: { account_status: 'ACTIVE' } });
+      return { status: 'ACTIVE' as const, removedFutureParticipation: 0 };
+    }
+    if (user.account_status === 'DEACTIVATED') return { status: 'DEACTIVATED' as const, removedFutureParticipation: 0 };
+    if (user.account_status !== 'ACTIVE') throw new Error('Only active accounts can be deactivated');
+    const now = new Date();
+    if (user.role === 'TUTOR') {
+      const [sessions, series] = await Promise.all([
+        tx.session.count({ where: { tutor_id: userId, start_time: { gt: now }, status: { in: ['SCHEDULED', 'ACTIVE'] } } }),
+        tx.sessionSeries.count({ where: { tutor_id: userId, status: 'ACTIVE', OR: [{ ends_on: null }, { ends_on: { gte: now } }] } }),
+      ]);
+      if (sessions || series) throw new Error(`Cannot deactivate this Tutor yet: ${sessions} future sessions and ${series} active recurring schedules need a safe replacement Tutor first.`);
+    } else {
+      const [futureSessions, futureSeries] = await Promise.all([
+        tx.session.findMany({ where: { OR: [{ start_time: { gt: now } }, { status: 'ACTIVE' }], status: { in: ['SCHEDULED', 'ACTIVE'] }, historical_only: false, participants: { some: { student_id: userId } } }, select: { id: true, session_type: true, status: true, attendance_saved_at: true, attendance_finalized_at: true, _count: { select: { participants: true, attendances: true, transactions: true, commission_entries: true } }, tutor_compensation: { select: { id: true } } } }),
+        tx.sessionSeries.findMany({ where: { status: 'ACTIVE', OR: [{ ends_on: null }, { ends_on: { gte: now } }], participants: { some: { student_id: userId } } }, select: { id: true, session_type: true, _count: { select: { participants: true } } } }),
+      ]);
+      const hasSessionHistory = futureSessions.some((session) => session.status === 'ACTIVE' || session.attendance_saved_at || session.attendance_finalized_at || session._count.attendances || session._count.transactions || session._count.commission_entries || session.tutor_compensation);
+      if (hasSessionHistory) throw new Error('Cannot deactivate this Student while a future or active session has saved attendance or financial history. Resolve the affected session first.');
+      const invalidRosters = [...futureSessions, ...futureSeries].filter((item) => item._count.participants <= 1);
+      if (invalidRosters.length) throw new Error(`Cannot deactivate this Student: removing them would leave ${invalidRosters.length} future schedule(s) without the minimum one Student. Resolve those schedules first.`);
+      const [sessionsRemoved, seriesRemoved] = await Promise.all([
+        tx.sessionParticipant.deleteMany({ where: { student_id: userId, session: { start_time: { gt: now }, status: 'SCHEDULED', historical_only: false } } }),
+        tx.sessionSeriesParticipant.deleteMany({ where: { student_id: userId, series: { status: 'ACTIVE', OR: [{ ends_on: null }, { ends_on: { gte: now } }] } } }),
+      ]);
+      const count = sessionsRemoved.count + seriesRemoved.count;
+      await tx.user.update({ where: { id: userId }, data: { account_status: 'DEACTIVATED' } });
+      return { status: 'DEACTIVATED' as const, removedFutureParticipation: count };
+    }
+    await tx.user.update({ where: { id: userId }, data: { account_status: 'DEACTIVATED' } });
+    return { status: 'DEACTIVATED' as const, removedFutureParticipation: 0 };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+async function readAccountDeletionImpact(tx: Prisma.TransactionClient, userId: string) {
+  const user = await tx.user.findUnique({ where: { id: userId }, select: {
+    id: true, role: true, account_status: true, referral_source_id: true,
+    referral_source: { select: { name: true, kind: true } },
+    _count: { select: { tutored_sessions: true, tutored_series: true, attendances: true, session_participants: true, series_participants: true, setup_tokens: true, created_transactions: true, created_student_imports: true, imported_student_rows: true, tutor_compensation_entries: true, commission_entries: true, commission_policy_updates: true, tutor_payouts: true, created_payouts: true } },
+  } });
+  if (!user) throw new Error('Account not found');
+  const dependencies: Array<{ category: string; count: number; detail?: string }> = Object.entries(user._count).filter(([, count]) => count > 0).map(([category, count]) => ({ category, count }));
+  const wallet = await tx.wallet.count({ where: { user_id: userId } });
+  if (wallet) dependencies.push({ category: 'wallet and financial history', count: wallet });
+  if (user.referral_source_id) dependencies.push({ category: 'current referral source', count: 1, detail: `${user.referral_source?.name ?? 'Unknown source'} · ${user.referral_source?.kind ?? 'unknown type'}` });
+  return { id: user.id, role: user.role, accountStatus: user.account_status, dependencies, canDelete: user.role !== 'ADMIN' && user.account_status === 'DEACTIVATED' && dependencies.length === 0 };
+}
+
+export async function getAccountDeletionImpact(userId: string) {
+  await requireAuth(['ADMIN']);
+  return prisma.$transaction((tx) => readAccountDeletionImpact(tx, userId), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+}
+
+export async function permanentlyDeleteAccount(userId: string, phrase: string) {
+  await requireAuth(['ADMIN']);
+  if (phrase !== 'delete-this-account') throw new Error('Type the exact confirmation phrase to continue');
+  return prisma.$transaction(async (tx) => {
+    const impact = await readAccountDeletionImpact(tx, userId);
+    if (!impact.canDelete) throw new Error('Permanent deletion is blocked because this account has related history or is not deactivated');
+    await tx.user.delete({ where: { id: userId } });
+    return { deleted: true };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function updateAccountProfileTx(
@@ -99,7 +204,7 @@ export async function updateAccountProfileTx(
 ) {
   const parsed = updateAccountProfileSchema.safeParse(input);
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message || 'Invalid account details');
-  const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, role: true } });
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, role: true, referral_source_id: true } });
   if (!user || user.role === 'ADMIN') throw new Error('Only Tutor and Student accounts can be edited here');
 
   const data: Prisma.UserUpdateInput = {};
@@ -109,10 +214,10 @@ export async function updateAccountProfileTx(
   if (parsed.data.referralSourceId !== undefined) {
     if (user.role !== 'STUDENT') throw new Error('Referral attribution applies to Student accounts only');
     const referralSourceId = dataSourceId(parsed.data.referralSourceId);
-    if (referralSourceId) {
+    if (referralSourceId && referralSourceId !== user.referral_source_id) {
       const source = await activeReferralSource(tx, referralSourceId);
       data.referral_source = { connect: { id: source.id } };
-    } else {
+    } else if (!referralSourceId && user.referral_source_id) {
       data.referral_source = { disconnect: true };
     }
   }
@@ -205,7 +310,7 @@ export async function initiateAccountSetup(userId: string) {
     const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, role: true, account_status: true } });
     if (!user) throw new Error('Account not found');
     if (user.role === 'ADMIN') throw new Error('Setup links are only available for Tutor and Student accounts');
-    if (user.account_status === 'ACTIVE') throw new Error('Active accounts do not need a setup link');
+    if (user.account_status === 'ACTIVE' || user.account_status === 'DEACTIVATED') throw new Error('Only accounts awaiting setup may receive a setup link');
     return issueAccountToken(tx, user.id, 'SETUP');
   });
   return { userId, setupToken: result.raw, setupExpiresAt: result.expiresAt.toISOString() };
@@ -238,10 +343,10 @@ export async function completeAccountSetup(
   const result = await prisma.$transaction(async (tx) => {
     const token = await tx.accountSetupToken.findFirst({
       where: { purpose: 'SETUP', token_hash: tokenHash(parsed.data.token), consumed_at: null, expires_at: { gt: now } },
-      include: { user: { select: { id: true, name: true, email: true, phone: true, role: true } } },
+      include: { user: { select: { id: true, name: true, email: true, phone: true, role: true, account_status: true } } },
     });
     if (!token) throw new Error('This setup link is invalid or expired');
-    if (token.user.role === 'ADMIN') throw new Error('This setup link is invalid or expired');
+    if (token.user.role === 'ADMIN' || token.user.account_status === 'DEACTIVATED') throw new Error('This setup link is invalid or expired');
 
     const profile = {
       name: normalize(parsed.data.name) || token.user.name,
@@ -270,10 +375,11 @@ export async function completeAccountSetup(
     });
     if (consumed.count !== 1) throw new Error('This setup link is no longer available');
 
-    await tx.user.update({
-      where: { id: token.user.id },
+    const activated = await tx.user.updateMany({
+      where: { id: token.user.id, account_status: { in: ['PENDING_CREDENTIALS', 'PENDING_PROFILE'] } },
       data: { ...completeProfile, password_hash: passwordHash, account_status: 'ACTIVE' },
     });
+    if (activated.count !== 1) throw new Error('This setup link is invalid or expired');
 
     return {
       userId: token.user.id,

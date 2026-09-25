@@ -328,11 +328,18 @@ export interface SessionOccurrenceContract extends SessionContract {
   those Sessions remain visible for scheduling/history but produce no wallet,
   Tutor-pay, or commission ledger entries. Existing Sessions default false and
   are not reclassified by migration.
+- Admin separates active schedules from ended/cancelled schedules. Archived
+  schedules expose read-only occurrence, roster, attendance, and financial
+  provenance. Earlier series schedule values and series-level cancellation
+  time/scope/reason were not persisted and must not be inferred from `updated_at`.
+- An archived series cannot be edited or cancelled through a direct action.
+  Cancellation preserves saved all-absent attendance as well as PRESENT rows,
+  finalized sessions, wallet entries, and compensation/commission history.
 
 ## 7. Account Provisioning & Credential Contracts
 
 ```typescript
-export type AccountStatus = 'PENDING_CREDENTIALS' | 'PENDING_PROFILE' | 'ACTIVE';
+export type AccountStatus = 'PENDING_CREDENTIALS' | 'PENDING_PROFILE' | 'ACTIVE' | 'DEACTIVATED';
 
 export interface CreateAccountInput {
   role: Extract<Role, 'TUTOR' | 'STUDENT'>;
@@ -366,6 +373,23 @@ export interface AccountSetupTokenContract {
 - Authentication is fail-closed for `PENDING_CREDENTIALS` and
   `PENDING_PROFILE`; only `ACTIVE` accounts with a stored hash and complete profile
   can receive a signed portal session.
+- Deactivation uses the same `User.account_status` lifecycle. Every existing
+  signed session is rechecked against the current database role and ACTIVE
+  status; setup/reset links cannot reactivate a deactivated account.
+- Student deactivation removes only safe future participation. It fails closed
+  for active/history-bearing sessions or a future roster that would become
+  empty. Tutor deactivation fails closed while future assignments exist because
+  the current required Tutor relation has no unassigned state; Admin must
+  resolve those assignments explicitly. Historical rows remain intact.
+- Permanent deletion is limited to a deactivated Tutor/Student with no wallet,
+  schedule, attendance, finance, import, token, referral, or other references.
+  The Admin sees a dependency preview; the same checks run again inside the
+  deletion transaction. The UI requires a four-second hold and the exact
+  `delete-this-account` phrase before submission.
+- `ReferralSource` is the stable no-login recipient for referral/sales
+  commission. Direct is protected. A source may be renamed or deactivated;
+  historical commission recipient names and amounts remain snapshotted. Source
+  type cannot change after Student attribution or commission history exists.
 
 ### Student CSV Import
 
@@ -461,6 +485,17 @@ export interface PlatformPolicyContract {
 - Unique Session and Session/Student keys, serializable transactions, source-event links, and re-reading policy/Session state inside the transaction make repeated or concurrent settlement idempotent. Ledger rows are append-only; correction requires a new balancing event with provenance.
 - Finance Session drill-down is `/admin/finances/sessions/[sessionId]`, a read-only Admin route. It loads the Session by ID only after `ADMIN` authorization and exposes the stored price/profile, Tutor pay, wallet charge, commission, roster, and source-event snapshots. It does not link finalized Sessions to the schedule editor.
 - `getAdminFinanceSessionDetail(sessionId)` is the server data owner for that route. Missing IDs return not-found; malformed IDs fail before lookup. Monetary DTO values are decimal strings, and linked User/source records use their canonical Admin account routes.
+- `PayoutSettlement` is the append-only record of an actual Tutor or source
+  payout in EGP. Exactly one stable recipient is set; amount is positive. Each
+  write records an Admin, timestamp, and unique idempotency key, with optional
+  note/reference. A reversal is a separate matching entry linked once to its
+  original; neither entry rewrites the earning ledger.
+- Payout creation reads lifetime earned and net paid inside a serializable
+  transaction, rejects overpayment, and retries serialization conflicts.
+  Outstanding is immutable lifetime earned minus recorded net payouts. Activity
+  date filters do not narrow payable balances because payouts are not allocated
+  to individual earning entries. Payee detail routes show earning and payout
+  provenance; wallet deductions remain internal charges, not external revenue.
 
 ## 9. Student Import Provenance
 

@@ -16,6 +16,7 @@ import {
   createSessionSeries,
   getAdminWeeklySchedule,
   getSessionSeries,
+  getSessionSeriesHistory,
   previewHistoricalSeries,
   updateSessionSeries,
 } from '@/features/sessions/server/series-actions';
@@ -109,6 +110,11 @@ export async function cancelAdminSeries(
 export async function getAdminSeries(seriesId: string) {
   await requireAuth(['ADMIN']);
   return getSessionSeries(seriesId, await getPlatformPolicies());
+}
+
+export async function getAdminSeriesHistory(seriesId: string) {
+  await requireAuth(['ADMIN']);
+  return getSessionSeriesHistory(seriesId);
 }
 
 export async function getAdminWeeklySeries(tutorId?: string) {

@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
 import type { Role } from '@/shared/types';
+import { prisma } from '@/shared/lib/prisma';
 
 const SESSION_COOKIE_NAME = 'tp_session_token';
 const DEVELOPMENT_AUTH_SECRET = 'fallback-super-secret-key-that-is-at-least-32-chars!';
@@ -45,7 +46,15 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 
 export async function getSession(): Promise<SessionPayload | null> {
   const token = cookies().get(SESSION_COOKIE_NAME)?.value;
-  return token ? verifySessionToken(token) : null;
+  if (!token) return null;
+  const signed = await verifySessionToken(token);
+  if (!signed) return null;
+  const user = await prisma.user.findUnique({
+    where: { id: signed.userId },
+    select: { id: true, email: true, name: true, role: true, account_status: true },
+  });
+  if (!user || user.account_status !== 'ACTIVE' || user.role !== signed.role || !user.email || !user.name) return null;
+  return { userId: user.id, email: user.email, name: user.name, role: user.role };
 }
 
 export async function setSessionCookie(payload: SessionPayload): Promise<void> {

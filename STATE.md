@@ -1,7 +1,7 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Latest Completed Task:** Isolated Next.js verification output from the long-lived development server before Tutor release.
+- **Latest Completed Task:** Implemented Iteration 003.1 Admin acceptance fixes; automated checkpoint and manual acceptance are tracked below.
 - **Previous Feature Work:** Added bounded recurring-session materialization, secure Admin account setup, and Iteration 003 finance/account/import operations:
   1. `SessionSeries` owns weekly assignments; concrete `Session` rows remain authoritative for attendance, wallets, completion, cancellation, and audit history.
   2. Materialization is Cairo-aware, bounded to 12 weeks, idempotent, concurrency-tested, and stops for ended/cancelled series.
@@ -12,8 +12,16 @@
   7. Tutor attendance is manual, opens at the concrete Session start, remains editable through end plus policy grace, and finalizes wallet state only after the grace close.
   8. Concrete Session rows now own effective one-occurrence postpones; the weekly SessionSeries pattern remains unchanged.
   9. Public/student attendance-link behavior and new token issuance were removed while historical token storage remains intact.
-- **Immediate Next Move:** Establish the production Prisma migration baseline and configure the authenticated attendance-finalizer scheduler before deployment.
+- **Immediate Next Move:** Complete manual Admin acceptance for Iteration 003.1, then establish the production Prisma migration baseline and configure the authenticated attendance-finalizer scheduler before deployment.
 - **Blockers / Open Decisions:** Production Prisma migration history remains unresolved. The additive SQL is a non-deployable draft and was not applied; dev and isolated test schemas were synchronized through the established guarded workflows. Production deployment still needs a migration baseline strategy and an authenticated scheduler POST to `/api/internal/attendance/finalize` with `CRON_SECRET`. Commission basis is a settled internal wallet charge and does not prove external cash receipt.
+
+## Iteration 003.1 — Admin acceptance implementation
+
+- **Scheduling:** Active and ended/cancelled series are separated. Archived rows open read-only history with occurrence, roster, attendance, and financial provenance. Edit/cancel scope copy states its future-only effect. Direct archived-series edits/cancellation are rejected, and cancellation preserves saved all-absent attendance as well as finalized/financial history. Admin Overview now labels scheduled start and PRESENT attendance records; past unfinalized rows retain their stored status with explanatory copy.
+- **Accounts:** `User.account_status` adds `DEACTIVATED`; signed sessions recheck current database status and role. Student deactivation removes safe future participation and fails closed for active/history-bearing sessions or invalid remaining rosters. Tutor deactivation fails closed while future assignments exist because the required Tutor relation has no safe unassigned state. Permanent deletion requires a deactivated, dependency-free account, transactional impact recheck, a four-second pointer/keyboard hold, and the exact phrase. Direct stays protected; editable/deactivatable sources retain historical attribution. Account saves return to Accounts with feedback.
+- **Finance:** Existing `ReferralSource` is the stable no-login sales/referral payee. `PayoutSettlement` records actual append-only Tutor/source payments with one recipient, positive amount, Admin provenance, idempotency, and optional reversal link. Lifetime earned, paid, and outstanding use immutable earning snapshots and net settlements, independent of the activity date filter. Payee detail shows session/student/wallet-event provenance. Student wallet deductions no longer imply external cash collection; legacy rows with missing snapshots are labeled honestly. Needs Review remains visible.
+- **Runtime bug triage:** During development the Finance route first used a stale running Prisma client (`payoutSettlement` undefined), then revealed that the local development database lacked the new table. Canonical fix was to verify the generated Prisma runtime delegate, restart using isolated `dev:verify`, and sync only the identified localhost development schema with `prisma db push --skip-generate`. The isolated test schema was synced through the test database guard. The production draft SQL was not applied.
+- **Acceptance/release:** Automated checks and authenticated responsive route audits are the checkpoint gate. Manual Admin acceptance remains required. Production migration baseline and scheduler remain open; this is not production migration sign-off.
 
 ## Next.js artifact isolation — release blocker
 

@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { requireAuth } from '@/shared/server/session';
-import { createReferralSource, updateAccountProfileTx } from '@/features/accounts/server/account-actions';
+import { createReferralSource, updateAccountProfileTx, updateReferralSource } from '@/features/accounts/server/account-actions';
 
-const mocks = vi.hoisted(() => ({ requireAuth: vi.fn(), sourceCreate: vi.fn() }));
+const mocks = vi.hoisted(() => ({ requireAuth: vi.fn(), sourceCreate: vi.fn(), sourceFind: vi.fn(), sourceUpdate: vi.fn(), commissionCount: vi.fn(), transaction: vi.fn() }));
 vi.mock('@/shared/server/session', () => ({ requireAuth: mocks.requireAuth }));
-vi.mock('@/shared/lib/prisma', () => ({ prisma: { referralSource: { create: mocks.sourceCreate } } }));
+vi.mock('@/shared/lib/prisma', () => ({ prisma: { $transaction: mocks.transaction, referralSource: { create: mocks.sourceCreate } } }));
 
 function txFor(role: 'STUDENT' | 'TUTOR' = 'STUDENT', sourceActive = true) {
   const userUpdate = vi.fn().mockResolvedValue({
@@ -28,6 +28,11 @@ describe('Admin account attribution and pay mutations', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(requireAuth).mockResolvedValue({ userId: 'admin-1', email: 'a@example.com', name: 'Admin', role: 'ADMIN' });
+    mocks.transaction.mockImplementation((work: (tx: unknown) => unknown) => work({
+      referralSource: { findUnique: mocks.sourceFind, update: mocks.sourceUpdate },
+      user: { count: vi.fn().mockResolvedValue(0) },
+      commissionLedgerEntry: { count: mocks.commissionCount },
+    }));
   });
 
   it('validates an untrusted referral-source request before using its fields', async () => {
@@ -69,5 +74,30 @@ describe('Admin account attribution and pay mutations', () => {
     const { tx, userUpdate } = txFor('STUDENT', false);
     await expect(updateAccountProfileTx(tx, 'user-1', { referralSourceId: 'source-1' })).rejects.toThrow('active referral source');
     expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  it('allows saving other Student fields while retaining an unchanged inactive source', async () => {
+    const { tx, userUpdate } = txFor('STUDENT');
+    vi.mocked(tx.user.findUnique).mockResolvedValue({ id: 'user-1', role: 'STUDENT', referral_source_id: 'source-1' } as never);
+    await updateAccountProfileTx(tx, 'user-1', { name: 'Updated', referralSourceId: 'source-1' });
+    expect(userUpdate).toHaveBeenCalled();
+    expect(tx.referralSource.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('protects Direct while allowing source renames without changing source identity', async () => {
+    await expect(updateReferralSource({ id: 'direct', name: 'Other' })).rejects.toThrow('protected');
+    expect(mocks.sourceUpdate).not.toHaveBeenCalled();
+    mocks.sourceFind.mockResolvedValue({ id: 'source-1', name: 'Old name', normalized_name: 'old name', kind: 'SALES', is_active: true });
+    mocks.sourceUpdate.mockResolvedValue({ id: 'source-1', name: 'New name', kind: 'SALES', is_active: true });
+    await updateReferralSource({ id: 'source-1', name: 'New name' });
+    expect(mocks.sourceUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'source-1' }, data: { name: 'New name', normalized_name: 'new name' } }));
+    expect(mocks.commissionCount).not.toHaveBeenCalled();
+  });
+
+  it('prevents changing a sales source type after commission provenance exists', async () => {
+    mocks.sourceFind.mockResolvedValue({ id: 'source-1', name: 'Seller', normalized_name: 'seller', kind: 'SALES', is_active: true });
+    mocks.commissionCount.mockResolvedValue(1);
+    await expect(updateReferralSource({ id: 'source-1', kind: 'REFERRAL' })).rejects.toThrow('fixed after student attribution or commission history');
+    expect(mocks.sourceUpdate).not.toHaveBeenCalled();
   });
 });

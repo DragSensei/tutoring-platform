@@ -15,6 +15,7 @@ import type {
   StudentAccountDetail,
   TutorAccountDetail,
 } from '../../_components/accounts-data';
+import { AccountLifecycleControls } from './account-lifecycle-controls';
 
 interface AccountDetailViewProps {
   account: AccountDetail;
@@ -147,7 +148,7 @@ function TutorDetails({ account }: { account: TutorAccountDetail }) {
               <p className="mt-1 text-sm text-stone-500">Sessions assigned to this mentor</p>
             </div>
           </div>
-          <Badge variant="secondary">{sessionCount} taught sessions</Badge>
+          <Badge variant="secondary">{sessionCount} session assignments</Badge>
         </CardContent>
       </Card>
 
@@ -289,6 +290,7 @@ export function AccountDetailView({ account }: AccountDetailViewProps) {
       </Card>
 
       <SetupLinkPanel account={account} />
+      {account.role !== 'ADMIN' && <AccountLifecycleControls userId={account.id} status={account.accountStatus} role={account.role} />}
 
       {account.role === 'STUDENT' && <StudentDetails account={account} />}
       {account.role === 'TUTOR' && <TutorDetails account={account} />}
