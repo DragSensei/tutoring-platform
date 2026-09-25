@@ -1,117 +1,51 @@
 import { prisma } from '@/shared/lib/prisma';
-import type { SessionType, SessionStatus } from '@/shared/types';
+import type { SessionStatus, SessionType } from '@/shared/types';
+import { addCalendarDays, parseCalendarDate } from '@/shared/utils/calendar-date';
+import { formatAcademyDateInput } from '@/shared/utils/date-format';
+import { startOfCairoDay } from '@/shared/utils/academy-day';
+
+export function getCairoDayRange(now = new Date()) {
+  const today = formatAcademyDateInput(now);
+  const tomorrow = addCalendarDays(parseCalendarDate(today), 1).toISOString().slice(0, 10);
+  return { from: startOfCairoDay(today), to: startOfCairoDay(tomorrow), date: today };
+}
 
 export interface AdminOverviewData {
-  kpis: {
-    activeSessionsCount: number;
-    completedSessionsCount: number;
-    totalStudentsCount: number;
-    totalTutorsCount: number;
-    totalAttendancesCount: number;
-    flaggedOverdraftsCount: number;
-    totalNegativeDebtEgp: number;
-  };
-  flaggedWallets: Array<{
-    id: string;
-    studentName: string;
-    studentEmail: string;
-    studentPhone: string;
-    balanceEgp: number;
-  }>;
-  recentSessions: Array<{
+  date: string;
+  asOf: string;
+  checkInWindowHours: number;
+  sessions: Array<{
     id: string;
     title: string;
     tutorName: string;
     sessionType: SessionType;
     status: SessionStatus;
     startTime: string;
+    endTime: string;
     attendeeCount: number;
     attendanceSaved: boolean;
   }>;
 }
 
-export async function getAdminOverviewData(): Promise<AdminOverviewData> {
-  const [
-    activeSessionsCount,
-    completedSessionsCount,
-    totalStudentsCount,
-    totalTutorsCount,
-    totalAttendancesCount,
-    flaggedWalletsRaw,
-    recentSessionsRaw,
-  ] = await Promise.all([
-    prisma.session.count({
-      where: { historical_only: false, status: { in: ['SCHEDULED', 'ACTIVE'] } },
-    }),
-    prisma.session.count({
-      where: { historical_only: false, status: 'COMPLETED' },
-    }),
-    prisma.user.count({
-      where: { role: 'STUDENT' },
-    }),
-    prisma.user.count({
-      where: { role: 'TUTOR' },
-    }),
-    prisma.attendanceRecord.count({ where: { session: { historical_only: false } } }),
-    prisma.wallet.findMany({
-      where: { is_flagged_overdraft: true },
-      include: {
-        user: { select: { name: true, email: true, phone: true } },
-      },
-      orderBy: { balance: 'asc' },
-      take: 5,
-    }),
-    prisma.session.findMany({
-      where: { historical_only: false },
-      take: 4,
-      orderBy: { start_time: 'desc' },
-      select: {
-        id: true,
-        title: true,
-        session_type: true,
-        status: true,
-        start_time: true,
-        attendance_saved_at: true,
-        tutor: { select: { name: true } },
-        _count: { select: { attendances: true } },
-      },
-    }),
-  ]);
-
-  const flaggedWallets = flaggedWalletsRaw.map((w) => ({
-    id: w.id,
-    studentName: w.user.name ?? 'Not provided',
-    studentEmail: w.user.email ?? 'Not provided',
-    studentPhone: w.user.phone ?? 'Not provided',
-    balanceEgp: Number(w.balance),
-  }));
-
-  const totalNegativeDebtEgp = flaggedWallets.reduce((sum, w) => {
-    return w.balanceEgp < 0 ? sum + Math.abs(w.balanceEgp) : sum;
-  }, 0);
-
-  const recentSessions = recentSessionsRaw.map((s) => ({
-    id: s.id,
-    title: s.title,
-    tutorName: s.tutor.name ?? 'Not provided',
-    sessionType: s.session_type as SessionType,
-    status: s.status as SessionStatus,
-    startTime: s.start_time.toISOString(),
-    attendeeCount: s._count.attendances,
-    attendanceSaved: Boolean(s.attendance_saved_at),
-  }));
-
-  return {
-    kpis: {
-      activeSessionsCount,
-      completedSessionsCount,
-      totalStudentsCount,
-      totalTutorsCount,
-      totalAttendancesCount,
-      flaggedOverdraftsCount: flaggedWalletsRaw.length,
-      totalNegativeDebtEgp,
+export async function getAdminOverviewData(now = new Date()): Promise<AdminOverviewData> {
+  const range = getCairoDayRange(now);
+  const [rows, policy] = await Promise.all([prisma.session.findMany({
+    where: { historical_only: false, start_time: { gte: range.from, lt: range.to } },
+    orderBy: [{ start_time: 'asc' }, { id: 'asc' }],
+    select: {
+      id: true, title: true, session_type: true, status: true, start_time: true, end_time: true,
+      attendance_saved_at: true, tutor: { select: { name: true } }, _count: { select: { attendances: true } },
     },
-    flaggedWallets,
-    recentSessions,
+  }), prisma.platformPolicy.findUnique({ where: { id: 'default' }, select: { check_in_window_hours: true } })]);
+  return {
+    date: range.date,
+    asOf: now.toISOString(),
+    checkInWindowHours: policy?.check_in_window_hours ?? 4,
+    sessions: rows.map((session) => ({
+      id: session.id, title: session.title, tutorName: session.tutor.name ?? 'Not provided',
+      sessionType: session.session_type as SessionType, status: session.status as SessionStatus,
+      startTime: session.start_time.toISOString(), endTime: session.end_time.toISOString(),
+      attendeeCount: session._count.attendances, attendanceSaved: Boolean(session.attendance_saved_at),
+    })),
   };
 }

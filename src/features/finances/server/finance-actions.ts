@@ -2,16 +2,14 @@ import { Prisma } from '@prisma/client';
 import { requireAuth } from '@/shared/server/session';
 import { prisma } from '@/shared/lib/prisma';
 import { addCalendarDays, formatCalendarDate, parseCalendarDate } from '@/shared/utils/calendar-date';
+import { startOfCairoDay } from '@/shared/utils/academy-day';
 import { formatAcademyDateInput } from '@/shared/utils/date-format';
 import { netPayout } from '@/features/finances/domain/payout-math';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_RANGE_DAYS = 366;
-const academyDateFormatter = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Africa/Cairo', calendar: 'gregory', year: 'numeric', month: '2-digit', day: '2-digit',
-});
-
 export interface FinanceDateRangeInput {
+  cycle?: string;
   month?: string;
   from?: string;
   to?: string;
@@ -24,30 +22,25 @@ function parseDay(value: string | undefined, fallback: string): string {
   return value;
 }
 
-function startOfAcademyDate(value: string): Date {
-  const parsed = parseCalendarDate(value);
-  const approximate = Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate());
-  const localDate = (instant: Date) => {
-    const parts = Object.fromEntries(academyDateFormatter.formatToParts(instant).map(({ type, value: part }) => [type, part]));
-    return `${parts.year}-${parts.month}-${parts.day}`;
-  };
-  let low = approximate - 36 * 60 * 60 * 1000;
-  let high = approximate + 36 * 60 * 60 * 1000;
-  while (high - low > 1) {
-    const middle = Math.floor((low + high) / 2);
-    if (localDate(new Date(middle)) >= value) high = middle;
-    else low = middle;
-  }
-  const boundary = new Date(high);
-  if (localDate(boundary) !== value) throw new Error('Unable to resolve academy calendar date');
-  return boundary;
-}
-
 export function normalizeFinanceDateRange(input: FinanceDateRangeInput = {}, now = new Date()) {
   const today = formatAcademyDateInput(now);
-  const fromFallback = formatCalendarDate(addCalendarDays(parseCalendarDate(today), -29));
+  const todayDate = parseCalendarDate(today);
+  const thisMonth22 = parseCalendarDate(`${today.slice(0, 7)}-22`);
+  const currentCycleStart = todayDate >= thisMonth22
+    ? thisMonth22
+    : parseCalendarDate(`${formatCalendarDate(addCalendarDays(thisMonth22, -22)).slice(0, 7)}-22`);
+  const defaultCycle = formatCalendarDate(currentCycleStart).slice(0, 7);
+  const cycleMonth = input.cycle ?? defaultCycle;
+  if (!/^\d{4}-\d{2}$/.test(cycleMonth)) throw new Error('Finance cycle must use YYYY-MM');
+  const cycleStartLabel = `${cycleMonth}-22`;
+  const cycleStart = parseCalendarDate(cycleStartLabel);
+  let cycleUntil = addCalendarDays(cycleStart, 31);
+  while (formatCalendarDate(cycleUntil).slice(8) !== '22') cycleUntil = addCalendarDays(cycleUntil, -1);
+  const cycleUntilLabel = formatCalendarDate(cycleUntil);
+  const fromFallback = cycleStartLabel;
+  const toFallback = formatCalendarDate(addCalendarDays(cycleUntil, -1));
   let fromLabel = parseDay(input.from, fromFallback);
-  let toLabel = parseDay(input.to, today);
+  let toLabel = parseDay(input.to, toFallback);
   if (input.month) {
     if (!/^\d{4}-\d{2}$/.test(input.month)) throw new Error('Month must use YYYY-MM');
     const monthStart = parseCalendarDate(`${input.month}-01`);
@@ -55,13 +48,16 @@ export function normalizeFinanceDateRange(input: FinanceDateRangeInput = {}, now
     let monthEnd = addCalendarDays(monthStart, 31);
     while (!formatCalendarDate(monthEnd).startsWith(`${input.month}-`)) monthEnd = addCalendarDays(monthEnd, -1);
     toLabel = formatCalendarDate(monthEnd);
+  } else if (input.cycle) {
+    fromLabel = cycleStartLabel;
+    toLabel = formatCalendarDate(addCalendarDays(cycleUntil, -1));
   }
-  const from = startOfAcademyDate(fromLabel);
-  const to = startOfAcademyDate(toLabel);
-  const until = startOfAcademyDate(formatCalendarDate(addCalendarDays(parseCalendarDate(toLabel), 1)));
+  const from = startOfCairoDay(fromLabel);
+  const to = startOfCairoDay(toLabel);
+  const until = startOfCairoDay(formatCalendarDate(addCalendarDays(parseCalendarDate(toLabel), 1)));
   const days = (Date.parse(`${toLabel}T00:00:00.000Z`) - Date.parse(`${fromLabel}T00:00:00.000Z`)) / DAY_MS + 1;
   if (days <= 0 || days > MAX_RANGE_DAYS) throw new Error('Choose a date range of up to 366 days');
-  return { from, to, until, fromLabel, toLabel };
+  return { from, to, until, fromLabel, toLabel, cycleMonth: input.cycle ?? defaultCycle, cycleUntilLabel };
 }
 
 export async function getAdminFinanceReport(input: FinanceDateRangeInput = {}) {
@@ -210,7 +206,7 @@ export async function getAdminFinanceReport(input: FinanceDateRangeInput = {}) {
   }));
 
   return {
-    range: { from: range.fromLabel, to: range.toLabel, month: input.month ?? '' },
+    range: { from: range.fromLabel, to: range.toLabel, month: input.month ?? '', cycleMonth: range.cycleMonth, cycleUntilLabel: range.cycleUntilLabel },
     summary: {
       deliveredMinutes,
       compensatedMinutes: sessions.reduce((total, session) => total + (session.tutor_compensation?.delivered_minutes ?? 0), 0),
@@ -369,7 +365,7 @@ export async function getAdminFinanceSessionDetail(sessionId: string) {
       id: transaction.id,
       studentId: transaction.wallet.user.id,
       studentName: transaction.wallet.user.name ?? 'Unnamed student',
-      amount: transaction.amount.toFixed(2),
+      amount: transaction.amount.abs().toFixed(2),
       createdAt: transaction.created_at.toISOString(),
       commission: transaction.commission_entry ? {
         sourceId: transaction.commission_entry.recipient_source_id,

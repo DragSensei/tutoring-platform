@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { AccountDetail } from '../../../_components/accounts-data';
 import type { ReferralSourceItem } from '@/features/accounts/server/account-actions';
 import { updateAdminAccount } from '../../../actions';
+import { Combobox } from '@/shared/components/combobox';
 
 export function AccountEditForm({ account, referralSources }: { account: AccountDetail; referralSources: ReferralSourceItem[] }) {
   const router = useRouter();
@@ -43,7 +44,7 @@ export function AccountEditForm({ account, referralSources }: { account: Account
         <label className="text-xs font-semibold text-text-primary">Name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm" /></label>
         <label className="text-xs font-semibold text-text-primary">Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm" /></label>
         <label className="text-xs font-semibold text-text-primary">Phone<input value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={40} className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm" /></label>
-        {account.role === 'STUDENT' && <label className="text-xs font-semibold text-text-primary">Referral / sales source<select value={sourceId} onChange={(event) => setSourceId(event.target.value)} className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm"><option value="__none__">None · no attribution</option>{referralSources.filter((source) => source.isActive || source.id === sourceId).map((source) => <option key={source.id} value={source.id}>{source.name} · {source.kind.toLowerCase()}{source.isActive ? '' : ' · inactive'}</option>)}</select></label>}
+        {account.role === 'STUDENT' && <label className="text-xs font-semibold text-text-primary">Referral / sales source<Combobox className="mt-1" value={sourceId} onChange={setSourceId} options={[{ value: '__none__', label: 'None · no attribution' }, ...referralSources.filter((source) => source.isActive || source.id === sourceId).map((source) => ({ value: source.id, label: `${source.name} · ${source.kind.toLowerCase()}${source.isActive ? '' : ' · inactive'}` }))]} searchPlaceholder="Search sources" /></label>}
         {account.role === 'TUTOR' && <label className="text-xs font-semibold text-text-primary">Tutor hourly-rate override (EGP)<input type="number" min="0" step="0.01" value={hourlyRate} onChange={(event) => setHourlyRate(event.target.value)} placeholder="Use platform default" className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm" /><span className="mt-1 block font-normal text-text-muted">Leave blank to use the policy default.</span></label>}
       </div>
       {error && <p role="alert" className="text-sm font-semibold text-brand-primary">{error}</p>}

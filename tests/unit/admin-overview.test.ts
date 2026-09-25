@@ -1,13 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import { recentSessionState } from '@/features/sessions/utils/recent-session-presentation';
+import { getCairoDayRange } from '@/app/(portal)/admin/_components/admin-overview-data';
 
 describe('Admin Overview Data Transformations & Business Rules', () => {
-  it('labels past scheduled sessions according to attendance submission without changing persisted status', () => {
+  it('uses Cairo midnight as the inclusive start and exclusive end of Today', () => {
+    const beforeMidnight = getCairoDayRange(new Date('2026-09-25T20:59:59.000Z'));
+    const atMidnight = getCairoDayRange(new Date('2026-09-25T21:00:00.000Z'));
+    expect(beforeMidnight.date).toBe('2026-09-25');
+    expect(beforeMidnight.from.toISOString()).toBe('2026-09-24T21:00:00.000Z');
+    expect(beforeMidnight.to.toISOString()).toBe('2026-09-25T21:00:00.000Z');
+    expect(atMidnight.date).toBe('2026-09-26');
+    expect(atMidnight.from.toISOString()).toBe(beforeMidnight.to.toISOString());
+  });
+
+  it('labels Today session lifecycle from schedule and attendance facts without changing persisted status', () => {
     const now = new Date('2026-09-25T12:00:00.000Z');
-    expect(recentSessionState('SCHEDULED', '2026-09-24T12:00:00.000Z', false, now)).toBe('Past · attendance not submitted');
-    expect(recentSessionState('SCHEDULED', '2026-09-24T12:00:00.000Z', true, now)).toBe('Past · attendance submitted; finalization pending');
-    expect(recentSessionState('SCHEDULED', '2026-09-26T12:00:00.000Z', false, now)).toBe('scheduled');
-    expect(recentSessionState('COMPLETED', '2026-09-24T12:00:00.000Z', true, now)).toBe('completed');
+    expect(recentSessionState('SCHEDULED', '2026-09-25T13:00:00.000Z', '2026-09-25T14:00:00.000Z', false, now)).toBe('Later today');
+    expect(recentSessionState('SCHEDULED', '2026-09-25T11:00:00.000Z', '2026-09-25T13:00:00.000Z', false, now)).toBe('Live now');
+    expect(recentSessionState('SCHEDULED', '2026-09-25T09:00:00.000Z', '2026-09-25T10:00:00.000Z', false, now)).toBe('Needs attention');
+    expect(recentSessionState('SCHEDULED', '2026-09-25T07:00:00.000Z', '2026-09-25T08:00:00.000Z', true, now)).toBe('Ready to finalize');
+    expect(recentSessionState('SCHEDULED', '2026-09-25T09:00:00.000Z', '2026-09-25T10:00:00.000Z', true, now)).toBe('Attendance submitted · grace period open');
+    expect(recentSessionState('COMPLETED', '2026-09-24T12:00:00.000Z', '2026-09-24T14:00:00.000Z', true, now)).toBe('Completed');
   });
   it('correctly aggregates negative student balances into total overdraft debt', () => {
     const wallets = [

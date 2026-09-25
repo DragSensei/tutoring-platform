@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { confirmAdminStudentImport, previewAdminStudentImport } from '../actions';
 import { parseCsv, type StudentImportField } from '@/features/accounts/csv/parse-student-csv';
+import { Combobox } from '@/shared/components/combobox';
 
 type Mapping = Record<StudentImportField | 'referralSource', string | null>;
 type PreviewRow = {
@@ -52,13 +53,12 @@ function reasonLabel(code: string | null) {
 function RowActionSelect({ row, value, onChange }: { row: PreviewRow; value: RowAction; onChange: (value: RowAction) => void }) {
   return (
     <label className="block min-w-0 text-xs font-semibold text-text-muted">
-      Row action
-      <select aria-label={`Action for CSV row ${row.rowNumber}`} value={value} onChange={(event) => onChange(event.target.value as RowAction)} className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-2 text-sm text-text-primary">
-        {row.status === 'READY' && <option value="CREATE">Create account</option>}
-        {row.status === 'MATCHED' && <><option value="MATCH">Keep matched account</option><option value="UPDATE">Update matched account</option></>}
-        {(row.status === 'CONFLICT' || row.status === 'INVALID') && <option value="SKIP">Skip row</option>}
-        {(row.status === 'READY' || row.status === 'MATCHED') && <option value="SKIP">Skip row</option>}
-      </select>
+      Row action for CSV row {row.rowNumber}
+      <Combobox className="mt-1" value={value} onChange={(next) => onChange(next as RowAction)} options={[
+        ...(row.status === 'READY' ? [{ value: 'CREATE', label: 'Create account' }] : []),
+        ...(row.status === 'MATCHED' ? [{ value: 'MATCH', label: 'Keep matched account' }, { value: 'UPDATE', label: 'Update matched account' }] : []),
+        { value: 'SKIP', label: 'Skip row' },
+      ]} searchPlaceholder="Search row actions" />
     </label>
   );
 }
@@ -188,10 +188,10 @@ export function StudentCsvImport() {
               {fields.map(({ key, label }) => (
                 <label key={key} className="text-sm font-medium text-text-primary">
                   {label}
-                  <select value={mapping[key] ?? ''} onChange={(event) => setFieldMapping(key, event.target.value)} className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm text-text-primary">
-                    <option value="">Do not map</option>
-                    {headers.map((header) => <option key={header} value={header} disabled={Object.entries(mapping).some(([otherKey, selected]) => otherKey !== key && selected === header)}>{header}</option>)}
-                  </select>
+                  <Combobox className="mt-1" value={mapping[key] ?? ''} onChange={(next) => setFieldMapping(key, next)} options={[
+                    { value: '', label: 'Do not map' },
+                    ...headers.filter((header) => !Object.entries(mapping).some(([otherKey, selected]) => otherKey !== key && selected === header)).map((header) => ({ value: header, label: header })),
+                  ]} searchPlaceholder="Search CSV columns" />
                 </label>
               ))}
             </div>

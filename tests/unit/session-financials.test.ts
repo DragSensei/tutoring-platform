@@ -5,6 +5,7 @@ import {
   OverdraftDisallowedError,
   reconcileSessionFinancialState,
 } from '@/features/attendance/server/session-financials';
+import { sessionFinancialState, sumMoney } from '@/app/(portal)/admin/finances/sessions/[sessionId]/_components/session-financial-state';
 
 const session = {
   id: 'session-1',
@@ -180,6 +181,20 @@ describe('session finance settlement', () => {
     })).rejects.toBeInstanceOf(OverdraftDisallowedError);
     expect(calls.walletUpdate).not.toHaveBeenCalled();
     expect(calls.walletEventCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('admin session financial state presentation', () => {
+  it('distinguishes pending, finalized, and historical financial records', () => {
+    expect(sessionFinancialState({ historicalOnly: false, status: 'SCHEDULED', attendanceSavedAt: null, finalizedAt: null }).label).toBe('Not finalized');
+    expect(sessionFinancialState({ historicalOnly: false, status: 'COMPLETED', attendanceSavedAt: '2026-09-01T10:00:00.000Z', finalizedAt: null }).label).toBe('Settlement pending');
+    expect(sessionFinancialState({ historicalOnly: false, status: 'COMPLETED', attendanceSavedAt: null, finalizedAt: '2026-09-01T14:00:00.000Z' }).label).toBe('Settled');
+    expect(sessionFinancialState({ historicalOnly: true, status: 'COMPLETED', attendanceSavedAt: null, finalizedAt: null }).label).toBe('Historical record');
+  });
+
+  it('sums wallet charges with integer cents', () => {
+    expect(sumMoney(['12.35', '0.10', '7.55'])).toBe('20.00');
+    expect(sumMoney([])).toBe('0.00');
   });
 });
 

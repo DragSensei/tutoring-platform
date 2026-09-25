@@ -4,10 +4,13 @@ import { Badge } from '@/shared/components/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/card';
 import { formatEGP } from '@/shared/utils/currency';
 import { formatDateTime } from '@/shared/utils/date-format';
+import { sessionFinancialState, sumMoney } from './session-financial-state';
 
 type SessionDetail = NonNullable<Awaited<ReturnType<typeof import('@/features/finances/server/finance-actions').getAdminFinanceSessionDetail>>>;
 
 export function FinanceSessionDetail({ detail }: { detail: SessionDetail }) {
+  const financialState = sessionFinancialState(detail);
+  const chargeTotal = sumMoney(detail.charges.map((charge) => charge.amount));
   return (
     <main className="mx-auto w-full max-w-5xl min-w-0 space-y-6">
       <header className="space-y-3 border-b border-border-subtle pb-5">
@@ -21,6 +24,15 @@ export function FinanceSessionDetail({ detail }: { detail: SessionDetail }) {
         <Card className="border-border-subtle bg-canvas"><CardHeader><CardTitle className="text-base">Student price snapshot</CardTitle></CardHeader><CardContent className="space-y-1"><p className="text-xl font-bold text-text-primary">{detail.priceSnapshot ? formatEGP(detail.priceSnapshot) : detail.historicalOnly ? 'Historical only' : detail.finalizedAt || detail.status === 'COMPLETED' ? 'Snapshot unavailable' : 'Pending settlement'}</p><p className="text-sm text-text-muted">{detail.priceSnapshot ? detail.pricingProfileNameSnapshot ?? 'Platform fallback' : 'No price was stored for this Session.'}</p></CardContent></Card>
         <Card className="border-border-subtle bg-canvas"><CardHeader><CardTitle className="text-base">Tutor compensation snapshot</CardTitle></CardHeader><CardContent className="space-y-1"><p className="text-xl font-bold text-text-primary">{detail.compensation ? formatEGP(detail.compensation.amount) : 'No accrual'}</p><p className="text-sm text-text-muted">{detail.compensation ? `${detail.compensation.deliveredMinutes} minutes × ${formatEGP(detail.compensation.hourlyRate)} / hour` : 'No Tutor-pay ledger entry is recorded.'}</p>{detail.compensation && <p className="text-xs text-text-muted">Accrued {formatDateTime(detail.compensation.createdAt, { includeYear: true })}</p>}</CardContent></Card>
       </section>
+
+      <Card className="border-border-subtle bg-canvas">
+        <CardHeader><div className="flex flex-wrap items-center justify-between gap-2"><CardTitle className="text-base">Financial state</CardTitle><Badge variant={detail.finalizedAt ? 'success' : detail.historicalOnly ? 'secondary' : 'warning'}>{financialState.label}</Badge></div></CardHeader>
+        <CardContent className="grid gap-3 text-sm sm:grid-cols-3">
+          <div><p className="text-text-muted">Settlement</p><p className="mt-1 font-medium text-text-primary">{financialState.detail}</p>{detail.finalizedAt && <p className="mt-1 text-xs text-text-muted">Finalized {formatDateTime(detail.finalizedAt, { includeYear: true })}</p>}</div>
+          <div><p className="text-text-muted">Student charges recorded</p><p className="mt-1 font-mono font-semibold tabular-nums text-text-primary">{formatEGP(chargeTotal)}</p><p className="mt-1 text-xs text-text-muted">{detail.charges.length} wallet charge{detail.charges.length === 1 ? '' : 's'}</p></div>
+          <div><p className="text-text-muted">Tutor compensation</p><p className="mt-1 font-mono font-semibold tabular-nums text-text-primary">{detail.compensation ? formatEGP(detail.compensation.amount) : 'No accrual'}</p><p className="mt-1 text-xs text-text-muted">{detail.compensation ? 'Recorded in the compensation ledger' : 'No ledger entry recorded'}</p></div>
+        </CardContent>
+      </Card>
 
       <Card className="border-border-subtle bg-canvas"><CardHeader><CardTitle className="text-base">Roster and delivery</CardTitle></CardHeader><CardContent className="space-y-3"><p className="flex flex-wrap items-center gap-1 text-sm text-text-muted"><span>Tutor:</span><Link className="inline-flex min-h-[44px] items-center font-semibold text-brand-primary underline-offset-2 hover:underline" href={`/admin/accounts/${encodeURIComponent(detail.tutor.id)}`}>{detail.tutor.name}</Link></p>{detail.students.map((student) => <div key={student.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-border-subtle pt-3"><Link href={`/admin/accounts/${encodeURIComponent(student.id)}`} className="min-h-[44px] inline-flex items-center font-medium text-brand-primary underline-offset-2 hover:underline">{student.name}</Link><Badge variant="outline">{detail.attendanceSavedAt ? (student.attended ? 'Present' : 'Absent') : 'Not recorded'}</Badge></div>)}</CardContent></Card>
 

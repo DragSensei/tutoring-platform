@@ -1,7 +1,7 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Latest Completed Task:** Implemented Iteration 003.1 Admin acceptance fixes; automated checkpoint and manual acceptance are tracked below.
+- **Latest Completed Task:** Added Admin Today, Cairo 22nd-to-22nd finance cycle reporting, Tutor/Sales finance pages, payout UI, and shared Combobox enforcement; automated checkpoint and manual acceptance are tracked below.
 - **Previous Feature Work:** Added bounded recurring-session materialization, secure Admin account setup, and Iteration 003 finance/account/import operations:
   1. `SessionSeries` owns weekly assignments; concrete `Session` rows remain authoritative for attendance, wallets, completion, cancellation, and audit history.
   2. Materialization is Cairo-aware, bounded to 12 weeks, idempotent, concurrency-tested, and stops for ended/cancelled series.
@@ -14,6 +14,14 @@
   9. Public/student attendance-link behavior and new token issuance were removed while historical token storage remains intact.
 - **Immediate Next Move:** Complete manual Admin acceptance for Iteration 003.1, then establish the production Prisma migration baseline and configure the authenticated attendance-finalizer scheduler before deployment.
 - **Blockers / Open Decisions:** Production Prisma migration history remains unresolved. The additive SQL is a non-deployable draft and was not applied; dev and isolated test schemas were synchronized through the established guarded workflows. Production deployment still needs a migration baseline strategy and an authenticated scheduler POST to `/api/internal/attendance/finalize` with `CRON_SECRET`. Commission basis is a settled internal wallet charge and does not prove external cash receipt.
+
+## Admin Today and 22nd-to-22nd Finance cycles
+
+- `/admin` shows sessions scheduled for the current Cairo day with chronological timing, attendance progress, and direct schedule links. Cancelled sessions do not count as pending attendance.
+- Finance activity defaults to a full cycle from the 22nd at 00:00 Africa/Cairo through the next 22nd at 00:00, end exclusive. Tutor and Sales pages show cycle earnings and lifetime payables separately; existing month/custom report filters remain on the Finance overview.
+- Payouts still use append-only lifetime earned and net paid balances. The custom recipient control and remaining Admin Accounts selectors use the shared Combobox, with a project lint gate preventing new native selects. The payout action is disabled when no eligible recipient has an outstanding balance.
+- Read-only Session finance detail distinguishes settlement state, shows charge and compensation totals, and presents stored negative wallet deductions as positive charge magnitudes without changing the ledger. Cycle and Session financial-state coverage was added; no historical schema or backfill work was done.
+- **Checkpoint:** Prisma validation, TypeScript, full frontend lint, guarded Vitest (219/219), production build, Tier-2 machine evidence, and authenticated mobile/tablet/desktop audits passed. Audited `/admin`, `/admin/finances`, Tutor/Sales Finance, Session finance detail, Accounts, and Student account edit with zero horizontal overflow and compliant mobile touch targets. Manual Admin acceptance and production migration/scheduler decisions remain open.
 
 ## Iteration 003.1 — Admin acceptance implementation
 
@@ -46,11 +54,11 @@
 ## Tier 2 Verification
 - **Security:** Repository secret/env sentinel passed. Authorization boundaries, import input validation, and finance provenance were agent-reviewed; dynamic penetration testing is not verified.
 - **Performance:** Frontend static architecture checks passed. Recurrence materialization remains bounded to 12 weeks; runtime latency is not verified.
-- **Tests:** The fresh guarded full Vitest suite passed against the isolated test database. Machine-derived counts are recorded in `.git/tier2-evidence.json`, not maintained as permanent project facts.
-- **Visual:** Authenticated `/admin/finances` and `/admin/gadwal` audits passed at 375px, 768px, and 1440px with zero horizontal overflow and compliant measured mobile touch targets. Finance date selection submitted the chosen From/To values and resynchronized after month navigation. The recurring-session cancellation dialog was opened; its scope text and action matched, Escape closed without confirming, and focus returned to the trigger.
+- **Tests:** The fresh guarded full Vitest suite passed against the isolated test database (219/219). Machine-derived counts are recorded in `.git/tier2-evidence.json`.
+- **Visual:** Authenticated `/admin`, Finance overview, Tutor/Sales Finance, Session finance detail, Accounts, and Student account edit audits passed at 375px, 768px, and 1440px with zero horizontal overflow and compliant measured mobile touch targets. Screenshots were inspected. Earlier Gadwal and finance date-picker interaction checks remain recorded in prior checkpoint evidence.
 - **Revisor:** Frontend route isolation, page size, and token-purity checks passed; no native browser alert/confirm/prompt calls remain.
 - **Database:** Credential-free identities are `tutoring_platform_db` (development) and `tutoring_platform_test` (test); they are distinct. Tests ran through the canonical database guard.
-- **Checkpoint:** Prisma validation, TypeScript, lint, guarded tests, production build, `git diff --check`, working-tree Tier-2 evidence, and the Admin Finance/Gadwal visual checks passed. Production migration baseline and scheduler requirements remain open; production readiness is not claimed.
+- **Checkpoint:** Prisma validation, TypeScript, lint, guarded tests, production build, `git diff --check`, working-tree Tier-2 evidence, and changed-route visual checks passed. Production migration baseline and scheduler requirements remain open; production readiness is not claimed.
 
 ## Final Tutor Attendance/Scheduling Pass
 - **Attendance timing:** `attendanceOpensAt = Session.start_time`; `attendanceClosesAt = Session.end_time + PlatformPolicy.checkInWindowHours`.

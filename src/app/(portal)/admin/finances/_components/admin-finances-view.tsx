@@ -7,6 +7,7 @@ import { FinanceDateRangeForm } from './finance-date-range-form';
 import { randomUUID } from 'node:crypto';
 import { PayoutForm } from './payout-form';
 import { describeWalletDeduction } from '@/features/finances/domain/wallet-deduction-copy';
+import { FinanceNavigation } from './finance-navigation';
 
 type FinanceReport = Awaited<ReturnType<typeof import('@/features/finances/server/finance-actions').getAdminFinanceReport>>;
 
@@ -51,9 +52,18 @@ export function AdminFinancesView({ report }: { report: FinanceReport }) {
         <p className="text-sm text-text-muted">Lifetime payables and recorded settlements, alongside activity for the selected dates.</p>
       </header>
 
+      <FinanceNavigation active="Overview" />
+
       <Card className="border-border-subtle bg-canvas shadow-xs">
         <CardContent className="p-5">
           <div className="flex flex-col gap-5">
+            <form action="/admin/finances" method="get" className="flex flex-col gap-3 border-b border-border-subtle pb-4 sm:flex-row sm:items-end">
+              <label className="flex min-h-[44px] flex-1 flex-col gap-1 text-xs font-semibold text-text-primary">22-to-22 finance cycle
+                <input name="cycle" type="month" defaultValue={report.range.cycleMonth} className="min-h-[44px] rounded-lg border border-border-strong bg-canvas px-3 text-sm text-text-primary" />
+              </label>
+              <button type="submit" className="min-h-[44px] rounded-lg bg-brand-primary px-5 py-2 text-sm font-semibold text-brand-subtle hover:bg-brand-hover">Show cycle</button>
+              <p className="text-xs text-text-muted sm:max-w-xs">Cycle starts on the 22nd at 00:00 Cairo time and ends at the next 22nd, exclusive. Payable balances remain lifetime totals.</p>
+            </form>
             <form action="/admin/finances" method="get" className="flex flex-col gap-4 sm:flex-row sm:items-end">
               <label className="flex min-h-[44px] flex-1 flex-col gap-1 text-xs font-semibold text-text-primary">Month preset
                 <input name="month" type="month" defaultValue={report.range.month} className="min-h-[44px] rounded-lg border border-border-strong bg-canvas px-3 text-sm text-text-primary" />

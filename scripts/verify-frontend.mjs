@@ -82,6 +82,17 @@ for (const file of allSrcFiles) {
   }
 }
 
+// Keep searchable selection controls on the shared Combobox primitive.
+for (const file of allSrcFiles.filter((file) => /\.(tsx|jsx)$/.test(file))) {
+  const content = fs.readFileSync(file, "utf-8");
+  const relPath = path.relative(rootDir, file).replace(/\\/g, "/");
+  content.split(/\r?\n/).forEach((line, idx) => {
+    if (/<select\b/i.test(line)) {
+      errors.push(`[Gate 4 - Selection Primitive] ${relPath}:${idx + 1} uses a native select; use the shared Combobox`);
+    }
+  });
+}
+
 // -----------------------------------------------------------------------------
 // Route Isolation: Scan all files in src/app/(marketing) for forbidden imports
 // -----------------------------------------------------------------------------
@@ -133,6 +144,6 @@ if (errors.length > 0) {
   console.error("\nResolve the violations above to conform to Frontend Architecture standards.\n");
   process.exit(1);
 } else {
-  console.log("✅ Frontend Architectural Verification Passed: All page.tsx files <= 35 non-empty lines, no Prisma imports in presentation/client components, and (marketing) routes isolated.");
+  console.log("✅ Frontend Architectural Verification Passed: Page size, Prisma boundaries, shared Combobox usage, and (marketing) route isolation.");
   process.exit(0);
 }

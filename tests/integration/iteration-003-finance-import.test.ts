@@ -252,6 +252,7 @@ describe('Iteration 003 financial and import database invariants', () => {
     expect(settledSession.student_price_snapshot?.toFixed(2)).toBe('375.00');
     expect(wallet.balance.toFixed(2)).toBe('625.00');
     expect(charges).toHaveLength(1);
+    expect(charges[0].amount.toFixed(2)).toBe('-375.00');
 
     vi.mocked(requireAuth).mockResolvedValue({ userId: adminId, email: `${prefix}actor@example.com`, name: 'Test Admin', role: 'ADMIN' });
     const detail = await getAdminFinanceSessionDetail(session.id);
@@ -262,7 +263,7 @@ describe('Iteration 003 financial and import database invariants', () => {
       tutor: { id: tutor.id },
       students: [{ id: student.id, attended: true }],
       compensation: { tutorId: tutor.id, deliveredMinutes: 120, hourlyRate: '600.00', amount: '1200.00' },
-      charges: [{ studentId: student.id, amount: '-375.00', commission: {
+      charges: [{ studentId: student.id, amount: '375.00', commission: {
         sourceId: source.id,
         sourceName: source.name,
         basisAmount: '375.00',
