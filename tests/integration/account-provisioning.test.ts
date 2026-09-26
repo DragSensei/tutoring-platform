@@ -25,7 +25,8 @@ authMocks.setSessionCookie.mockImplementation(async () => {
 const { prisma } = await import('@/shared/lib/prisma');
 const { authenticateUser, requireAuth, setSessionCookie } = await import('@/features/auth/server/session');
 const { accountSetupSchema, createAccountSchema, passwordResetSchema } = await import('@/features/accounts/schemas');
-const { createAdminAccount, issueAdminAccountSetupLink, issueAdminPasswordResetLink } = await import('@/app/(portal)/admin/accounts/actions');
+const { createAdminAccount, issueAdminAccountSetupLink, issueAdminPasswordResetLink, updateAdminAccount } = await import('@/app/(portal)/admin/accounts/actions');
+const { getAccountDetail } = await import('@/app/(portal)/admin/accounts/_components/accounts-data');
 const { completeAccountSetup } = await import('@/app/(auth)/login/setup/actions');
 const { completePasswordReset } = await import('@/app/(auth)/login/reset/actions');
 
@@ -47,7 +48,9 @@ async function createUser(role: 'ADMIN' | 'TUTOR' | 'STUDENT', values: { name?: 
 }
 
 async function cleanup() {
+  await prisma.linkedStudentRelationship.deleteMany({ where: { created_by_admin: { email: { startsWith: prefix } } } });
   await prisma.user.deleteMany({ where: { email: { startsWith: prefix } } });
+  await prisma.referralSource.deleteMany({ where: { name: { startsWith: prefix } } });
 }
 
 describe('account provisioning and one-time setup', () => {
@@ -85,6 +88,46 @@ describe('account provisioning and one-time setup', () => {
   it('rejects non-Admin provisioning before touching the database', async () => {
     vi.mocked(requireAuth).mockRejectedValueOnce(new Error('Forbidden: Insufficient privileges'));
     await expect(createAdminAccount({ role: 'STUDENT', name: 'Denied', email: '', phone: '' })).rejects.toThrow('Forbidden');
+  });
+
+  it('stores one reciprocal linked pair, keeps referral attribution separate, and retains ended history', async () => {
+    const admin = await createUser('ADMIN');
+    vi.mocked(requireAuth).mockResolvedValue({ userId: admin.id, email: admin.email!, name: admin.name!, role: 'ADMIN' });
+    const referral = await prisma.referralSource.create({ data: { name: `${prefix}Referral`, normalized_name: `${prefix}referral`, kind: 'REFERRAL' } });
+    const ahmed = await createUser('STUDENT');
+    const mohamed = await createUser('STUDENT');
+
+    await updateAdminAccount(ahmed.id, { referralSourceId: referral.id, linkedStudentId: mohamed.id });
+    await updateAdminAccount(mohamed.id, { linkedStudentId: ahmed.id });
+    const [ahmedDetail, mohamedDetail, relationships] = await Promise.all([
+      getAccountDetail(ahmed.id),
+      getAccountDetail(mohamed.id),
+      prisma.linkedStudentRelationship.findMany({ where: { active: true } }),
+    ]);
+
+    expect(relationships).toHaveLength(1);
+    expect(relationships[0]).toMatchObject({ student_a_id: [ahmed.id, mohamed.id].sort()[0], student_b_id: [ahmed.id, mohamed.id].sort()[1] });
+    expect(ahmedDetail?.role === 'STUDENT' && ahmedDetail.student.linkedStudent).toMatchObject({ id: mohamed.id, discountAmount: 100 });
+    expect(mohamedDetail?.role === 'STUDENT' && mohamedDetail.student.linkedStudent).toMatchObject({ id: ahmed.id, discountAmount: 100 });
+    expect(ahmedDetail?.referralSourceId).toBe(referral.id);
+
+    await updateAdminAccount(ahmed.id, { linkedStudentId: null });
+    const ended = await prisma.linkedStudentRelationship.findFirstOrThrow({ where: { student_a_id: relationships[0].student_a_id, student_b_id: relationships[0].student_b_id } });
+    expect(ended).toMatchObject({ active: false, ended_by_admin_id: admin.id });
+    expect(ended.ended_at).toBeInstanceOf(Date);
+    expect(await prisma.linkedStudentRelationship.count({ where: { active: true } })).toBe(0);
+  });
+
+  it('rejects simultaneous conflicting pair creation without making a second active pair', async () => {
+    const admin = await createUser('ADMIN');
+    vi.mocked(requireAuth).mockResolvedValue({ userId: admin.id, email: admin.email!, name: admin.name!, role: 'ADMIN' });
+    const [a, b, c] = await Promise.all([createUser('STUDENT'), createUser('STUDENT'), createUser('STUDENT')]);
+    const outcomes = await Promise.allSettled([
+      updateAdminAccount(a.id, { linkedStudentId: b.id }),
+      updateAdminAccount(a.id, { linkedStudentId: c.id }),
+    ]);
+    expect(outcomes.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
+    expect(await prisma.linkedStudentRelationship.count({ where: { active: true, OR: [{ student_a_id: a.id }, { student_b_id: a.id }] } })).toBe(1);
   });
 
   it('does not consume or strand a token when setup profile data is incomplete', async () => {

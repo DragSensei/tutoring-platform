@@ -29,6 +29,8 @@ interface CommonAccountDetail extends AccountListItem {
 export interface StudentAccountDetail extends CommonAccountDetail {
   role: 'STUDENT';
   student: {
+    linkedStudent: { id: string; name: string | null; relationshipId: string; discountAmount: number; createdAt: string } | null;
+    linkedStudentDiscountMonthly: number;
     attendanceCount: number;
     wallet: {
       balance: number;
@@ -158,7 +160,7 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
   };
 
   if (account.role === 'STUDENT') {
-    const student = await prisma.user.findUnique({
+    const [student, relationship] = await Promise.all([prisma.user.findUnique({
       where: { id },
       select: {
         wallet: {
@@ -187,7 +189,10 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
         },
         _count: { select: { attendances: true } },
       },
-    });
+    }), prisma.linkedStudentRelationship.findFirst({
+      where: { active: true, OR: [{ student_a_id: id }, { student_b_id: id }] },
+      include: { student_a: { select: { id: true, name: true } }, student_b: { select: { id: true, name: true } } },
+    })]);
 
     if (!student) return null;
 
@@ -195,6 +200,14 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
       ...common,
       role: 'STUDENT',
       student: {
+        linkedStudent: relationship ? {
+          id: relationship.student_a_id === id ? relationship.student_b.id : relationship.student_a.id,
+          name: relationship.student_a_id === id ? relationship.student_b.name : relationship.student_a.name,
+          relationshipId: relationship.id,
+          discountAmount: Number(relationship.discount_amount),
+          createdAt: relationship.created_at.toISOString(),
+        } : null,
+        linkedStudentDiscountMonthly: relationship ? Number(relationship.discount_amount) : 0,
         attendanceCount: student._count.attendances,
         wallet: student.wallet
           ? {

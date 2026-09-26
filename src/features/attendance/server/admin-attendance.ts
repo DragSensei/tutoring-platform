@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/shared/lib/prisma';
 import { computeAttendanceClosesAt } from '@/shared/utils/deadline';
 
-export type AdminAttendanceWarning = 'ATTENDANCE_MISSING' | 'ATTENDANCE_NEEDS_REVIEW' | 'RECOVERY_ACTIVE' | 'RECOVERY_EXPIRED' | 'TUTOR_RATE_MISSING' | 'SETTLEMENT_PENDING';
+export type AdminAttendanceWarning = 'ATTENDANCE_MISSING' | 'ATTENDANCE_NEEDS_REVIEW' | 'RECOVERY_ACTIVE' | 'RECOVERY_EXPIRED' | 'TUTOR_RATE_MISSING' | 'SETTLEMENT_PENDING' | 'LINKED_STUDENTS_DIFFERENT_ENROLLMENT' | 'LINKED_STUDENTS_DIFFERENT_GROUPS';
 
 export interface AdminAttendanceAttentionItem {
   id: string;
@@ -15,6 +15,9 @@ export interface AdminAttendanceAttentionItem {
   grantClosesAt?: string;
   adminReason?: string;
   reviewDetail?: string;
+  kind?: 'SESSION' | 'LINKED_STUDENTS';
+  reviewHref?: string;
+  linkedStudents?: Array<{ id: string; name: string; enrollment: string }>;
 }
 
 export async function getAdminAttendanceAttention(now = new Date()): Promise<AdminAttendanceAttentionItem[]> {
@@ -99,6 +102,43 @@ export async function getAdminAttendanceAttention(now = new Date()): Promise<Adm
       startTime: session.start_time.toISOString(),
       endTime: session.end_time.toISOString(),
       warnings,
+    });
+  }
+  const linkedPairs = await prisma.linkedStudentRelationship.findMany({
+    where: { active: true },
+    include: {
+      student_a: { select: { id: true, name: true, series_participants: { where: { series: { status: 'ACTIVE' } }, select: { series: { select: { id: true, title: true, session_type: true } } } } } },
+      student_b: { select: { id: true, name: true, series_participants: { where: { series: { status: 'ACTIVE' } }, select: { series: { select: { id: true, title: true, session_type: true } } } } } },
+    },
+  });
+  for (const pair of linkedPairs) {
+    const enrollment = (student: typeof pair.student_a) => student.series_participants.map(({ series }) => series);
+    const aAssignments = enrollment(pair.student_a);
+    const bAssignments = enrollment(pair.student_b);
+    const aGroups = aAssignments.filter((series) => series.session_type === 'GROUP');
+    const bGroups = bAssignments.filter((series) => series.session_type === 'GROUP');
+    const aPrivate = aAssignments.some((series) => series.session_type === 'PRIVATE');
+    const bPrivate = bAssignments.some((series) => series.session_type === 'PRIVATE');
+    let warning: AdminAttendanceWarning | null = null;
+    if ((aPrivate && bGroups.length > 0) || (bPrivate && aGroups.length > 0)) warning = 'LINKED_STUDENTS_DIFFERENT_ENROLLMENT';
+    else if (aGroups.some((a) => bGroups.some((b) => a.id !== b.id))) warning = 'LINKED_STUDENTS_DIFFERENT_GROUPS';
+    if (!warning) continue;
+    const aEnrollment = aGroups[0]?.title ?? (aPrivate ? 'Private' : 'No active schedule');
+    const bEnrollment = bGroups[0]?.title ?? (bPrivate ? 'Private' : 'No active schedule');
+    const warningTime = pair.created_at.toISOString();
+    items.push({
+      id: `linked-${pair.id}`,
+      kind: 'LINKED_STUDENTS',
+      title: 'Linked students need enrollment review',
+      tutorName: '',
+      startTime: warningTime,
+      endTime: warningTime,
+      warnings: [warning],
+      reviewHref: `/admin/accounts/${pair.student_a.id}`,
+      linkedStudents: [
+        { id: pair.student_a.id, name: pair.student_a.name ?? 'Student', enrollment: aEnrollment },
+        { id: pair.student_b.id, name: pair.student_b.name ?? 'Student', enrollment: bEnrollment },
+      ],
     });
   }
   const bySession = new Map<string, AdminAttendanceAttentionItem>();

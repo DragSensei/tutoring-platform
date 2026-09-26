@@ -6,6 +6,7 @@ import { formatSessionCode } from '@/shared/utils/session-code';
 import { createSessionSchema, type CreateSessionInput, type SessionFilterInput } from '../schemas';
 import { academyDateTime, materializeActiveSeriesForTutor } from './recurrence';
 import { Prisma } from '@prisma/client';
+import { expandLinkedGroupParticipantsTx } from './linked-group-pairing';
 
 export interface SessionPricingConfig {
   checkInWindowHours: number;
@@ -55,8 +56,8 @@ function parseSessionInput(input: CreateSessionInput): CreateSessionInput {
   };
 }
 
-async function validateSessionReferences(input: CreateSessionInput) {
-  const tutor = await prisma.user.findUnique({
+async function validateSessionReferences(input: CreateSessionInput, db: typeof prisma | Prisma.TransactionClient = prisma) {
+  const tutor = await db.user.findUnique({
     where: { id: input.tutorId },
     select: { id: true, role: true },
   });
@@ -64,7 +65,7 @@ async function validateSessionReferences(input: CreateSessionInput) {
     throw new Error('A valid Tutor account is required');
   }
 
-  const students = await prisma.user.findMany({
+  const students = await db.user.findMany({
     where: { id: { in: input.participantIds }, role: 'STUDENT' },
     select: { id: true },
   });
@@ -113,10 +114,11 @@ export async function createSession(input: CreateSessionInput, policy: SessionPr
   const validInput = parseSessionInput(input);
   const start = new Date(validInput.startTime);
   const end = new Date(validInput.endTime);
-  await validateSessionReferences(validInput);
   const deadline = computeAttendanceClosesAt(end, policy.checkInWindowHours);
 
   const session = await prisma.$transaction(async (tx) => {
+    const participantIds = validInput.participantIds;
+    await validateSessionReferences(validInput, tx);
     return tx.session.create({
       data: {
         title: validInput.title,
@@ -127,12 +129,12 @@ export async function createSession(input: CreateSessionInput, policy: SessionPr
         deadline,
         status: 'SCHEDULED',
         participants: {
-          create: validInput.participantIds.map((student_id) => ({ student_id })),
+          create: participantIds.map((student_id) => ({ student_id })),
         },
       },
       include: SESSION_INCLUDE,
     });
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
   return serializeSession(session, policy);
 }
@@ -229,12 +231,15 @@ export async function updateSession(
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    let participantIds = validInput.participantIds;
     if (options?.requireActiveSeriesId) {
       const current = await tx.session.findUnique({ where: { id: sessionId }, select: { series_id: true, series: { select: { status: true } } } });
       if (current?.series_id !== options.requireActiveSeriesId || current.series?.status !== 'ACTIVE') {
         throw new Error('Ended or cancelled schedules cannot be edited or reactivated');
       }
+      participantIds = await expandLinkedGroupParticipantsTx(tx, participantIds, validInput.sessionType, options.requireActiveSeriesId);
     }
+    await validateSessionReferences({ ...validInput, participantIds }, tx);
     return tx.session.update({
       where: { id: sessionId },
       data: {
@@ -247,7 +252,7 @@ export async function updateSession(
       ...(options?.markSeriesException ? { series_exception: true } : {}),
       participants: {
         deleteMany: {},
-        create: validInput.participantIds.map((student_id) => ({ student_id })),
+        create: participantIds.map((student_id) => ({ student_id })),
       },
       },
       include: SESSION_INCLUDE,

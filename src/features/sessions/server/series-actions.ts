@@ -5,6 +5,7 @@ import { formatCalendarDate } from '@/shared/utils/calendar-date';
 import { computeAttendanceClosesAt } from '@/shared/utils/deadline';
 import { createSessionSchema, recurrenceScopeSchema, sessionSeriesSchema, type RecurrenceScope, type SessionSeriesInput } from '../schemas';
 import { updateSession } from './session-actions';
+import { expandLinkedGroupParticipantsTx } from './linked-group-pairing';
 
 export interface SeriesPricingPolicy {
   checkInWindowHours: number;
@@ -206,7 +207,8 @@ export async function createSessionSeries(
   const now = new Date();
   const historyDates = confirmedHistoricalDates(validInput, confirmedDates, now);
   const series = await prisma.$transaction(async (tx) => {
-    await validateSeriesReferences(tx, validInput);
+    const participantIds = await expandLinkedGroupParticipantsTx(tx, validInput.participantIds, validInput.sessionType);
+    await validateSeriesReferences(tx, { ...validInput, participantIds });
     const created = await tx.sessionSeries.create({
       data: {
         title: validInput.title,
@@ -218,7 +220,7 @@ export async function createSessionSeries(
         starts_on: validInput.startsOn,
         ends_on: validInput.endsOn,
         pricing_profile_id: validInput.pricingProfileId,
-        participants: { create: validInput.participantIds.map((student_id) => ({ student_id })) },
+        participants: { create: participantIds.map((student_id) => ({ student_id })) },
       },
       include: SERIES_INCLUDE,
     });
@@ -232,7 +234,7 @@ export async function createSessionSeries(
       }, historyDates, policy);
     }
     return created;
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
   await materializeSessionSeries(series.id, policy);
   return getSessionSeries(series.id, policy);
@@ -371,7 +373,8 @@ export async function updateSessionSeries(
     });
     if (!series) throw new Error('Session series not found');
     if (series.status !== 'ACTIVE') throw new Error('Ended or cancelled schedules cannot be edited or reactivated');
-    await validateSeriesReferences(tx, validInput);
+    const participantIds = await expandLinkedGroupParticipantsTx(tx, validInput.participantIds, validInput.sessionType, seriesId);
+    await validateSeriesReferences(tx, { ...validInput, participantIds });
 
     const candidateHistoryDates = validInput.historicalStartsOn
       ? historicalOccurrenceDates({ weekday: validInput.weekday, starts_on: validInput.startsOn }, formatCalendarDate(validInput.historicalStartsOn), now)
@@ -423,7 +426,7 @@ export async function updateSessionSeries(
         status: 'ACTIVE',
         participants: {
           deleteMany: {},
-          create: validInput.participantIds.map((student_id) => ({ student_id })),
+          create: participantIds.map((student_id) => ({ student_id })),
         },
       },
       include: { participants: { select: { student_id: true } } },

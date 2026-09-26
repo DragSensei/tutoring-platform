@@ -6,13 +6,16 @@ import type { AccountDetail } from '../../../_components/accounts-data';
 import type { ReferralSourceItem } from '@/features/accounts/server/account-actions';
 import { updateAdminAccount } from '../../../actions';
 import { Combobox } from '@/shared/components/combobox';
+import type { LinkedStudentCandidate } from '@/features/accounts/server/linked-students';
 
-export function AccountEditForm({ account, referralSources }: { account: AccountDetail; referralSources: ReferralSourceItem[] }) {
+export function AccountEditForm({ account, referralSources, linkedStudentCandidates }: { account: AccountDetail; referralSources: ReferralSourceItem[]; linkedStudentCandidates: LinkedStudentCandidate[] }) {
   const router = useRouter();
   const [name, setName] = React.useState(account.name ?? '');
   const [email, setEmail] = React.useState(account.email ?? '');
   const [phone, setPhone] = React.useState(account.phone ?? '');
   const [sourceId, setSourceId] = React.useState(account.referralSourceId ?? '__none__');
+  const [linkedStudentId, setLinkedStudentId] = React.useState(account.role === 'STUDENT' ? account.student.linkedStudent?.id ?? '' : '');
+  const [linkStudent, setLinkStudent] = React.useState(account.role === 'STUDENT' && Boolean(account.student.linkedStudent));
   const [hourlyRate, setHourlyRate] = React.useState(account.role === 'TUTOR' ? account.tutor.hourlyRateOverride ?? '' : '');
   const [error, setError] = React.useState('');
   const [isPending, startTransition] = React.useTransition();
@@ -25,6 +28,7 @@ export function AccountEditForm({ account, referralSources }: { account: Account
       email,
       phone,
       ...(account.role === 'STUDENT' ? { referralSourceId: sourceId === '__none__' ? null : sourceId } : {}),
+      ...(account.role === 'STUDENT' ? { linkedStudentId: linkedStudentId || null } : {}),
       ...(account.role === 'TUTOR' ? { tutorHourlyRateOverride: hourlyRate.trim() || null } : {}),
     };
     startTransition(async () => {
@@ -45,6 +49,7 @@ export function AccountEditForm({ account, referralSources }: { account: Account
         <label className="text-xs font-semibold text-text-primary">Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm" /></label>
         <label className="text-xs font-semibold text-text-primary">Phone<input value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={40} className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm" /></label>
         {account.role === 'STUDENT' && <label className="text-xs font-semibold text-text-primary">Referral / sales source<Combobox className="mt-1" value={sourceId} onChange={setSourceId} options={[{ value: '__none__', label: 'None · no attribution' }, ...referralSources.filter((source) => source.isActive || source.id === sourceId).map((source) => ({ value: source.id, label: `${source.name} · ${source.kind.toLowerCase()}${source.isActive ? '' : ' · inactive'}` }))]} searchPlaceholder="Search sources" /></label>}
+        {account.role === 'STUDENT' && <section className="space-y-3 rounded-xl border border-border-subtle p-4 sm:col-span-2" aria-labelledby="edit-linked-student-heading"><h2 id="edit-linked-student-heading" className="text-sm font-semibold text-text-primary">Linked Student</h2><label className="flex min-h-[44px] items-center gap-3 text-sm font-semibold text-text-primary"><input type="checkbox" checked={linkStudent} onChange={(event) => { setLinkStudent(event.target.checked); if (!event.target.checked) setLinkedStudentId(''); }} className="h-5 w-5 accent-brand-primary" />Joined with another Student?</label>{linkStudent && <div className="grid gap-3 sm:grid-cols-2"><label className="block text-xs font-semibold text-text-primary">Linked Student<Combobox className="mt-1" options={linkedStudentCandidates.map((student) => ({ value: student.id, label: student.name, sublabel: student.email ?? undefined }))} value={linkedStudentId} onChange={setLinkedStudentId} placeholder="Search Students..." searchPlaceholder="Search active unpaired Students" required /></label><p className="self-center text-sm text-text-muted">Linked Student discount<br /><strong className="text-text-primary">100 EGP / month</strong></p></div>}{account.student.linkedStudent && !linkStudent && <p className="text-xs text-status-warning">Saving will explicitly end this linked relationship. Its history will be retained.</p>}{account.student.linkedStudent && linkStudent && linkedStudentId !== account.student.linkedStudent.id && <p className="text-xs text-status-warning">End the current pair and save before linking another Student.</p>}{linkStudent && linkedStudentCandidates.length === 0 && !account.student.linkedStudent && <p className="text-xs text-text-muted">No active unpaired Students are available. Create the second Student and link them later.</p>}{!linkStudent && !account.student.linkedStudent && <p className="text-sm text-text-muted">No linked-student discount entitlement is active.</p>}</section>}
         {account.role === 'TUTOR' && <label className="text-xs font-semibold text-text-primary">Tutor hourly-rate override (EGP)<input type="number" min="0" step="0.01" value={hourlyRate} onChange={(event) => setHourlyRate(event.target.value)} placeholder="Use platform default" className="mt-1 min-h-[44px] w-full rounded-lg border border-border-strong bg-canvas px-3 text-sm" /><span className="mt-1 block font-normal text-text-muted">Leave blank to use the policy default.</span></label>}
       </div>
       {error && <p role="alert" className="text-sm font-semibold text-brand-primary">{error}</p>}

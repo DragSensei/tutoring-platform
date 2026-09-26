@@ -17,6 +17,7 @@ vi.mock('@/shared/lib/prisma', () => ({
       findMany: vi.fn(),
       findUnique: vi.fn(),
     },
+    linkedStudentRelationship: { findFirst: vi.fn() },
   },
 }));
 
@@ -48,6 +49,7 @@ describe('Admin account data access', () => {
       name: 'Admin',
       role: 'ADMIN',
     });
+    vi.mocked(prisma.linkedStudentRelationship.findFirst).mockResolvedValue(null as never);
   });
 
   it('uses the platform role vocabulary with a user-friendly faculty label', () => {

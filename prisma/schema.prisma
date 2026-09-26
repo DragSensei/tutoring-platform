@@ -104,6 +104,10 @@ model User {
   tutor_payouts              PayoutSettlement[]              @relation("TutorPayoutRecipient")
   created_payouts            PayoutSettlement[]              @relation("PayoutCreator")
   granted_attendance_recoveries AttendanceRecoveryGrant[]    @relation("AttendanceRecoveryGrantAdmin")
+  created_linked_relationships LinkedStudentRelationship[]   @relation("LinkedRelationshipCreator")
+  ended_linked_relationships   LinkedStudentRelationship[]   @relation("LinkedRelationshipEnder")
+  linked_student_as_a          LinkedStudentRelationship[]   @relation("LinkedStudentA")
+  linked_student_as_b          LinkedStudentRelationship[]   @relation("LinkedStudentB")
 
   @@index([role])
   @@index([referral_source_id])
@@ -123,6 +127,26 @@ model ReferralSource {
   payouts            PayoutSettlement[]     @relation("SourcePayoutRecipient")
 
   @@index([is_active, name])
+}
+
+model LinkedStudentRelationship {
+  id                       String   @id @default(cuid())
+  student_a_id             String
+  student_a                User     @relation("LinkedStudentA", fields: [student_a_id], references: [id], onDelete: Restrict)
+  student_b_id             String
+  student_b                User     @relation("LinkedStudentB", fields: [student_b_id], references: [id], onDelete: Restrict)
+  discount_amount          Decimal  @default(100) @db.Decimal(10, 2)
+  active                   Boolean  @default(true)
+  created_at               DateTime @default(now())
+  created_by_admin_id      String
+  created_by_admin         User     @relation("LinkedRelationshipCreator", fields: [created_by_admin_id], references: [id], onDelete: Restrict)
+  ended_at                 DateTime?
+  ended_by_admin_id        String?
+  ended_by_admin           User?    @relation("LinkedRelationshipEnder", fields: [ended_by_admin_id], references: [id], onDelete: Restrict)
+
+  @@unique([student_a_id, student_b_id])
+  @@index([student_a_id, active])
+  @@index([student_b_id, active])
 }
 
 model PricingProfile {

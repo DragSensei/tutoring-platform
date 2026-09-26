@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   policyFind: vi.fn(),
   recoveryFind: vi.fn(),
   recoveryCreate: vi.fn(),
+  linkedPairFind: vi.fn(),
 }));
 vi.mock('@/features/auth/server/session', () => ({ requireAuth: mocks.requireAuth }));
 vi.mock('@/shared/lib/prisma', () => ({
@@ -19,6 +20,7 @@ vi.mock('@/shared/lib/prisma', () => ({
     $transaction: mocks.transaction,
     platformPolicy: { findUnique: mocks.policyFind },
     session: { findMany: mocks.sessionFind },
+    linkedStudentRelationship: { findMany: mocks.linkedPairFind },
   },
 }));
 
@@ -43,6 +45,7 @@ describe('Admin attendance recovery and attention', () => {
     vi.clearAllMocks();
     vi.mocked(requireAuth).mockResolvedValue({ userId: 'admin-1', email: 'admin@example.com', name: 'Admin', role: 'ADMIN' });
     mocks.policyFind.mockResolvedValue({ check_in_window_hours: 4, default_tutor_hourly_rate: new Prisma.Decimal(0) });
+    mocks.linkedPairFind.mockResolvedValue([]);
   });
 
   it('requires Admin authorization and a written explanation before granting', async () => {

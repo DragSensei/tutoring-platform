@@ -6,9 +6,10 @@ export const createAccountSchema = z.object({
   email: z.string().trim().email('Use a valid email address').optional().or(z.literal('')),
   phone: z.string().trim().max(40).optional().or(z.literal('')),
   referralSourceId: z.string().trim().min(1).nullable().optional(),
+  linkedStudentId: z.string().trim().min(1).nullable().optional(),
 }).superRefine((input, context) => {
-  if (input.role === 'TUTOR' && input.referralSourceId) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ['referralSourceId'], message: 'Referral source applies to Student accounts only' });
+  if (input.role === 'TUTOR' && (input.referralSourceId || input.linkedStudentId)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['linkedStudentId'], message: 'Referral source and linked Student apply to Student accounts only' });
   }
   const values = [input.name, input.email, input.phone].filter(Boolean);
   if (values.length === 0) {
@@ -28,6 +29,7 @@ export const updateAccountProfileSchema = z.object({
   email: z.string().trim().email('Use a valid email address').or(z.literal('')).optional(),
   phone: z.string().trim().max(40).optional(),
   referralSourceId: z.string().trim().min(1).nullable().optional(),
+  linkedStudentId: z.string().trim().min(1).nullable().optional(),
   tutorHourlyRateOverride: tutorHourlyRate.optional(),
 });
 

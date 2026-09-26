@@ -23,12 +23,13 @@ const {
   updateSessionSeries,
 } = await import('@/features/sessions/server/series-actions');
 const { rescheduleSessionOccurrence } = await import('@/features/sessions/server/session-actions');
+const { getAdminAttendanceAttention } = await import('@/features/attendance/server/admin-attendance');
 
 const prefix = `test-002-series-${process.pid}-${Date.now()}-`;
 let counter = 0;
 const policy = { checkInWindowHours: 4, groupSessionPrice: 375, privateSessionPrice: 500 };
 
-async function createUser(role: 'TUTOR' | 'STUDENT') {
+async function createUser(role: 'ADMIN' | 'TUTOR' | 'STUDENT') {
   const id = `${prefix}${counter++}`;
   return prisma.user.create({
     data: {
@@ -74,7 +75,13 @@ async function occurrences(seriesId: string) {
 async function cleanup() {
   await prisma.session.deleteMany({ where: { title: { startsWith: prefix } } });
   await prisma.sessionSeries.deleteMany({ where: { title: { startsWith: prefix } } });
+  await prisma.linkedStudentRelationship.deleteMany({ where: { created_by_admin: { email: { startsWith: prefix } } } });
   await prisma.user.deleteMany({ where: { email: { startsWith: prefix } } });
+}
+
+async function createLinkedPair(adminId: string, firstId: string, secondId: string) {
+  const [student_a_id, student_b_id] = [firstId, secondId].sort();
+  return prisma.linkedStudentRelationship.create({ data: { student_a_id, student_b_id, created_by_admin_id: adminId } });
 }
 
 describe('recurring weekly sessions', () => {
@@ -103,6 +110,51 @@ describe('recurring weekly sessions', () => {
     const repeated = await occurrences(created.id);
     expect(repeated).toHaveLength(first.length);
     expect(repeated.reduce((sum, item) => sum + item.participants.length, 0)).toBe(first.length);
+  });
+
+  it('auto-assigns linked Students together for Groups, preserves PRIVATE rosters, and rejects capacity atomically', async () => {
+    const admin = await createUser('ADMIN');
+    const tutor = await createUser('TUTOR');
+    const [ahmed, mohamed] = await Promise.all([createUser('STUDENT'), createUser('STUDENT')]);
+    await createLinkedPair(admin.id, ahmed.id, mohamed.id);
+    const paired = await createSeries(tutor.id, ahmed.id, `${prefix}linked-group`);
+    expect([...paired.participantIds].sort()).toEqual([ahmed.id, mohamed.id].sort());
+    const repeatedAssignment = await updateSessionSeries(paired.id, {
+      ...baseInput(tutor.id, ahmed.id, `${prefix}linked-group`),
+      participantIds: [ahmed.id, mohamed.id],
+    }, 'ENTIRE_SERIES', policy);
+    expect(repeatedAssignment.id).toBe(paired.id);
+    const repeatedRoster = await prisma.sessionSeriesParticipant.findMany({ where: { series_id: paired.id }, select: { student_id: true } });
+    expect(repeatedRoster.map(({ student_id }) => student_id).sort()).toEqual([ahmed.id, mohamed.id].sort());
+
+    const privateInput = { ...baseInput(tutor.id, mohamed.id, `${prefix}linked-private`), sessionType: 'PRIVATE' as const };
+    const privateSeries = await createSessionSeries(privateInput, policy);
+    expect(privateSeries.participantIds).toEqual([mohamed.id]);
+    const splitEnrollment = (await getAdminAttendanceAttention()).find((item) => item.warnings.includes('LINKED_STUDENTS_DIFFERENT_ENROLLMENT'));
+    expect(splitEnrollment?.linkedStudents?.map((student) => student.id).sort()).toEqual([ahmed.id, mohamed.id].sort());
+
+    const [one, two, three, capacityA, capacityB] = await Promise.all([createUser('STUDENT'), createUser('STUDENT'), createUser('STUDENT'), createUser('STUDENT'), createUser('STUDENT')]);
+    await createLinkedPair(admin.id, capacityA.id, capacityB.id);
+    const fullInput = { ...baseInput(tutor.id, one.id, `${prefix}capacity`), participantIds: [one.id, two.id, three.id] };
+    const fullGroup = await createSessionSeries(fullInput, policy);
+    const attempted = { ...fullInput, participantIds: [one.id, two.id, three.id, capacityA.id] };
+    await expect(updateSessionSeries(fullGroup.id, attempted, 'ENTIRE_SERIES', policy))
+      .rejects.toThrow('2 linked seats required; 1 seat available');
+    const stored = await prisma.sessionSeriesParticipant.findMany({ where: { series_id: fullGroup.id }, select: { student_id: true } });
+    expect(stored.map(({ student_id }) => student_id).sort()).toEqual([one.id, two.id, three.id].sort());
+  });
+
+  it('surfaces linked Students that were already assigned to different Groups', async () => {
+    const admin = await createUser('ADMIN');
+    const tutor = await createUser('TUTOR');
+    const [ahmed, mohamed] = await Promise.all([createUser('STUDENT'), createUser('STUDENT')]);
+    await createSeries(tutor.id, ahmed.id, `${prefix}different-group-a`);
+    await createSeries(tutor.id, mohamed.id, `${prefix}different-group-b`);
+    await createLinkedPair(admin.id, ahmed.id, mohamed.id);
+
+    const concern = (await getAdminAttendanceAttention()).find((item) => item.warnings.includes('LINKED_STUDENTS_DIFFERENT_GROUPS'));
+    expect(concern?.linkedStudents?.map((student) => student.id).sort()).toEqual([ahmed.id, mohamed.id].sort());
+    expect(concern?.reviewHref).toContain(ahmed.id);
   });
 
   it('previews, confirms, and idempotently backfills only marked pre-system occurrences', async () => {

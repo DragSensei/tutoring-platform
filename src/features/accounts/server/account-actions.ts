@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { Prisma, type ReferralSourceKind } from '@prisma/client';
 import { prisma } from '@/shared/lib/prisma';
 import { requireAuth } from '@/shared/server/session';
+import { createLinkedRelationshipTx, endLinkedRelationshipTx } from './linked-students';
 import type { Role } from '@/shared/types';
 import {
   accountSetupSchema,
@@ -171,7 +172,7 @@ async function readAccountDeletionImpact(tx: Prisma.TransactionClient, userId: s
   const user = await tx.user.findUnique({ where: { id: userId }, select: {
     id: true, role: true, account_status: true, referral_source_id: true,
     referral_source: { select: { name: true, kind: true } },
-    _count: { select: { tutored_sessions: true, tutored_series: true, attendances: true, session_participants: true, series_participants: true, setup_tokens: true, created_transactions: true, created_student_imports: true, imported_student_rows: true, tutor_compensation_entries: true, commission_entries: true, commission_policy_updates: true, tutor_payouts: true, created_payouts: true } },
+    _count: { select: { tutored_sessions: true, tutored_series: true, attendances: true, session_participants: true, series_participants: true, setup_tokens: true, created_transactions: true, created_student_imports: true, imported_student_rows: true, tutor_compensation_entries: true, commission_entries: true, commission_policy_updates: true, tutor_payouts: true, created_payouts: true, linked_student_as_a: true, linked_student_as_b: true, created_linked_relationships: true, ended_linked_relationships: true } },
   } });
   if (!user) throw new Error('Account not found');
   const dependencies: Array<{ category: string; count: number; detail?: string }> = Object.entries(user._count).filter(([, count]) => count > 0).map(([category, count]) => ({ category, count }));
@@ -201,6 +202,7 @@ export async function updateAccountProfileTx(
   tx: Prisma.TransactionClient,
   userId: string,
   input: UpdateAccountProfileInput,
+  adminId?: string,
 ) {
   const parsed = updateAccountProfileSchema.safeParse(input);
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message || 'Invalid account details');
@@ -227,7 +229,9 @@ export async function updateAccountProfileTx(
       ? null
       : new Prisma.Decimal(parsed.data.tutorHourlyRateOverride);
   }
-  if (!Object.keys(data).length) throw new Error('No account changes were provided');
+  const hasLinkedStudentChange = parsed.data.linkedStudentId !== undefined;
+  if (hasLinkedStudentChange && user.role !== 'STUDENT') throw new Error('Linked Student pairing applies to Student accounts only');
+  if (!Object.keys(data).length && !hasLinkedStudentChange) throw new Error('No account changes were provided');
 
   const duplicateConditions: Prisma.UserWhereInput[] = [];
   if (typeof data.email === 'string') duplicateConditions.push({ email: data.email });
@@ -240,11 +244,31 @@ export async function updateAccountProfileTx(
     if (duplicate) throw new Error('Another account already uses that email or phone');
   }
 
-  return tx.user.update({
+  const updated = Object.keys(data).length ? await tx.user.update({
     where: { id: userId },
     data,
     select: { id: true, role: true, name: true, email: true, phone: true, referral_source_id: true, tutor_hourly_rate_override: true },
+  }) : await tx.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { id: true, role: true, name: true, email: true, phone: true, referral_source_id: true, tutor_hourly_rate_override: true },
   });
+
+  if (hasLinkedStudentChange) {
+    if (!adminId) throw new Error('Admin authorization is required to change a linked Student relationship');
+    const relationship = await tx.linkedStudentRelationship.findFirst({
+      where: { active: true, OR: [{ student_a_id: userId }, { student_b_id: userId }] },
+      select: { student_a_id: true, student_b_id: true },
+    });
+    const currentPartnerId = relationship?.student_a_id === userId ? relationship.student_b_id : relationship?.student_a_id;
+    const requestedPartnerId = parsed.data.linkedStudentId || null;
+    if (currentPartnerId && currentPartnerId !== requestedPartnerId) {
+      if (requestedPartnerId) throw new Error('End the current linked pair before choosing another Student');
+      await endLinkedRelationshipTx(tx, userId, adminId);
+    } else if (!currentPartnerId && requestedPartnerId) {
+      await createLinkedRelationshipTx(tx, userId, requestedPartnerId, adminId);
+    }
+  }
+  return updated;
 }
 
 async function issueAccountToken(tx: Prisma.TransactionClient, userId: string, purpose: AccountTokenPurpose) {
@@ -258,7 +282,7 @@ async function issueAccountToken(tx: Prisma.TransactionClient, userId: string, p
 }
 
 export async function createAccount(input: CreateAccountInput) {
-  await requireAuth(['ADMIN']);
+  const admin = await requireAuth(['ADMIN']);
   const parsed = createAccountSchema.safeParse(input);
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message || 'Invalid account details');
   const referralSourceId = dataSourceId(parsed.data.referralSourceId);
@@ -288,7 +312,15 @@ export async function createAccount(input: CreateAccountInput) {
       select: { id: true, role: true, account_status: true, name: true, email: true, phone: true, referral_source_id: true },
     });
     const setup = await issueAccountToken(tx, user.id, 'SETUP');
+    if (parsed.data.role === 'STUDENT' && parsed.data.linkedStudentId) {
+      await createLinkedRelationshipTx(tx, user.id, parsed.data.linkedStudentId, admin.userId);
+    }
     return { user, setup };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch((error: unknown) => {
+    if (parsed.data.linkedStudentId && error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2034'].includes(error.code)) {
+      throw new Error('This Student was linked to another active pair at the same time. Refresh the account list and try again.');
+    }
+    throw error;
   });
 
   return {

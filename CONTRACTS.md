@@ -435,6 +435,18 @@ export interface AccountSetupTokenContract {
   commission. Direct is protected. A source may be renamed or deactivated;
   historical commission recipient names and amounts remain snapshotted. Source
   type cannot change after Student attribution or commission history exists.
+- `LinkedStudentRelationship` is the canonical reciprocal Student pair. IDs are
+  stored in lexical order, self-links are invalid, and an Admin creates or ends
+  a relationship transactionally after rereading both Student accounts and
+  active-pair membership. Ending records the date and Admin; history is retained.
+- Each active linked Student has an entitlement of 100 EGP per monthly billing
+  period. Referral/Sales attribution remains independent. This entitlement is
+  not applied to per-Session wallet deductions; monthly billing has no owner yet.
+- GROUP roster writes expand an active linked pair in the server transaction,
+  then validate unique participants, the four-Student limit, and conflicting
+  active Group assignment before writing. PRIVATE rosters remain one Student.
+  A PRIVATE partner is not moved by Group pairing; schedule divergence remains
+  an Admin review concern while the commercial relationship stays active.
 
 ### Student CSV Import
 

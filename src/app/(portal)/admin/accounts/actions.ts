@@ -16,9 +16,14 @@ export async function createAdminAccount(input: CreateAccountInput) {
 }
 
 export async function updateAdminAccount(userId: string, input: UpdateAccountProfileInput) {
-  await requireAuth(['ADMIN']);
-  const result = await prisma.$transaction((tx) => updateAccountProfileTx(tx, userId, input), {
+  const admin = await requireAuth(['ADMIN']);
+  const result = await prisma.$transaction((tx) => updateAccountProfileTx(tx, userId, input, admin.userId), {
     isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  }).catch((error: unknown) => {
+    if (input.linkedStudentId && error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2034'].includes(error.code)) {
+      throw new Error('This Student was linked to another active pair at the same time. Refresh the account and try again.');
+    }
+    throw error;
   });
   revalidatePath('/admin/accounts');
   revalidatePath(`/admin/accounts/${userId}`);

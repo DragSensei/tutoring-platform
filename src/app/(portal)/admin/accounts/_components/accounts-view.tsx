@@ -17,10 +17,12 @@ import { AccountCreateForm } from './account-create-form';
 import { ReferralSourceManager } from './referral-source-manager';
 import { StudentCsvImport } from './student-csv-import';
 import type { ReferralSourceItem } from '@/features/accounts/server/account-actions';
+import type { LinkedStudentCandidate } from '@/features/accounts/server/linked-students';
 
 interface AccountsViewProps {
   accounts: AccountListItem[];
   referralSources: ReferralSourceItem[];
+  linkedStudentCandidates: LinkedStudentCandidate[];
   initialReferralSourceId: string;
   accountUpdated: boolean;
 }
@@ -31,7 +33,7 @@ function getRoleBadgeVariant(role: AccountListItem['role']): BadgeProps['variant
   return 'outline';
 }
 
-export function AccountsView({ accounts, referralSources, initialReferralSourceId, accountUpdated }: AccountsViewProps) {
+export function AccountsView({ accounts, referralSources, linkedStudentCandidates, initialReferralSourceId, accountUpdated }: AccountsViewProps) {
   const router = useRouter();
   const [search, setSearch] = React.useState('');
   const [roleFilter, setRoleFilter] = React.useState('');
@@ -71,7 +73,7 @@ export function AccountsView({ accounts, referralSources, initialReferralSourceI
         </div>
       </div>
 
-      <AccountCreateForm referralSources={referralSources} />
+      <AccountCreateForm referralSources={referralSources} linkedStudentCandidates={linkedStudentCandidates} />
       {accountUpdated && <p role="status" className="rounded-lg border border-brand-border bg-brand-subtle px-4 py-3 text-sm font-semibold text-brand-primary">Account changes saved.</p>}
       <ReferralSourceManager sources={referralSources} />
       <StudentCsvImport />

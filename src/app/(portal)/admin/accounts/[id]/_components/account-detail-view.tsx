@@ -72,10 +72,17 @@ function SetupLinkPanel({ account }: { account: AccountDetail }) {
 }
 
 function StudentDetails({ account }: { account: StudentAccountDetail }) {
-  const { wallet, recentAttendances, attendanceCount } = account.student;
+  const { wallet, recentAttendances, attendanceCount, linkedStudent, linkedStudentDiscountMonthly } = account.student;
 
   return (
     <div className="space-y-6">
+      <Card className="rounded-2xl border-stone-200/80 bg-white shadow-xs">
+        <CardHeader className="border-b border-stone-100"><CardTitle className="text-lg">Linked Student</CardTitle></CardHeader>
+        <CardContent className="grid gap-4 pt-5 sm:grid-cols-2">
+          <div><p className="text-xs font-semibold uppercase tracking-wider text-stone-500">Linked with</p>{linkedStudent ? <Link className="mt-1 inline-flex min-h-[44px] items-center font-semibold text-brand-primary underline-offset-4 hover:underline" href={`/admin/accounts/${linkedStudent.id}`}>{linkedStudent.name || 'Profile incomplete'}</Link> : <p className="mt-1 text-sm text-stone-600">No linked Student</p>}</div>
+          <div><p className="text-xs font-semibold uppercase tracking-wider text-stone-500">Monthly linked-student discount entitlement</p><p className="mt-1 text-sm font-semibold text-stone-900">{linkedStudentDiscountMonthly ? `${formatEGP(linkedStudentDiscountMonthly)} / month` : 'Not active'}</p><p className="mt-1 text-xs text-stone-500">Entitlement only; no monthly or per-Session charge is calculated here.</p></div>
+        </CardContent>
+      </Card>
       <Card className="rounded-2xl border-stone-200/80 bg-white shadow-xs">
         <CardHeader className="flex-row items-center justify-between gap-4 border-b border-stone-100">
           <div className="flex items-center gap-3">
