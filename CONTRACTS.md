@@ -440,8 +440,10 @@ export interface AccountSetupTokenContract {
   a relationship transactionally after rereading both Student accounts and
   active-pair membership. Ending records the date and Admin; history is retained.
 - Each active linked Student has an entitlement of 100 EGP per monthly billing
-  period. Referral/Sales attribution remains independent. This entitlement is
-  not applied to per-Session wallet deductions; monthly billing has no owner yet.
+  period. Iteration 003.2E records it once per Student receivable only when the
+  relationship covers the complete explicit period. Partial-period coverage
+  blocks generation for Admin review. Referral/Sales attribution remains
+  independent, and the entitlement is not applied to per-Session deductions.
 - GROUP roster writes expand an active linked pair in the server transaction,
   then validate unique participants, the four-Student limit, and conflicting
   active Group assignment before writing. PRIVATE rosters remain one Student.
@@ -527,7 +529,16 @@ export interface PlatformPolicyContract {
 - `getPlatformPolicies()`: Fetches the singleton, seeding fallback prices, a zero hourly Tutor rate, disabled commission, zero basis points, and the fixed commission basis when absent.
 - `getActivePricingProfiles()`: Admin-only read returning serializable `{ id, name, privateSessionPrice, groupSessionPrice }` rows; money is a decimal string.
 - `updatePlatformPolicies(data)`: Validates money and basis-point bounds, stores the authenticated Admin as commission-rule updater, increments the rule version when terms change, and revalidates Admin policies, scheduling, and finance routes.
-- Named Pricing Profiles store PRIVATE/GROUP per-Session prices. A nullable `SessionSeries.pricing_profile_id` selects one; null means PlatformPolicy fallback. Prices are resolved and snapshotted at final settlement, not occurrence materialization. There is no canonical monthly Student billing owner in this repository; a monthly linked-Student discount must not be subtracted from each Session charge. Implementing that discount requires a monthly billing/charge owner and base/discount/final amount provenance first.
+- Named Pricing Profiles store PRIVATE/GROUP per-Session prices. A nullable `SessionSeries.pricing_profile_id` selects one; null means PlatformPolicy fallback. Prices are resolved and snapshotted at final settlement, not occurrence materialization. These per-Session amounts never supply a monthly Student base price, and linked discounts must not be subtracted from individual Session charges.
+- `PlatformPolicy` and named `PricingProfile` amounts remain per-Session prices. `StudentMonthlyPricingPolicy` is a separate Admin-managed, append-only effective-dated owner for GROUP and PRIVATE monthly base prices. There are no seeded monthly prices and no derivation from Session prices; a period without an applicable configured policy is blocked.
+
+### Student monthly billing
+- `StudentMonthlyReceivable` records an expected due, not a payment. Its explicit period is start-inclusive and end-exclusive; no calendar-month or Tutor Finance cycle is inferred. Automatic period creation remains disabled until a Student billing-cycle anchor is chosen.
+- The database unique key is `(student_id, period_start, period_end)`. Admin preview is read-only; confirmation re-reads prices, `SessionSeries` roster enrollment, relationship dates, and duplicates in a serializable transaction. Valid rows may be generated while every blocked row remains visible with its reason.
+- A receivable snapshots enrollment type, base price, linked discount, final amount, relationship ID, price policy ID, creation time, and Admin provenance. Existing receivables are never recomputed when current schedules, prices, or relationships change. Existing-row previews display the saved snapshot.
+- Billing enrollment is derived from `SessionSeries` roster membership overlapping the explicit period. One unambiguous GROUP or PRIVATE type is required. Missing, conflicting, cancelled, or otherwise unclear schedule state fails closed for review.
+- A relationship contributes its stored discount at most once to one Student's period receivable, and only when its dates cover the full period. A relationship with no overlap contributes zero; a relationship covering only part of the period requires an Admin decision. A negative expected due is blocked.
+- Receivables do not create WalletTransactions, Tutor compensation, commission, or external-payment evidence. Existing PRESENT attendance still settles its current `SESSION_DEDUCTION`; ABSENT remains zero. Commission remains tied to its current finalized wallet-charge basis. Replacing per-Session commercial charges with monthly billing is a future migration decision.
 
 ## 8. Finance Reporting and Ledger Contracts
 

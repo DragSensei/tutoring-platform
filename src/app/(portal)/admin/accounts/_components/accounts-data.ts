@@ -31,6 +31,7 @@ export interface StudentAccountDetail extends CommonAccountDetail {
   student: {
     linkedStudent: { id: string; name: string | null; relationshipId: string; discountAmount: number; createdAt: string } | null;
     linkedStudentDiscountMonthly: number;
+    monthlyReceivables: Array<{ id: string; periodStart: string; periodEnd: string; enrollmentLabel: string; baseMonthlyPriceSnapshot: number; linkedDiscountSnapshot: number; expectedDueSnapshot: number; generatedAt: string }>;
     attendanceCount: number;
     wallet: {
       balance: number;
@@ -160,7 +161,7 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
   };
 
   if (account.role === 'STUDENT') {
-    const [student, relationship] = await Promise.all([prisma.user.findUnique({
+    const [student, relationship, monthlyReceivables] = await Promise.all([prisma.user.findUnique({
       where: { id },
       select: {
         wallet: {
@@ -192,6 +193,9 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
     }), prisma.linkedStudentRelationship.findFirst({
       where: { active: true, OR: [{ student_a_id: id }, { student_b_id: id }] },
       include: { student_a: { select: { id: true, name: true } }, student_b: { select: { id: true, name: true } } },
+    }), prisma.studentMonthlyReceivable.findMany({
+      where: { student_id: id }, orderBy: { period_start: 'desc' }, take: 24,
+      select: { id: true, period_start: true, period_end: true, enrollment_type_snapshot: true, base_amount_snapshot: true, linked_student_discount_snapshot: true, final_amount: true, created_at: true },
     })]);
 
     if (!student) return null;
@@ -208,6 +212,11 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
           createdAt: relationship.created_at.toISOString(),
         } : null,
         linkedStudentDiscountMonthly: relationship ? Number(relationship.discount_amount) : 0,
+        monthlyReceivables: monthlyReceivables.map((row) => ({
+          id: row.id, periodStart: row.period_start.toISOString().slice(0, 10), periodEnd: row.period_end.toISOString().slice(0, 10),
+          enrollmentLabel: row.enrollment_type_snapshot, baseMonthlyPriceSnapshot: Number(row.base_amount_snapshot),
+          linkedDiscountSnapshot: Number(row.linked_student_discount_snapshot), expectedDueSnapshot: Number(row.final_amount), generatedAt: row.created_at.toISOString(),
+        })),
         attendanceCount: student._count.attendances,
         wallet: student.wallet
           ? {

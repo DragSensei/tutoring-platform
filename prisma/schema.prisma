@@ -108,6 +108,9 @@ model User {
   ended_linked_relationships   LinkedStudentRelationship[]   @relation("LinkedRelationshipEnder")
   linked_student_as_a          LinkedStudentRelationship[]   @relation("LinkedStudentA")
   linked_student_as_b          LinkedStudentRelationship[]   @relation("LinkedStudentB")
+  monthly_receivables          StudentMonthlyReceivable[]    @relation("MonthlyReceivableStudent")
+  created_monthly_receivables  StudentMonthlyReceivable[]    @relation("MonthlyReceivableCreator")
+  created_monthly_pricing      StudentMonthlyPricingPolicy[] @relation("MonthlyPricingCreator")
 
   @@index([role])
   @@index([referral_source_id])
@@ -143,10 +146,45 @@ model LinkedStudentRelationship {
   ended_at                 DateTime?
   ended_by_admin_id        String?
   ended_by_admin           User?    @relation("LinkedRelationshipEnder", fields: [ended_by_admin_id], references: [id], onDelete: Restrict)
+  monthly_receivables      StudentMonthlyReceivable[]
 
   @@unique([student_a_id, student_b_id])
   @@index([student_a_id, active])
   @@index([student_b_id, active])
+}
+
+model StudentMonthlyPricingPolicy {
+  id                    String   @id @default(cuid())
+  effective_from        DateTime @unique
+  group_monthly_price   Decimal  @db.Decimal(10, 2)
+  private_monthly_price Decimal  @db.Decimal(10, 2)
+  created_at            DateTime @default(now())
+  created_by_admin_id   String
+  created_by_admin      User     @relation("MonthlyPricingCreator", fields: [created_by_admin_id], references: [id], onDelete: Restrict)
+  receivables           StudentMonthlyReceivable[]
+
+}
+
+model StudentMonthlyReceivable {
+  id                              String   @id @default(cuid())
+  student_id                      String
+  student                         User     @relation("MonthlyReceivableStudent", fields: [student_id], references: [id], onDelete: Restrict)
+  period_start                    DateTime
+  period_end                      DateTime
+  enrollment_type_snapshot        SessionType
+  base_amount_snapshot            Decimal  @db.Decimal(10, 2)
+  linked_student_discount_snapshot Decimal @db.Decimal(10, 2)
+  final_amount                    Decimal  @db.Decimal(10, 2)
+  linked_relationship_id          String?
+  linked_relationship             LinkedStudentRelationship? @relation(fields: [linked_relationship_id], references: [id], onDelete: Restrict)
+  pricing_policy_id               String
+  pricing_policy                  StudentMonthlyPricingPolicy @relation(fields: [pricing_policy_id], references: [id], onDelete: Restrict)
+  created_at                      DateTime @default(now())
+  created_by_admin_id             String
+  created_by_admin                User     @relation("MonthlyReceivableCreator", fields: [created_by_admin_id], references: [id], onDelete: Restrict)
+
+  @@unique([student_id, period_start, period_end], map: "StudentMonthlyReceivable_student_period_key")
+  @@index([student_id, period_start], map: "StudentMonthlyReceivable_student_id_period_start_idx")
 }
 
 model PricingProfile {

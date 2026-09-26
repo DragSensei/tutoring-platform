@@ -154,7 +154,7 @@ describe('recurring weekly sessions', () => {
 
     const concern = (await getAdminAttendanceAttention()).find((item) => item.warnings.includes('LINKED_STUDENTS_DIFFERENT_GROUPS'));
     expect(concern?.linkedStudents?.map((student) => student.id).sort()).toEqual([ahmed.id, mohamed.id].sort());
-    expect(concern?.reviewHref).toContain(ahmed.id);
+    expect(concern?.reviewHref).toBe(`/admin/accounts/${[ahmed.id, mohamed.id].sort()[0]}`);
   });
 
   it('previews, confirms, and idempotently backfills only marked pre-system occurrences', async () => {

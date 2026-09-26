@@ -16,6 +16,7 @@ import type {
   TutorAccountDetail,
 } from '../../_components/accounts-data';
 import { AccountLifecycleControls } from './account-lifecycle-controls';
+import { MonthlyReceivableHistory } from './monthly-receivable-history';
 
 interface AccountDetailViewProps {
   account: AccountDetail;
@@ -72,7 +73,7 @@ function SetupLinkPanel({ account }: { account: AccountDetail }) {
 }
 
 function StudentDetails({ account }: { account: StudentAccountDetail }) {
-  const { wallet, recentAttendances, attendanceCount, linkedStudent, linkedStudentDiscountMonthly } = account.student;
+  const { wallet, recentAttendances, attendanceCount, linkedStudent, linkedStudentDiscountMonthly, monthlyReceivables } = account.student;
 
   return (
     <div className="space-y-6">
@@ -83,6 +84,7 @@ function StudentDetails({ account }: { account: StudentAccountDetail }) {
           <div><p className="text-xs font-semibold uppercase tracking-wider text-stone-500">Monthly linked-student discount entitlement</p><p className="mt-1 text-sm font-semibold text-stone-900">{linkedStudentDiscountMonthly ? `${formatEGP(linkedStudentDiscountMonthly)} / month` : 'Not active'}</p><p className="mt-1 text-xs text-stone-500">Entitlement only; no monthly or per-Session charge is calculated here.</p></div>
         </CardContent>
       </Card>
+      <MonthlyReceivableHistory items={monthlyReceivables} />
       <Card className="rounded-2xl border-stone-200/80 bg-white shadow-xs">
         <CardHeader className="flex-row items-center justify-between gap-4 border-b border-stone-100">
           <div className="flex items-center gap-3">
@@ -254,7 +256,7 @@ function ActivityCard({
 export function AccountDetailView({ account }: AccountDetailViewProps) {
   return (
     <div className="space-y-8 w-full min-w-0">
-      <div className="flex min-h-[92px] flex-col gap-4 border-b border-stone-200/80 pb-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-h-[92px] flex-col gap-4 border-b border-stone-200/80 pb-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center rounded-md bg-brand-subtle border border-brand-border/60 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-brand-primary">

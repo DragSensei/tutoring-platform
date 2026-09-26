@@ -18,6 +18,7 @@ vi.mock('@/shared/lib/prisma', () => ({
       findUnique: vi.fn(),
     },
     linkedStudentRelationship: { findFirst: vi.fn() },
+    studentMonthlyReceivable: { findMany: vi.fn() },
   },
 }));
 
@@ -50,6 +51,7 @@ describe('Admin account data access', () => {
       role: 'ADMIN',
     });
     vi.mocked(prisma.linkedStudentRelationship.findFirst).mockResolvedValue(null as never);
+    vi.mocked(prisma.studentMonthlyReceivable.findMany).mockResolvedValue([] as never);
   });
 
   it('uses the platform role vocabulary with a user-friendly faculty label', () => {
@@ -131,6 +133,16 @@ describe('Admin account data access', () => {
         ],
         _count: { attendances: 3 },
       } as never);
+    vi.mocked(prisma.studentMonthlyReceivable.findMany).mockResolvedValueOnce([{
+      id: 'receivable-1',
+      period_start: new Date('2026-01-01T00:00:00.000Z'),
+      period_end: new Date('2026-02-01T00:00:00.000Z'),
+      enrollment_type_snapshot: 'GROUP',
+      base_amount_snapshot: 1500,
+      linked_student_discount_snapshot: 100,
+      final_amount: 1400,
+      created_at: createdAt,
+    }] as never);
 
     const result = await getAccountDetail('student-1');
 
@@ -138,6 +150,16 @@ describe('Admin account data access', () => {
     if (result?.role !== 'STUDENT') throw new Error('Expected a student detail');
     expect(result.student.wallet?.balance).toBe(625);
     expect(result.student.attendanceCount).toBe(3);
+    expect(result.student.monthlyReceivables).toEqual([{
+      id: 'receivable-1',
+      periodStart: '2026-01-01',
+      periodEnd: '2026-02-01',
+      enrollmentLabel: 'GROUP',
+      baseMonthlyPriceSnapshot: 1500,
+      linkedDiscountSnapshot: 100,
+      expectedDueSnapshot: 1400,
+      generatedAt: createdAt.toISOString(),
+    }]);
     expect(result.student.recentAttendances[0]).toMatchObject({
       sessionTitle: 'Robotics Lab',
       tutorName: 'Mentor One',

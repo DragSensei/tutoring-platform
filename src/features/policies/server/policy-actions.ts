@@ -217,6 +217,49 @@ export async function getPricingProfiles() {
   }));
 }
 
+export async function getStudentMonthlyPricingPolicies() {
+  await requireAuth(['ADMIN']);
+  const policies = await prisma.studentMonthlyPricingPolicy.findMany({
+    orderBy: { effective_from: 'desc' },
+    select: { id: true, effective_from: true, group_monthly_price: true, private_monthly_price: true, created_at: true },
+  });
+  return policies.map((policy) => ({
+    id: policy.id, effectiveFrom: policy.effective_from.toISOString().slice(0, 10),
+    groupPrice: policy.group_monthly_price.toFixed(2), privatePrice: policy.private_monthly_price.toFixed(2),
+    createdAt: policy.created_at.toISOString(),
+  }));
+}
+
+export async function createStudentMonthlyPricingPolicy(input: unknown) {
+  try {
+    const auth = await requireAuth(['ADMIN']);
+    const parsed = z.object({
+      effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      groupPrice: safeMoney,
+      privatePrice: safeMoney,
+    }).safeParse(input);
+    if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? 'Enter valid monthly prices.');
+    const data = parsed.data;
+    const effectiveFrom = new Date(`${data.effectiveFrom}T00:00:00.000Z`);
+    if (Number.isNaN(effectiveFrom.getTime()) || effectiveFrom.toISOString().slice(0, 10) !== data.effectiveFrom) throw new Error('Enter a valid effective date and monthly price.');
+    await prisma.studentMonthlyPricingPolicy.create({
+      data: {
+        effective_from: effectiveFrom,
+        group_monthly_price: decimalMoney(data.groupPrice, 'Group monthly price'),
+        private_monthly_price: decimalMoney(data.privatePrice, 'Private monthly price'),
+        created_by_admin_id: auth.userId,
+      },
+    });
+    revalidatePath('/admin/policies');
+    revalidatePath('/admin/finances/receivables');
+    return { success: true as const };
+  } catch (error) {
+    return { success: false as const, message: error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
+      ? 'A monthly pricing policy already exists for that effective date.'
+      : error instanceof Error ? error.message : 'Could not save monthly pricing.' };
+  }
+}
+
 export async function savePricingProfile(id: unknown, input: unknown) {
   await requireAuth(['ADMIN']);
   if (id !== null && (typeof id !== 'string' || !id.trim())) throw new Error('Invalid Pricing Profile id');

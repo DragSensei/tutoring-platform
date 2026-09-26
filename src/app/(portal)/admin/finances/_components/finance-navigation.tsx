@@ -4,6 +4,7 @@ const items = [
   { label: 'Overview', href: '/admin/finances' },
   { label: 'Tutor payables', href: '/admin/finances/tutors' },
   { label: 'Sales & referrals', href: '/admin/finances/sales' },
+  { label: 'Student receivables', href: '/admin/finances/receivables' },
 ];
 
 export function FinanceNavigation({ active }: { active: string }) {
