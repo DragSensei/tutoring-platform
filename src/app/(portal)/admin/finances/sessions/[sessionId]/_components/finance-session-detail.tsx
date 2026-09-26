@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ca
 import { formatEGP } from '@/shared/utils/currency';
 import { formatDateTime } from '@/shared/utils/date-format';
 import { sessionFinancialState, sumMoney } from './session-financial-state';
+import { AttendanceRecoveryReview } from './attendance-recovery-review';
 
 type SessionDetail = NonNullable<Awaited<ReturnType<typeof import('@/features/finances/server/finance-actions').getAdminFinanceSessionDetail>>>;
 
@@ -34,7 +35,15 @@ export function FinanceSessionDetail({ detail }: { detail: SessionDetail }) {
         </CardContent>
       </Card>
 
-      <Card className="border-border-subtle bg-canvas"><CardHeader><CardTitle className="text-base">Roster and delivery</CardTitle></CardHeader><CardContent className="space-y-3"><p className="flex flex-wrap items-center gap-1 text-sm text-text-muted"><span>Tutor:</span><Link className="inline-flex min-h-[44px] items-center font-semibold text-brand-primary underline-offset-2 hover:underline" href={`/admin/accounts/${encodeURIComponent(detail.tutor.id)}`}>{detail.tutor.name}</Link></p>{detail.students.map((student) => <div key={student.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-border-subtle pt-3"><Link href={`/admin/accounts/${encodeURIComponent(student.id)}`} className="min-h-[44px] inline-flex items-center font-medium text-brand-primary underline-offset-2 hover:underline">{student.name}</Link><Badge variant="outline">{detail.attendanceSavedAt ? (student.attended ? 'Present' : 'Absent') : 'Not recorded'}</Badge></div>)}</CardContent></Card>
+      <AttendanceRecoveryReview
+        sessionId={detail.id}
+        eligible={detail.recoveryEligible}
+        attendanceDeadline={detail.attendanceClosesAt}
+        submittedAt={detail.attendanceSubmittedAt}
+        grants={detail.recoveryGrants}
+      />
+
+      <Card className="border-border-subtle bg-canvas"><CardHeader><CardTitle className="text-base">Roster and delivery</CardTitle></CardHeader><CardContent className="space-y-3"><p className="flex flex-wrap items-center gap-1 text-sm text-text-muted"><span>Tutor:</span><Link className="inline-flex min-h-[44px] items-center font-semibold text-brand-primary underline-offset-2 hover:underline" href={`/admin/accounts/${encodeURIComponent(detail.tutor.id)}`}>{detail.tutor.name}</Link></p>{detail.students.map((student) => <div key={student.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-border-subtle pt-3"><Link href={`/admin/accounts/${encodeURIComponent(student.id)}`} className="min-h-[44px] inline-flex items-center font-medium text-brand-primary underline-offset-2 hover:underline">{student.name}</Link><Badge variant="outline">{student.outcome ?? 'Unresolved'}</Badge></div>)}</CardContent></Card>
 
       <section className="space-y-3" aria-label="Wallet and commission provenance"><h2 className="text-lg font-semibold text-text-primary">Wallet charge provenance</h2>{detail.charges.length ? detail.charges.map((charge) => <Card key={charge.id} className="border-border-subtle bg-canvas"><CardContent className="space-y-2 p-5"><div className="flex flex-wrap items-start justify-between gap-2"><div><Link href={`/admin/accounts/${encodeURIComponent(charge.studentId)}`} className="inline-flex min-h-[44px] items-center font-semibold text-brand-primary underline-offset-2 hover:underline">{charge.studentName}</Link><p className="break-all text-xs text-text-muted">Wallet event {charge.id} · {formatDateTime(charge.createdAt, { includeYear: true })}</p></div><p className="font-bold tabular-nums text-text-primary">{formatEGP(charge.amount)}</p></div>{charge.commission ? <div className="rounded-lg bg-canvas-subtle p-3 text-sm"><p className="font-semibold text-text-primary">Commission: {formatEGP(charge.commission.amount)} · {charge.commission.rateBps / 100}% · rule v{charge.commission.ruleVersion}</p><p className="text-text-muted">{formatEGP(charge.commission.basisAmount)} basis · {charge.commission.basis} · source snapshot {charge.commission.sourceName}</p><Link href={`/admin/accounts?referralSourceId=${encodeURIComponent(charge.commission.sourceId)}`} className="inline-flex min-h-[44px] items-center font-semibold text-brand-primary underline-offset-2 hover:underline">View source accounts</Link></div> : <p className="text-sm text-text-muted">No commission was accrued from this charge.</p>}</CardContent></Card>) : <Card className="border-border-subtle bg-canvas"><CardContent className="p-5 text-sm text-text-muted">No system-tracked wallet charges are linked to this Session.</CardContent></Card>}</section>
     </main>

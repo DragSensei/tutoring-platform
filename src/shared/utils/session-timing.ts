@@ -20,6 +20,61 @@ export interface EffectiveSessionTiming {
   isRescheduled: boolean;
 }
 
+export type SessionOccurrenceState = 'ACTIVE' | 'SCHEDULED' | 'COMPLETED';
+export type TimedSessionOccurrence = { startTime: string; endTime: string };
+
+export function classifySessionOccurrence(
+  startTime: Date | string | number,
+  endTime: Date | string | number,
+  now: Date | string | number = new Date()
+): SessionOccurrenceState {
+  const start = new Date(startTime).getTime();
+  const end = new Date(endTime).getTime();
+  const current = new Date(now).getTime();
+  if (![start, end, current].every(Number.isFinite) || end <= start) {
+    throw new Error('Invalid concrete Session timing');
+  }
+  if (current < start) return 'SCHEDULED';
+  if (current < end) return 'ACTIVE';
+  return 'COMPLETED';
+}
+
+export function canPostponeSession(
+  startTime: Date | string | number,
+  now: Date | string | number = new Date()
+): boolean {
+  const start = new Date(startTime).getTime();
+  const current = new Date(now).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(current)) throw new Error('Invalid concrete Session timing');
+  return current < start;
+}
+
+export function sortSessionOccurrences<T extends TimedSessionOccurrence>(
+  sessions: T[],
+  state: SessionOccurrenceState,
+  now: Date | string | number = new Date()
+): T[] {
+  return sessions
+    .filter((session) => classifySessionOccurrence(session.startTime, session.endTime, now) === state)
+    .sort((left, right) => {
+      const difference = new Date(left.startTime).getTime() - new Date(right.startTime).getTime();
+      return state === 'COMPLETED' ? -difference : difference;
+    });
+}
+
+export function getUpcomingSessions<T extends TimedSessionOccurrence>(
+  sessions: T[],
+  horizonDays: number | null = 7,
+  now: Date | string | number = new Date()
+): T[] {
+  const current = new Date(now).getTime();
+  const through = horizonDays === null ? Number.POSITIVE_INFINITY : current + horizonDays * 86_400_000;
+  return sessions
+    .filter((session) => classifySessionOccurrence(session.startTime, session.endTime, now) === 'SCHEDULED')
+    .filter((session) => new Date(session.startTime).getTime() <= through)
+    .sort((left, right) => new Date(left.startTime).getTime() - new Date(right.startTime).getTime());
+}
+
 export function resolveEffectiveSessionTiming(
   startTime: string,
   endTime: string,

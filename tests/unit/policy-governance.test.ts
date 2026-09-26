@@ -21,6 +21,7 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 const validInput = {
   checkInWindowHours: 4,
+  lateAttendanceRecoveryWindowHours: 1,
   groupSessionPrice: '375.00',
   privateSessionPrice: '500.00',
   allowOverdraft: true,

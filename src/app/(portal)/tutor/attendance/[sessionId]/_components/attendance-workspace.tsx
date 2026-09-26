@@ -3,18 +3,11 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Check, CheckCircle2, Circle, ShieldCheck, Users } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Circle, ShieldCheck } from 'lucide-react';
 import { Button } from '@/shared/components/button';
 import { SessionEvidenceUpload, type LocalEvidenceMetadata } from '@/features/attendance/components/session-evidence-upload';
-import { saveTutorAttendance } from '../../actions';
-import {
-  MIN_SESSION_NOTE_LENGTH,
-  createAttendanceReviewState,
-  getPresentStudentIds,
-  isAttendanceWorkflowComplete,
-  markAllAttendance,
-  toggleStudentAttendance,
-} from '@/features/attendance/utils/attendance-review';
+import { MIN_SESSION_NOTE_LENGTH, attendanceOutcomes, createAttendanceReviewState, markAllAttendance, setAttendanceOutcome } from '@/features/attendance/utils/attendance-review';
+import { saveTutorAttendanceDraft, submitTutorAttendance } from '../../actions';
 import { formatDateTime, formatTime } from '@/shared/utils/date-format';
 import { getAttendanceWindowState } from '@/shared/utils/deadline';
 import type { GadwalSessionItem } from '@/features/sessions/types';
@@ -26,15 +19,15 @@ interface AttendanceWorkspaceProps {
 
 export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWorkspaceProps) {
   const router = useRouter();
-  const initialSession = initialSessions.find((item) => item.id === sessionId && !item.historicalOnly) || null;
-  const session: GadwalSessionItem | null = initialSession;
+  const session = initialSessions.find((item) => item.id === sessionId && !item.historicalOnly) || null;
   const [now, setNow] = React.useState<number | null>(null);
-  const [review, setReview] = React.useState(() =>
-    createAttendanceReviewState(initialSession?.roster || [], Boolean(initialSession?.attendanceSavedAt || initialSession?.status === 'COMPLETED'))
-  );
-  const [notes, setNotes] = React.useState(initialSession?.attendanceNotes || '');
+  const [review, setReview] = React.useState(() => createAttendanceReviewState(session?.roster || []));
+  const [notes, setNotes] = React.useState(session?.attendanceNotes || '');
   const [evidence, setEvidence] = React.useState<LocalEvidenceMetadata | null>(null);
-  const [validationError, setValidationError] = React.useState<string | null>(null);
+  const [lateExplanation, setLateExplanation] = React.useState('');
+  const [tutorAttested, setTutorAttested] = React.useState(false);
+  const [screenshotUnavailable, setScreenshotUnavailable] = React.useState<boolean | null>(null);
+  const [message, setMessage] = React.useState<string | null>(null);
   const [isPending, startTransition] = React.useTransition();
 
   React.useEffect(() => {
@@ -43,190 +36,130 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
     return () => window.clearInterval(interval);
   }, []);
 
-  if (!session) {
-    return (
-      <div className="rounded-2xl border border-stone-200 bg-white p-8 text-center shadow-xs">
-        <h1 className="text-xl font-semibold text-stone-900">Session not found</h1>
-        <p className="mt-2 text-sm text-stone-500">This session is not available in the current tutor schedule.</p>
-        <Link href="/tutor/agenda" className="mt-5 inline-flex min-h-[44px] items-center rounded-lg bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-hover">
-          Back to agenda
-        </Link>
-      </div>
-    );
-  }
+  if (!session) return <div className="rounded-2xl border border-border-subtle bg-canvas p-8 text-center"><h1 className="text-xl font-semibold text-text-primary">Session not found</h1><p className="mt-2 text-sm text-text-muted">This Session is not available in the current Tutor schedule.</p><Link href="/tutor/agenda" className="mt-5 inline-flex min-h-[44px] items-center rounded-lg bg-brand-primary px-4 text-sm font-semibold text-white">Back to agenda</Link></div>;
+  const activeSession = session;
 
   const roster = session.roster || [];
-  const attendanceWindowState = now === null
-    ? session.attendanceWindowState || 'CLOSED'
-    : getAttendanceWindowState(session.startTime, session.attendanceClosesAt || session.deadline, now);
-  const canEditAttendance = attendanceWindowState === 'OPEN' && session.status !== 'COMPLETED';
-  const isLive = now === null
-    ? false
-    : now >= new Date(session.startTime).getTime() && now < new Date(session.endTime).getTime();
-  const presentStudentIds = getPresentStudentIds(roster, review);
-  const isComplete = isAttendanceWorkflowComplete(review, notes, Boolean(evidence));
-  const isEditing = Boolean(session.attendanceSavedAt);
+  const currentTime = now ?? Date.now();
+  const normalClose = new Date(session.attendanceClosesAt || session.deadline);
+  const attendanceWindowState = getAttendanceWindowState(session.startTime, normalClose, currentTime);
+  const recoveryGrant = session.recoveryGrant && currentTime >= new Date(session.recoveryGrant.openedAt).getTime() && currentTime <= new Date(session.recoveryGrant.closesAt).getTime()
+    ? session.recoveryGrant
+    : null;
+  const isLateMode = currentTime > normalClose.getTime() && Boolean(recoveryGrant);
+  const isSubmitted = Boolean(session.attendanceSubmittedAt);
+  const canEdit = !isSubmitted && session.status !== 'CANCELLED' && (attendanceWindowState === 'OPEN' || Boolean(recoveryGrant));
+  const canSubmit = canEdit && currentTime >= new Date(session.endTime).getTime();
+  const outcomes = attendanceOutcomes(review);
+  const attendanceComplete = roster.length > 0 && roster.every((student) => outcomes[student.id] === 'PRESENT' || outcomes[student.id] === 'ABSENT');
+  const notesComplete = notes.trim().length >= MIN_SESSION_NOTE_LENGTH;
+  const lateDetailsComplete = !isLateMode || (lateExplanation.trim().length >= MIN_SESSION_NOTE_LENGTH && tutorAttested && screenshotUnavailable !== null);
+  const canSubmitComplete = attendanceComplete && notesComplete && lateDetailsComplete && (isLateMode || Boolean(evidence));
 
-  const completeWorkflow = () => {
-    if (!canEditAttendance) return;
-    if (!isComplete) {
-      setValidationError('Review attendance, add at least 12 characters of notes, and attach screenshot evidence.');
+  function saveDraft() {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await saveTutorAttendanceDraft({ sessionId: activeSession.id, outcomes, notes });
+      setMessage(result.success ? 'Draft saved. This does not settle Student wallets or create Tutor pay.' : result.message);
+      if (result.success) router.refresh();
+    });
+  }
+
+  function submit() {
+    if (!canSubmit) return;
+    if (!canSubmitComplete) {
+      setMessage(isLateMode
+        ? 'Choose an outcome for every Student, add the required notes, explain why attendance is late, attest accuracy, and report screenshot availability.'
+        : 'Choose an outcome for every Student, add the required notes, and attach the normal screenshot.');
       return;
     }
-
+    setMessage(null);
     startTransition(async () => {
-      const result = await saveTutorAttendance({
-        sessionId: session.id,
-        presentStudentIds,
+      const result = await submitTutorAttendance({
+        sessionId: activeSession.id,
+        outcomes,
         notes,
+        normalEvidenceSelected: !isLateMode && Boolean(evidence),
+        ...(isLateMode && recoveryGrant ? {
+          recoveryGrantId: recoveryGrant.id,
+          lateExplanation,
+          tutorAttested,
+          screenshotUnavailable: screenshotUnavailable === true,
+        } : {}),
       });
-
       if (!result.success) {
-        setValidationError(result.message);
+        setMessage(result.message);
         return;
       }
-
-      router.push(`/tutor/agenda?completed=${encodeURIComponent(result.sessionId)}&present=${result.presentCount}`);
+      setMessage(result.alreadySubmitted ? 'Attendance was already submitted. No duplicate Tutor payable was created.' : 'Final attendance submitted. Student settlement and Tutor pay follow the recorded attendance.');
+      router.refresh();
     });
-  };
+  }
 
   return (
-    <div className="space-y-8">
-      <header className="border-b border-stone-200/80 pb-6">
-        <Link href="/tutor/agenda" className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 text-sm font-semibold text-stone-600 hover:bg-stone-100 hover:text-stone-900">
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to agenda
-        </Link>
-        <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-md bg-brand-subtle px-2.5 py-1 text-xs font-semibold text-brand-primary">{session.sessionCode || 'SESSION'}</span>
-              <span className="rounded-md bg-stone-100 px-2.5 py-1 text-xs font-medium capitalize text-stone-600">{session.sessionType.toLowerCase()}</span>
-              <span className="rounded-md border border-stone-200 px-2.5 py-1 text-xs font-medium text-stone-600">{session.status}</span>
-            </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl">{session.title}</h1>
-            <p className="mt-2 text-sm text-stone-600">
-              {formatDateTime(session.startTime)}–{formatTime(session.endTime)}
-              {session.isRescheduled ? ` · Recurring ${formatDateTime(session.baseStartTime || session.startTime)}` : ''}
-            </p>
-            <p className="mt-1 text-xs font-medium text-stone-500">
-              {attendanceWindowState === 'BEFORE' ? 'Attendance opens when the session starts.' : attendanceWindowState === 'OPEN' ? (isLive ? 'Live now · attendance open' : 'Attendance open during grace') : 'Attendance closed · read-only history'}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-stone-600">
-            <Users className="h-4 w-4 text-stone-400" aria-hidden="true" />
-            <span><strong className="font-semibold text-stone-900 tabular-nums">{roster.length}</strong> enrolled</span>
-          </div>
-        </div>
+    <div className="min-w-0 space-y-6">
+      <header className="space-y-3 border-b border-border-subtle pb-5">
+        <Link href="/tutor/agenda" className="inline-flex min-h-[44px] items-center gap-2 text-sm font-semibold text-brand-primary"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to agenda</Link>
+        <div className="flex flex-wrap items-center gap-2"><span className="rounded-md bg-brand-subtle px-2.5 py-1 text-xs font-semibold text-brand-primary">{session.sessionType}</span>{isSubmitted && <span className="rounded-md border border-status-success/30 bg-status-success/5 px-2.5 py-1 text-xs font-semibold text-text-primary">Attendance submitted</span>}{session.recoveryGrantUsed && <span className="rounded-md border border-status-warning/40 bg-status-warning/5 px-2.5 py-1 text-xs font-semibold text-text-primary">Late attendance · Admin-authorized</span>}</div>
+        <h1 className="break-words text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">{session.title}</h1>
+        <p className="text-sm text-text-muted">{formatDateTime(session.startTime)} → {formatTime(session.endTime)} · {session.roster?.length ?? 0} students</p>
+        {isLateMode && <p className="rounded-lg border border-status-warning/40 bg-status-warning/5 p-3 text-sm text-text-primary">The normal screenshot requirement was waived because this attendance was reopened by Admin after the original deadline. A screenshot is optional if available.</p>}
+        {session.recoveryGrantUsed?.screenshotUnavailable && <p className="text-sm text-text-muted">Screenshot unavailable / requirement waived.</p>}
+        {!isSubmitted && <p className="text-xs text-text-muted">Attendance deadline: {formatDateTime(session.attendanceClosesAt || normalClose.toISOString(), { includeYear: true })}{recoveryGrant ? ` · Recovery closes ${formatDateTime(recoveryGrant.closesAt, { includeYear: true })}` : ''}</p>}
       </header>
 
-      <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.75fr)]">
-        <section className="rounded-2xl border border-stone-200/80 bg-white shadow-xs" aria-labelledby="attendance-roster-heading">
-          <div className="flex flex-col gap-4 border-b border-stone-100 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-            <div>
-              <h2 id="attendance-roster-heading" className="text-xl font-semibold text-stone-900">Student roster</h2>
-              <p className="mt-1 text-sm text-stone-500">
-                {review.isReviewed ? `${presentStudentIds.length} present · ${roster.length - presentStudentIds.length} absent` : 'Review attendance before completing the session.'}
-              </p>
-            </div>
-            {roster.length > 0 && canEditAttendance && (
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" className="min-h-[44px] px-3" onClick={() => { setReview(markAllAttendance(roster, true)); setValidationError(null); }}>
-                  Mark all present
-                </Button>
-                <Button type="button" variant="ghost" className="min-h-[44px] px-3" onClick={() => { setReview(markAllAttendance(roster, false)); setValidationError(null); }}>
-                  Mark all absent
-                </Button>
-              </div>
-            )}
-          </div>
+      <section className="rounded-2xl border border-border-subtle bg-canvas" aria-labelledby="attendance-roster-heading">
+        <div className="flex flex-col gap-4 border-b border-border-subtle p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div><h2 id="attendance-roster-heading" className="text-lg font-semibold text-text-primary">Student attendance</h2><p className="mt-1 text-sm text-text-muted">Choose Present or Absent for each Student. Unanswered Students stay unresolved.</p></div>
+          {canEdit && roster.length > 0 && <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" className="min-h-[44px] px-3" onClick={() => setReview(markAllAttendance(roster, 'PRESENT'))}>Mark all present</Button><Button type="button" variant="ghost" className="min-h-[44px] px-3" onClick={() => setReview(markAllAttendance(roster, 'ABSENT'))}>Mark all absent</Button></div>}
+        </div>
+        {!roster.length ? <p className="p-8 text-center text-sm text-text-muted">No Students are assigned to this Session.</p> : <ol className="divide-y divide-border-subtle">{roster.map((student) => {
+          const outcome = outcomes[student.id] ?? null;
+          return <li key={student.id} className="flex min-w-0 flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0"><p className="truncate font-semibold text-text-primary">{student.name}</p><p className="truncate text-xs text-text-muted">{student.email}</p></div>
+            {canEdit ? <div className="grid w-full grid-cols-2 gap-2 sm:w-auto"><AttendanceChoice value="PRESENT" selected={outcome === 'PRESENT'} disabled={isPending} onClick={() => setReview((current) => setAttendanceOutcome(current, student.id, 'PRESENT'))} /><AttendanceChoice value="ABSENT" selected={outcome === 'ABSENT'} disabled={isPending} onClick={() => setReview((current) => setAttendanceOutcome(current, student.id, 'ABSENT'))} /></div> : <span className="rounded-md border border-border-subtle px-3 py-2 text-sm font-semibold text-text-primary">{outcome ?? 'Unresolved'}</span>}
+          </li>;
+        })}</ol>}
+      </section>
 
-          {roster.length === 0 ? (
-            <div className="p-8 text-center text-sm text-stone-500">No students are assigned to this session.</div>
-          ) : (
-            <div className="divide-y divide-stone-100 p-2 sm:p-3">
-              {roster.map((student) => {
-                const isPresent = Boolean(review.presenceByStudentId[student.id]);
-                const content = (
-                  <>
-                    <span className="flex min-w-0 items-center gap-3">
-                      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${isPresent ? 'border-brand-primary bg-brand-primary text-white' : 'border-stone-300 bg-white text-stone-500'}`}>
-                        {isPresent ? <Check className="h-5 w-5" aria-hidden="true" /> : student.name.charAt(0)}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold text-stone-900">{student.name}</span>
-                        <span className="block truncate text-xs text-stone-500">{student.email}</span>
-                      </span>
-                    </span>
-                    <span className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-semibold ${isPresent ? 'bg-brand-primary text-white' : 'bg-stone-100 text-stone-600'}`}>
-                      {isPresent ? 'Present' : 'Absent'}
-                    </span>
-                  </>
-                );
-                return canEditAttendance ? (
-                  <button
-                    key={student.id}
-                    type="button"
-                    aria-pressed={isPresent}
-                    onClick={() => { setReview((current) => toggleStudentAttendance(current, student.id)); setValidationError(null); }}
-                    className={`flex min-h-[64px] w-full items-center justify-between gap-4 rounded-xl px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary sm:px-4 ${
-                      isPresent ? 'bg-brand-subtle/40' : 'hover:bg-stone-50'
-                    }`}
-                  >{content}</button>
-                ) : (
-                  <div key={student.id} className="flex min-h-[64px] w-full items-center justify-between gap-4 rounded-xl px-3 py-3 text-left sm:px-4">{content}</div>
-                );
-              })}
-            </div>
-          )}
+      <div className="grid min-w-0 gap-6 xl:grid-cols-2">
+        <section className="space-y-3 rounded-2xl border border-border-subtle bg-canvas p-4 sm:p-5" aria-labelledby="session-notes-heading">
+          <div className="flex items-baseline justify-between gap-3"><h2 id="session-notes-heading" className="text-lg font-semibold text-text-primary">Session notes <span className="text-brand-primary">Required</span></h2><span className="text-xs tabular-nums text-text-muted">{notes.trim().length}</span></div>
+          <textarea id="session-notes" value={notes} onChange={(event) => setNotes(event.target.value)} readOnly={!canEdit} minLength={MIN_SESSION_NOTE_LENGTH} maxLength={5000} rows={6} placeholder="Summarize progress, material covered, and follow-up." className="w-full resize-y rounded-lg border border-border-subtle bg-canvas px-3 py-2.5 text-sm text-text-primary focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20" />
+          <p className="text-xs text-text-muted">At least {MIN_SESSION_NOTE_LENGTH} characters. Draft notes can be saved before final submission.</p>
         </section>
 
-        <aside className="space-y-6" aria-label="Session documentation and completion">
-          <section className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs sm:p-6" aria-labelledby="session-notes-heading">
-            <div className="flex items-baseline justify-between gap-3">
-              <h2 id="session-notes-heading" className="text-lg font-semibold text-stone-900">Session notes <span className="text-brand-primary">Required</span></h2>
-              <span className="text-xs tabular-nums text-stone-500">{notes.trim().length}</span>
-            </div>
-            <label htmlFor="session-notes" className="sr-only">Session notes</label>
-            <textarea
-              id="session-notes"
-              value={notes}
-              onChange={(event) => { setNotes(event.target.value); setValidationError(null); }}
-              readOnly={!canEditAttendance}
-              minLength={MIN_SESSION_NOTE_LENGTH}
-              rows={6}
-              placeholder="Summarize progress, material covered, and any follow-up."
-              className="mt-3 w-full resize-y rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-900 placeholder:text-stone-400 focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
-            />
-            <p className="mt-2 text-xs text-stone-500">At least {MIN_SESSION_NOTE_LENGTH} characters.</p>
-          </section>
-
-          {canEditAttendance && <SessionEvidenceUpload value={evidence} onChange={(nextEvidence) => { setEvidence(nextEvidence); setValidationError(null); }} />}
-
-          <section className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs sm:p-6" aria-labelledby="completion-heading">
-            <h2 id="completion-heading" className="text-lg font-semibold text-stone-900">Completion</h2>
-            <ul className="mt-4 space-y-3 text-sm">
-              {[
-                [review.isReviewed, review.isReviewed ? `Attendance reviewed (${presentStudentIds.length} present)` : 'Attendance not reviewed'],
-                [notes.trim().length >= MIN_SESSION_NOTE_LENGTH, 'Required notes written'],
-                [Boolean(evidence), 'Screenshot evidence attached locally'],
-              ].map(([complete, label]) => (
-                <li key={String(label)} className={`flex items-center gap-2 ${complete ? 'text-emerald-700' : 'text-stone-500'}`}>
-                  {complete ? <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" /> : <Circle className="h-4 w-4 shrink-0" aria-hidden="true" />}
-                  <span>{label}</span>
-                </li>
-              ))}
-            </ul>
-            {validationError && <p role="alert" className="mt-4 text-sm font-medium text-brand-primary">{validationError}</p>}
-            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row">
-              <Link href="/tutor/agenda" className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-stone-300 px-4 text-sm font-medium text-stone-700 hover:bg-stone-50">Back to agenda</Link>
-              {canEditAttendance && <Button type="button" className="min-h-[44px] flex-1 gap-2" isLoading={isPending} onClick={completeWorkflow}>
-                <ShieldCheck className="h-4 w-4" aria-hidden="true" /> {isEditing ? 'Save attendance changes' : 'Save attendance'}
-              </Button>}
-            </div>
-            <p className="mt-3 text-xs text-stone-500">Saving attendance does not charge wallets. The finalizer settles the saved roster at the attendance close.</p>
-          </section>
-        </aside>
+        {canEdit && <section className="space-y-3">
+          <SessionEvidenceUpload value={evidence} required={!isLateMode} onChange={(value) => setEvidence(value)} />
+          {isLateMode && <div className="space-y-3 rounded-2xl border border-border-subtle bg-canvas p-4 sm:p-5">
+            <label htmlFor="late-attendance-explanation" className="block text-sm font-semibold text-text-primary">Why is attendance being submitted late?</label>
+            <textarea id="late-attendance-explanation" value={lateExplanation} onChange={(event) => setLateExplanation(event.target.value)} rows={3} maxLength={2000} className="w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-text-primary" />
+            <label className="flex min-h-[44px] items-center gap-3 text-sm text-text-primary"><input type="checkbox" checked={tutorAttested} onChange={(event) => setTutorAttested(event.target.checked)} className="h-5 w-5 accent-brand-primary" />I attest that the attendance I submitted is accurate.</label>
+            <fieldset className="space-y-2"><legend className="text-sm font-semibold text-text-primary">Screenshot availability</legend><div className="grid grid-cols-2 gap-2"><button type="button" aria-pressed={screenshotUnavailable === false} onClick={() => setScreenshotUnavailable(false)} className={`min-h-[44px] rounded-lg border px-3 text-sm font-semibold ${screenshotUnavailable === false ? 'border-brand-primary bg-brand-subtle text-brand-primary' : 'border-border-subtle bg-canvas text-text-primary'}`}>Available</button><button type="button" aria-pressed={screenshotUnavailable === true} onClick={() => setScreenshotUnavailable(true)} className={`min-h-[44px] rounded-lg border px-3 text-sm font-semibold ${screenshotUnavailable === true ? 'border-brand-primary bg-brand-subtle text-brand-primary' : 'border-border-subtle bg-canvas text-text-primary'}`}>Unavailable</button></div><p className="text-xs text-text-muted">A screenshot is optional in recovery mode and stays in this browser; it is not uploaded or verified by the server.</p></fieldset>
+          </div>}
+        </section>}
       </div>
+
+      <section className="space-y-4 rounded-2xl border border-border-subtle bg-canvas p-4 sm:p-5" aria-labelledby="completion-heading">
+        <h2 id="completion-heading" className="text-lg font-semibold text-text-primary">Attendance status</h2>
+        {isSubmitted ? <p className="text-sm text-text-primary">Final attendance submitted {session.attendanceSubmittedAt && formatDateTime(session.attendanceSubmittedAt, { includeYear: true })}. Drafts do not create Tutor compensation.</p> : <ul className="grid gap-2 text-sm sm:grid-cols-3"><Checklist complete={attendanceComplete} label="Every Student has an outcome" /><Checklist complete={notesComplete} label="Required notes written" /><Checklist complete={isLateMode ? lateDetailsComplete : Boolean(evidence)} label={isLateMode ? 'Late explanation and attestation complete' : 'Normal screenshot selected locally'} /></ul>}
+        {message && <p role="status" className="rounded-lg border border-border-subtle bg-canvas-subtle p-3 text-sm text-text-primary">{message}</p>}
+        {!isSubmitted && <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="outline" className="min-h-[44px]" disabled={!canEdit || isPending} isLoading={isPending} onClick={saveDraft}>Save draft</Button>
+          {canSubmit && <Button type="button" className="min-h-[44px]" disabled={isPending} isLoading={isPending} onClick={submit}><ShieldCheck className="mr-2 h-4 w-4" aria-hidden="true" />Submit final attendance</Button>}
+        </div>}
+        {!isSubmitted && !canEdit && <p className="text-sm text-text-muted">{session.status === 'CANCELLED' ? 'Cancelled Sessions cannot record attendance.' : currentTime < new Date(session.startTime).getTime() ? 'Drafts open when the Session starts.' : 'The attendance window is closed. Ask Admin to grant a recovery window.'}</p>}
+        {!isSubmitted && <p className="text-xs text-text-muted">Saving a draft only stores work in progress. Final submission records attendance; Student settlement waits for the normal deadline, and eligible Tutor compensation is created after the Session ends.</p>}
+      </section>
     </div>
   );
+}
+
+function AttendanceChoice({ value, selected, disabled, onClick }: { value: 'PRESENT' | 'ABSENT'; selected: boolean; disabled: boolean; onClick: () => void }) {
+  return <button type="button" aria-pressed={selected} disabled={disabled} onClick={onClick} className={`min-h-[44px] rounded-lg border px-4 text-sm font-semibold ${selected ? 'border-brand-primary bg-brand-primary text-white' : 'border-border-subtle bg-canvas text-text-primary hover:bg-canvas-subtle'}`}>{value === 'PRESENT' ? 'Present' : 'Absent'}</button>;
+}
+
+function Checklist({ complete, label }: { complete: boolean; label: string }) {
+  const Icon = complete ? CheckCircle2 : Circle;
+  return <li className={`flex items-center gap-2 ${complete ? 'text-text-primary' : 'text-text-muted'}`}><Icon className="h-4 w-4 shrink-0" aria-hidden="true" />{label}</li>;
 }

@@ -28,6 +28,7 @@ interface SessionForBilling {
   session_type: SessionType;
   historical_only: boolean;
   attendance_saved_at: Date | null;
+  attendance_submitted_at: Date | null;
   attendance_finalized_at: Date | null;
   pricing_profile_id: string | null;
   pricing_profile_name_snapshot: string | null;
@@ -60,6 +61,7 @@ export async function reconcileSessionFinancialState(
       session_type: true,
       historical_only: true,
       attendance_saved_at: true,
+      attendance_submitted_at: true,
       attendance_finalized_at: true,
       pricing_profile_id: true,
       pricing_profile_name_snapshot: true,
@@ -81,8 +83,8 @@ export async function reconcileSessionFinancialState(
       commissionAccrued: false,
     };
   }
-  if (!session.attendance_saved_at || !session.attendance_finalized_at) {
-    throw new Error('Financial settlement requires saved and finalized Tutor attendance');
+  if (!session.attendance_submitted_at || !session.attendance_finalized_at) {
+    throw new Error('Financial settlement requires submitted and finalized Tutor attendance');
   }
   if (session.session_type !== input.sessionType) {
     throw new Error('Session type changed during financial settlement');
@@ -351,7 +353,9 @@ export async function accrueTutorCompensation(
       status: true,
       historical_only: true,
       attendance_saved_at: true,
+      attendance_submitted_at: true,
       attendance_finalized_at: true,
+      participants: { select: { attendance_outcome: true } },
       tutor: { select: { role: true, tutor_hourly_rate_override: true } },
       tutor_compensation: true,
     },
@@ -359,9 +363,14 @@ export async function accrueTutorCompensation(
 
   if (!session) throw new Error('Session not found for Tutor compensation');
   if (session.historical_only) return null;
-  if (session.status === 'CANCELLED' || !session.attendance_saved_at || !session.attendance_finalized_at) {
-    throw new Error('Tutor compensation requires an explicitly saved and finalized delivery record');
+  if (session.status === 'CANCELLED' || !session.attendance_submitted_at) {
+    throw new Error('Tutor compensation requires a final attendance submission');
   }
+  if (session.end_time.getTime() > occurredAt.getTime()) return null;
+  if (!session.participants.length || session.participants.some((participant) => participant.attendance_outcome === null)) {
+    throw new Error('Tutor compensation requires a complete submitted roster');
+  }
+  if (!session.participants.some((participant) => participant.attendance_outcome === 'PRESENT')) return null;
   if (session.tutor.role !== 'TUTOR') throw new Error('Session Tutor identity is invalid');
   if (session.tutor_compensation) return mapTutorCompensation(session.tutor_compensation);
 

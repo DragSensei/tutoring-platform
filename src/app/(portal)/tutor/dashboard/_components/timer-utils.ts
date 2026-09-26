@@ -1,6 +1,7 @@
 import type { GadwalSessionItem } from '@/features/sessions/types';
 import {
   computeSessionCountdown,
+  classifySessionOccurrence,
   type SessionCountdown,
 } from '@/shared/utils/session-timing';
 
@@ -38,7 +39,8 @@ export function findClosestSessionDue(
       return { session, effectiveStartMs, effectiveEndMs };
     })
     .filter(({ effectiveStartMs, effectiveEndMs }) =>
-      Number.isFinite(effectiveStartMs) && Number.isFinite(effectiveEndMs) && effectiveEndMs > nowMs
+      Number.isFinite(effectiveStartMs) && Number.isFinite(effectiveEndMs)
+      && classifySessionOccurrence(effectiveStartMs, effectiveEndMs, now) !== 'COMPLETED'
     );
 
   if (candidates.length === 0) {

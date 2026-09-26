@@ -8,6 +8,7 @@ import { revalidatePath } from 'next/cache';
 
 export interface PlatformPoliciesData {
   checkInWindowHours: number;
+  lateAttendanceRecoveryWindowHours: number;
   groupSessionPrice: number;
   privateSessionPrice: number;
   allowOverdraft: boolean;
@@ -23,6 +24,7 @@ export interface PlatformPoliciesData {
 
 export interface UpdatePoliciesInput {
   checkInWindowHours: number;
+  lateAttendanceRecoveryWindowHours: number;
   groupSessionPrice: string;
   privateSessionPrice: string;
   allowOverdraft: boolean;
@@ -41,6 +43,7 @@ export interface PricingProfileInput {
 const safeMoney = z.string().regex(/^(?:0|[1-9]\d{0,7})(?:\.\d{1,2})?$/);
 const updatePoliciesSchema = z.object({
   checkInWindowHours: z.number().int().min(1).max(48),
+  lateAttendanceRecoveryWindowHours: z.number().int().min(1).max(168),
   groupSessionPrice: safeMoney,
   privateSessionPrice: safeMoney,
   allowOverdraft: z.boolean(),
@@ -57,6 +60,7 @@ const pricingProfileSchema = z.object({
 
 const DEFAULT_POLICIES: PlatformPoliciesData = {
   checkInWindowHours: 4,
+  lateAttendanceRecoveryWindowHours: 1,
   groupSessionPrice: 375,
   privateSessionPrice: 500,
   allowOverdraft: true,
@@ -77,6 +81,7 @@ function decimalMoney(value: string, field: string): Prisma.Decimal {
 
 function mapPolicy(policy: {
   check_in_window_hours: number;
+  late_attendance_recovery_window_hours: number;
   group_session_price: Prisma.Decimal;
   private_session_price: Prisma.Decimal;
   allow_overdraft: boolean;
@@ -91,6 +96,7 @@ function mapPolicy(policy: {
 }): PlatformPoliciesData {
   return {
     checkInWindowHours: policy.check_in_window_hours,
+    lateAttendanceRecoveryWindowHours: policy.late_attendance_recovery_window_hours,
     groupSessionPrice: Number(policy.group_session_price),
     privateSessionPrice: Number(policy.private_session_price),
     allowOverdraft: policy.allow_overdraft,
@@ -117,6 +123,7 @@ export async function getPlatformPolicies(): Promise<PlatformPoliciesData> {
       data: {
         id: 'default',
         check_in_window_hours: DEFAULT_POLICIES.checkInWindowHours,
+        late_attendance_recovery_window_hours: DEFAULT_POLICIES.lateAttendanceRecoveryWindowHours,
         group_session_price: new Prisma.Decimal(DEFAULT_POLICIES.groupSessionPrice),
         private_session_price: new Prisma.Decimal(DEFAULT_POLICIES.privateSessionPrice),
         allow_overdraft: DEFAULT_POLICIES.allowOverdraft,
@@ -152,6 +159,7 @@ export async function updatePlatformPolicies(input: unknown): Promise<{ success:
         current.commission_basis !== values.commissionBasis || current.commission_rate_bps !== values.commissionRateBps;
       const data = {
         check_in_window_hours: values.checkInWindowHours,
+        late_attendance_recovery_window_hours: values.lateAttendanceRecoveryWindowHours,
         group_session_price: groupPrice,
         private_session_price: privatePrice,
         allow_overdraft: values.allowOverdraft,

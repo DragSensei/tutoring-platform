@@ -11,6 +11,7 @@ import { SessionRescheduleDialog } from '@/features/sessions/components/session-
 import type { WeeklyScheduleSession } from '@/features/sessions/components/weekly-session-schedule';
 import type { TutorDashboardData } from '../../dashboard/_components/dashboard-data';
 import { getAttendanceWindowState } from '@/shared/utils/deadline';
+import { canPostponeSession, classifySessionOccurrence, sortSessionOccurrences } from '@/shared/utils/session-timing';
 import { postponeTutorSession } from '../../timetable/actions';
 import {
   NeedsAttention,
@@ -39,22 +40,20 @@ export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashb
   );
   const activeSessions = React.useMemo(
     () => sessionsAtNow
-      .filter((session) => !session.historicalOnly && session.status !== 'COMPLETED' && session.status !== 'CANCELLED' && new Date(session.endTime).getTime() > now)
+      .filter((session) => !session.historicalOnly && session.status !== 'CANCELLED')
+      .filter((session) => classifySessionOccurrence(session.startTime, session.endTime, now) !== 'COMPLETED')
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
     [sessionsAtNow, now]
   );
   const needsAttentionSessions = React.useMemo(
     () => sessionsAtNow
       .filter((session) => !session.historicalOnly)
-      .filter((session) => session.status !== 'COMPLETED' && session.status !== 'CANCELLED')
-      .filter((session) => new Date(session.endTime).getTime() <= now && (
-        session.attendanceWindowState === 'OPEN'
-        || (session.attendanceWindowState === 'CLOSED' && !session.attendanceSavedAt)
-      ))
+      .filter((session) => session.status !== 'CANCELLED')
+      .filter((session) => classifySessionOccurrence(session.startTime, session.endTime, now) === 'COMPLETED' && !session.attendanceSubmittedAt)
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
     [sessionsAtNow, now]
   );
-  const completedSessions = sessionsAtNow.filter((session) => !session.historicalOnly && session.status === 'COMPLETED');
+  const completedSessions = sortSessionOccurrences(sessionsAtNow.filter((session) => session.status !== 'CANCELLED'), 'COMPLETED', now);
   const closestSession = React.useMemo(
     () => findClosestSessionDue(activeSessions, now),
     [activeSessions, now]
@@ -103,7 +102,7 @@ export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashb
             <ClosestSessionTimer
               closestSession={closestSession}
               attendanceHref={attendanceSession ? `/tutor/attendance/${attendanceSession.id}` : undefined}
-              onPostpone={nextSession ? () => setRescheduleSession(nextSession) : undefined}
+              onPostpone={nextSession && canPostponeSession(nextSession.startTime, now) ? () => setRescheduleSession(nextSession) : undefined}
             />
           </section>
           <NeedsAttention sessions={needsAttentionSessions} />

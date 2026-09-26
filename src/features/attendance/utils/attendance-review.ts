@@ -1,63 +1,61 @@
 export const MIN_SESSION_NOTE_LENGTH = 12;
 
+export type AttendanceOutcome = 'PRESENT' | 'ABSENT';
+export type AttendanceDecision = AttendanceOutcome | null;
+
 interface AttendanceStudent {
   id: string;
   attended?: boolean;
+  outcome?: AttendanceDecision;
 }
 
 export interface AttendanceReviewState {
-  presenceByStudentId: Record<string, boolean>;
-  isReviewed: boolean;
+  outcomeByStudentId: Record<string, AttendanceDecision>;
 }
 
-export function createAttendanceReviewState(
-  roster: AttendanceStudent[],
-  isReviewed = false
-): AttendanceReviewState {
+export function createAttendanceReviewState(roster: AttendanceStudent[]): AttendanceReviewState {
   return {
-    presenceByStudentId: Object.fromEntries(
-      roster.map((student) => [student.id, Boolean(student.attended)])
-    ),
-    isReviewed,
+    outcomeByStudentId: Object.fromEntries(roster.map((student) => [
+      student.id,
+      student.outcome ?? (student.attended ? 'PRESENT' : null),
+    ])),
   };
 }
 
-export function toggleStudentAttendance(
+export function setAttendanceOutcome(
   state: AttendanceReviewState,
-  studentId: string
+  studentId: string,
+  outcome: AttendanceDecision,
 ): AttendanceReviewState {
-  return {
-    presenceByStudentId: {
-      ...state.presenceByStudentId,
-      [studentId]: !state.presenceByStudentId[studentId],
-    },
-    isReviewed: true,
-  };
+  return { outcomeByStudentId: { ...state.outcomeByStudentId, [studentId]: outcome } };
 }
 
 export function markAllAttendance(
   roster: AttendanceStudent[],
-  isPresent: boolean
+  outcome: AttendanceOutcome,
 ): AttendanceReviewState {
-  return {
-    presenceByStudentId: Object.fromEntries(roster.map((student) => [student.id, isPresent])),
-    isReviewed: true,
-  };
+  return { outcomeByStudentId: Object.fromEntries(roster.map(({ id }) => [id, outcome])) };
+}
+
+export function attendanceOutcomes(state: AttendanceReviewState): Record<string, AttendanceDecision> {
+  return state.outcomeByStudentId;
 }
 
 export function getPresentStudentIds(
   roster: AttendanceStudent[],
-  state: AttendanceReviewState
+  state: AttendanceReviewState,
 ): string[] {
-  return roster
-    .filter((student) => Boolean(state.presenceByStudentId[student.id]))
-    .map((student) => student.id);
+  return roster.filter(({ id }) => state.outcomeByStudentId[id] === 'PRESENT').map(({ id }) => id);
 }
 
 export function isAttendanceWorkflowComplete(
+  roster: AttendanceStudent[],
   state: AttendanceReviewState,
   notes: string,
-  hasEvidence: boolean
+  hasEvidence: boolean,
 ): boolean {
-  return state.isReviewed && notes.trim().length >= MIN_SESSION_NOTE_LENGTH && hasEvidence;
+  return roster.length > 0
+    && roster.every(({ id }) => state.outcomeByStudentId[id] !== null && state.outcomeByStudentId[id] !== undefined)
+    && notes.trim().length >= MIN_SESSION_NOTE_LENGTH
+    && hasEvidence;
 }

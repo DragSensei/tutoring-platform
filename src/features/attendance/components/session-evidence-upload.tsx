@@ -14,6 +14,7 @@ export interface LocalEvidenceMetadata {
 interface SessionEvidenceUploadProps {
   value: LocalEvidenceMetadata | null;
   onChange: (value: LocalEvidenceMetadata | null, file: File | null) => void;
+  required?: boolean;
 }
 
 function formatBytes(bytes: number) {
@@ -21,7 +22,7 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function SessionEvidenceUpload({ value, onChange }: SessionEvidenceUploadProps) {
+export function SessionEvidenceUpload({ value, onChange, required = true }: SessionEvidenceUploadProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
   const [isCompressing, setIsCompressing] = React.useState(false);
@@ -71,7 +72,7 @@ export function SessionEvidenceUpload({ value, onChange }: SessionEvidenceUpload
     <section className="rounded-xl border border-stone-200 bg-stone-50/70 p-4" aria-labelledby="evidence-title">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 id="evidence-title" className="text-sm font-semibold text-stone-900">Session screenshot evidence <span className="text-brand-primary">Required</span></h3>
+          <h3 id="evidence-title" className="text-sm font-semibold text-stone-900">Session screenshot evidence <span className="text-brand-primary">{required ? 'Required' : 'Optional during recovery'}</span></h3>
           <p className="mt-1 text-xs text-stone-500">PNG, JPEG, or WebP. Compressed in this browser; nothing is uploaded yet.</p>
         </div>
         <FileImage className="h-5 w-5 shrink-0 text-stone-400" aria-hidden="true" />

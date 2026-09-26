@@ -336,6 +336,51 @@ export interface SessionOccurrenceContract extends SessionContract {
   Cancellation preserves saved all-absent attendance as well as PRESENT rows,
   finalized sessions, wallet entries, and compensation/commission history.
 
+## 6.1 Concrete Session Time and Tutor Attendance Lifecycle
+
+- Agenda, timetable, and Admin occurrence tabs classify each concrete Session
+  from its effective `start_time`/`end_time` at a supplied `now`: future is
+  SCHEDULED, `start <= now < end` is ACTIVE, and `end <= now` is COMPLETED. A
+  stale persisted workflow status cannot move an old occurrence into a live tab.
+- Tutor timetable initially loads history, current occurrences, and the next
+  seven days. Longer upcoming horizons are fetched only when selected. Postpone
+  is available only while `now < start_time`; the server checks the same rule,
+  and a one-occurrence change does not rewrite its SessionSeries.
+- `attendance_saved_at` records a draft. Draft saves store only explicit
+  per-roster outcomes and notes; they do not settle Student wallets or create
+  Tutor compensation. `attendance_submitted_at` records the Tutor's final,
+  validated submission. Every roster Student must be explicitly PRESENT or
+  ABSENT and the notes requirement must be met. Normal screenshot evidence is
+  selected locally by the Tutor UI and is not represented as server-verified.
+- Student settlement waits for final submission and the normal end-plus-grace
+  deadline. PRESENT receives the canonical Student Session charge; ABSENT is
+  zero; unresolved attendance is never guessed or billed. Existing referral and
+  commission provenance remains separate.
+- Tutor compensation requires an ended, non-cancelled, non-historical Session,
+  valid final attendance, at least one PRESENT Student, and a positive snapshotted
+  Tutor hourly rate. Eligible Tutor time is the full concrete Session duration,
+  regardless of how many Students were PRESENT. All-ABSENT and missing final
+  attendance create no Tutor payable. Missing rates remain an Admin attention
+  item; zero is not a fabricated payable.
+- Submission, due settlement, and compensation accrual share idempotent,
+  serializable database paths and the unique per-Session compensation ledger
+  key. Late final submission can settle immediately when the normal deadline
+  has already passed; ordinary final submission leaves Student settlement at
+  the established grace deadline.
+- Once the normal attendance deadline passes without final submission, the
+  Session remains unresolved and Admin sees Missing attendance. An Admin may
+  append an `AttendanceRecoveryGrant` with a required reason and a snapshot of
+  the configured `late_attendance_recovery_window_hours`; later policy changes
+  do not move that grant's deadline. Only the assigned Tutor may use an active
+  grant, with a late explanation and accuracy attestation. Normal screenshot
+  evidence is waived in this mode and its availability is recorded truthfully.
+  Used and expired grants remain audit history. No automatic late penalties
+  exist.
+- Legacy attendance records without a matching `SessionParticipant` roster are
+  preserved and surfaced as Needs review. They cannot be treated as a complete
+  submission, billed, or reopened for normal recovery until an Admin resolves
+  the roster discrepancy.
+
 ## 7. Account Provisioning & Credential Contracts
 
 ```typescript
@@ -470,7 +515,7 @@ export interface PlatformPolicyContract {
 - `getPlatformPolicies()`: Fetches the singleton, seeding fallback prices, a zero hourly Tutor rate, disabled commission, zero basis points, and the fixed commission basis when absent.
 - `getActivePricingProfiles()`: Admin-only read returning serializable `{ id, name, privateSessionPrice, groupSessionPrice }` rows; money is a decimal string.
 - `updatePlatformPolicies(data)`: Validates money and basis-point bounds, stores the authenticated Admin as commission-rule updater, increments the rule version when terms change, and revalidates Admin policies, scheduling, and finance routes.
-- Named Pricing Profiles store PRIVATE/GROUP prices. A nullable `SessionSeries.pricing_profile_id` selects one; null means PlatformPolicy fallback. Prices are resolved at final settlement, not occurrence materialization.
+- Named Pricing Profiles store PRIVATE/GROUP per-Session prices. A nullable `SessionSeries.pricing_profile_id` selects one; null means PlatformPolicy fallback. Prices are resolved and snapshotted at final settlement, not occurrence materialization. There is no canonical monthly Student billing owner in this repository; a monthly linked-Student discount must not be subtracted from each Session charge. Implementing that discount requires a monthly billing/charge owner and base/discount/final amount provenance first.
 
 ## 8. Finance Reporting and Ledger Contracts
 

@@ -6,13 +6,15 @@ import { Badge } from '@/shared/components/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/card';
 import { formatDateTime } from '@/shared/utils/date-format';
 import type { AdminOverviewData } from './admin-overview-data';
-import { recentSessionState } from '@/features/sessions/utils/recent-session-presentation';
+import { classifySessionOccurrence } from '@/shared/utils/session-timing';
+import { NeedsAttentionPanel } from './needs-attention-panel';
 
-export function AdminOverviewView({ date, asOf, checkInWindowHours, sessions }: AdminOverviewData) {
+export function AdminOverviewView({ date, asOf, sessions, attention }: AdminOverviewData) {
   const now = new Date(asOf);
-  const finished = sessions.filter(({ status }) => status === 'COMPLETED').length;
-  const active = sessions.filter(({ status }) => status === 'ACTIVE').length;
-  const pendingAttendance = sessions.filter(({ status, attendanceSaved }) => (status === 'SCHEDULED' || status === 'ACTIVE') && !attendanceSaved).length;
+  const occurrenceState = (session: AdminOverviewData['sessions'][number]) => session.status === 'CANCELLED' ? 'CANCELLED' : classifySessionOccurrence(session.startTime, session.endTime, now);
+  const finished = sessions.filter((session) => occurrenceState(session) === 'COMPLETED').length;
+  const active = sessions.filter((session) => occurrenceState(session) === 'ACTIVE').length;
+  const pendingAttendance = sessions.filter((session) => occurrenceState(session) !== 'SCHEDULED' && occurrenceState(session) !== 'CANCELLED' && !session.attendanceSubmitted).length;
 
   return (
     <div className="w-full min-w-0 space-y-6">
@@ -24,6 +26,8 @@ export function AdminOverviewView({ date, asOf, checkInWindowHours, sessions }: 
         </div>
         <Link href="/admin/gadwal" className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-brand-primary px-4 text-sm font-semibold text-white hover:bg-brand-hover">Open schedule</Link>
       </header>
+
+      <NeedsAttentionPanel items={attention} />
 
       <section className="grid gap-3 sm:grid-cols-3" aria-label="Today's session summary">
         <SummaryCard label="Scheduled today" value={sessions.length} icon={<CalendarDays aria-hidden="true" className="h-5 w-5" />} />
@@ -38,9 +42,9 @@ export function AdminOverviewView({ date, asOf, checkInWindowHours, sessions }: 
             <ol className="divide-y divide-border-subtle">
               {sessions.map((session) => <li key={session.id} className="flex min-w-0 flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2"><h3 className="break-words font-semibold text-text-primary">{session.title}</h3><Badge variant="outline">{session.sessionType}</Badge><Badge variant={session.status === 'COMPLETED' ? 'success' : 'outline'}>{recentSessionState(session.status, session.startTime, session.endTime, session.attendanceSaved, now, checkInWindowHours)}</Badge></div>
+                  <div className="flex flex-wrap items-center gap-2"><h3 className="break-words font-semibold text-text-primary">{session.title}</h3><Badge variant="outline">{session.sessionType}</Badge><Badge variant={occurrenceState(session) === 'COMPLETED' ? 'success' : 'outline'}>{occurrenceState(session)}</Badge></div>
                   <p className="mt-1 text-sm text-text-muted">{formatDateTime(session.startTime)} – {formatDateTime(session.endTime)} · Tutor: {session.tutorName}</p>
-                  <p className="mt-1 text-xs text-text-muted">{session.attendeeCount} attendance record{session.attendeeCount === 1 ? '' : 's'} · {session.attendanceSaved ? 'Attendance submitted' : session.status === 'COMPLETED' ? 'Attendance save time unavailable' : 'Attendance not submitted'}</p>
+                  <p className="mt-1 text-xs text-text-muted">{session.attendeeCount} present record{session.attendeeCount === 1 ? '' : 's'} · {session.attendanceSubmitted ? 'Attendance submitted' : session.attendanceSaved ? 'Draft saved · awaiting final submission' : 'No final submission'}</p>
                 </div>
                 <Link href={`/admin/gadwal?session=${encodeURIComponent(session.id)}`} className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-lg border border-border-subtle px-4 text-sm font-semibold text-text-primary hover:bg-canvas-subtle">Manage session</Link>
               </li>)}

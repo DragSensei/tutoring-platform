@@ -38,6 +38,11 @@ enum SessionStatus {
   CANCELLED
 }
 
+enum AttendanceOutcome {
+  PRESENT
+  ABSENT
+}
+
 enum SessionSeriesStatus {
   ACTIVE
   ENDED
@@ -98,6 +103,7 @@ model User {
   commission_policy_updates  PlatformPolicy[]               @relation("CommissionPolicyUpdater")
   tutor_payouts              PayoutSettlement[]              @relation("TutorPayoutRecipient")
   created_payouts            PayoutSettlement[]              @relation("PayoutCreator")
+  granted_attendance_recoveries AttendanceRecoveryGrant[]    @relation("AttendanceRecoveryGrantAdmin")
 
   @@index([role])
   @@index([referral_source_id])
@@ -171,6 +177,7 @@ model Session {
   student_price_snapshot        Decimal?        @db.Decimal(10, 2)
   attendance_notes              String?         @db.Text
   attendance_saved_at           DateTime?
+  attendance_submitted_at       DateTime?
   attendance_finalized_at       DateTime?
   series_exception_reason       String?
   created_at                    DateTime        @default(now())
@@ -181,12 +188,14 @@ model Session {
   transactions       WalletTransaction[]
   tutor_compensation TutorCompensationLedgerEntry?
   commission_entries CommissionLedgerEntry[]
+  attendance_recovery_grants AttendanceRecoveryGrant[]
 
   @@unique([series_id, occurrence_date])
   @@index([tutor_id])
   @@index([series_id, occurrence_date])
   @@index([token])
   @@index([start_time])
+  @@index([attendance_submitted_at, attendance_finalized_at])
 }
 
 model SessionSeries {
@@ -227,12 +236,33 @@ model SessionSeriesParticipant {
 model SessionParticipant {
   session_id String
   student_id String
+  attendance_outcome AttendanceOutcome?
   session    Session  @relation(fields: [session_id], references: [id], onDelete: Cascade)
   student    User     @relation(fields: [student_id], references: [id], onDelete: Cascade)
   created_at DateTime @default(now())
 
   @@id([session_id, student_id])
   @@index([student_id])
+}
+
+model AttendanceRecoveryGrant {
+  id                       String   @id @default(cuid())
+  session_id               String
+  session                  Session  @relation(fields: [session_id], references: [id], onDelete: Restrict)
+  granted_by_admin_id      String
+  granted_by_admin         User     @relation("AttendanceRecoveryGrantAdmin", fields: [granted_by_admin_id], references: [id], onDelete: Restrict)
+  admin_reason             String   @db.Text
+  policy_duration_hours    Int
+  opened_at                DateTime
+  closes_at                DateTime
+  tutor_explanation        String?  @db.Text
+  tutor_attested_at         DateTime?
+  screenshot_unavailable  Boolean?
+  used_at                  DateTime?
+  created_at               DateTime @default(now())
+
+  @@index([session_id, opened_at])
+  @@index([session_id, used_at, closes_at])
 }
 
 model AttendanceRecord {
@@ -269,6 +299,7 @@ model WalletTransaction {
 model PlatformPolicy {
   id                            String          @id @default("default")
   check_in_window_hours         Int             @default(4)
+  late_attendance_recovery_window_hours Int     @default(1)
   group_session_price           Decimal         @default(375.00) @db.Decimal(10, 2)
   private_session_price         Decimal         @default(500.00) @db.Decimal(10, 2)
   allow_overdraft               Boolean         @default(true)

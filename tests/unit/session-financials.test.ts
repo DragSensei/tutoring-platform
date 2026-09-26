@@ -12,6 +12,7 @@ const session = {
   session_type: 'GROUP' as const,
   historical_only: false,
   attendance_saved_at: new Date('2026-09-01T10:00:00Z'),
+  attendance_submitted_at: new Date('2026-09-01T12:00:00Z'),
   attendance_finalized_at: new Date('2026-09-01T14:00:00Z'),
   pricing_profile_id: 'profile-1',
   pricing_profile_name_snapshot: null,
@@ -202,10 +203,12 @@ describe('Tutor compensation accrual', () => {
   it('leaves delivered hours unaccrued when the effective hourly rate is unset', async () => {
     const finalizedSession = {
       id: 'session-1', tutor_id: 'tutor-1',
-      start_time: new Date('2026-09-01T10:00:00Z'), end_time: new Date('2026-09-01T11:30:00Z'),
+      start_time: new Date('2026-09-01T10:00:00Z'), end_time: new Date('2026-09-01T12:00:00Z'),
       status: 'SCHEDULED', historical_only: false,
       attendance_saved_at: new Date('2026-09-01T10:00:00Z'),
+      attendance_submitted_at: new Date('2026-09-01T12:00:00Z'),
       attendance_finalized_at: new Date('2026-09-01T14:00:00Z'),
+      participants: [{ attendance_outcome: 'PRESENT' }, { attendance_outcome: 'ABSENT' }],
       tutor: { role: 'TUTOR', tutor_hourly_rate_override: null },
       tutor_compensation: null,
     };
@@ -221,10 +224,12 @@ describe('Tutor compensation accrual', () => {
   it('snapshots delivered minutes, the effective rate, and the Decimal amount once', async () => {
     const finalizedSession = {
       id: 'session-1', tutor_id: 'tutor-1',
-      start_time: new Date('2026-09-01T10:00:00Z'), end_time: new Date('2026-09-01T11:30:00Z'),
+      start_time: new Date('2026-09-01T10:00:00Z'), end_time: new Date('2026-09-01T12:00:00Z'),
       status: 'SCHEDULED', historical_only: false,
       attendance_saved_at: new Date('2026-09-01T10:00:00Z'),
+      attendance_submitted_at: new Date('2026-09-01T12:00:00Z'),
       attendance_finalized_at: new Date('2026-09-01T14:00:00Z'),
+      participants: [{ attendance_outcome: 'PRESENT' }, { attendance_outcome: 'ABSENT' }],
       tutor: { role: 'TUTOR', tutor_hourly_rate_override: new Prisma.Decimal('800.00') },
       tutor_compensation: null,
     };
@@ -232,12 +237,38 @@ describe('Tutor compensation accrual', () => {
 
     const result = await accrueTutorCompensation(tx, 'session-1', new Date('2026-09-01T14:00:00Z'));
 
-    expect(result?.deliveredMinutes).toBe(90);
+    expect(result?.deliveredMinutes).toBe(120);
     expect(result?.hourlyRate.toString()).toBe('800');
-    expect(result?.amount.toString()).toBe('1200');
+    expect(result?.amount.toString()).toBe('1600');
     expect(calls.tutorPayUpsert.mock.calls[0][0].create).toMatchObject({
-      session_id: 'session-1', tutor_id: 'tutor-1', delivered_minutes: 90,
-      hourly_rate: new Prisma.Decimal('800'), amount: new Prisma.Decimal('1200'),
+      session_id: 'session-1', tutor_id: 'tutor-1', delivered_minutes: 120,
+      hourly_rate: new Prisma.Decimal('800'), amount: new Prisma.Decimal('1600'),
     });
+  });
+
+  it('creates no compensation when every assigned Student is absent', async () => {
+    const allAbsent = {
+      id: 'session-1', tutor_id: 'tutor-1', start_time: new Date('2026-09-01T10:00:00Z'), end_time: new Date('2026-09-01T12:00:00Z'),
+      status: 'SCHEDULED', historical_only: false, attendance_saved_at: new Date('2026-09-01T12:00:00Z'),
+      attendance_submitted_at: new Date('2026-09-01T12:00:00Z'), attendance_finalized_at: null,
+      participants: [{ attendance_outcome: 'ABSENT' }, { attendance_outcome: 'ABSENT' }],
+      tutor: { role: 'TUTOR', tutor_hourly_rate_override: new Prisma.Decimal('800.00') }, tutor_compensation: null,
+    };
+    const { tx, calls } = createTx({ sessionFind: vi.fn().mockResolvedValue(allAbsent) });
+    await expect(accrueTutorCompensation(tx, 'session-1', new Date('2026-09-01T12:00:00Z'))).resolves.toBeNull();
+    expect(calls.tutorPayUpsert).not.toHaveBeenCalled();
+  });
+
+  it('does not pay from a draft without final submission', async () => {
+    const draft = {
+      id: 'session-1', tutor_id: 'tutor-1', start_time: new Date('2026-09-01T10:00:00Z'), end_time: new Date('2026-09-01T12:00:00Z'),
+      status: 'SCHEDULED', historical_only: false, attendance_saved_at: new Date('2026-09-01T11:00:00Z'),
+      attendance_submitted_at: null, attendance_finalized_at: null,
+      participants: [{ attendance_outcome: 'PRESENT' }],
+      tutor: { role: 'TUTOR', tutor_hourly_rate_override: new Prisma.Decimal('800.00') }, tutor_compensation: null,
+    };
+    const { tx, calls } = createTx({ sessionFind: vi.fn().mockResolvedValue(draft) });
+    await expect(accrueTutorCompensation(tx, 'session-1', new Date('2026-09-01T12:00:00Z'))).rejects.toThrow('final attendance submission');
+    expect(calls.tutorPayUpsert).not.toHaveBeenCalled();
   });
 });

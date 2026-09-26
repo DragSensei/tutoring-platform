@@ -199,6 +199,7 @@ describe('recurring weekly sessions', () => {
       { startTime: postponedStart.toISOString(), endTime: postponedEnd.toISOString(), reason: 'Tutor availability change' },
       policy,
       { id: tutor.id, role: 'TUTOR' },
+      new Date(first.start_time.getTime() - 1),
     );
     const after = await prisma.session.findUniqueOrThrow({ where: { id: first.id } });
     const seriesAfter = await prisma.sessionSeries.findUniqueOrThrow({ where: { id: created.id } });
@@ -211,6 +212,23 @@ describe('recurring weekly sessions', () => {
     expect(after.series_exception_reason).toBe('Tutor availability change');
     expect(seriesAfter.start_minute).toBe(17 * 60);
     expect(nextAfter.start_time).toEqual(next.start_time);
+  });
+
+  it('rejects Tutor postponement at or after the concrete occurrence start', async () => {
+    const tutor = await createUser('TUTOR');
+    const student = await createUser('STUDENT');
+    const created = await createSeries(tutor.id, student.id, `${prefix}started-postpone`);
+    const [first] = await occurrences(created.id);
+    const start = first.start_time;
+    await expect(rescheduleSessionOccurrence(
+      first.id,
+      { startTime: new Date(start.getTime() + 60_000).toISOString(), endTime: new Date(first.end_time.getTime() + 60_000).toISOString(), reason: 'Session already started' },
+      policy,
+      { id: tutor.id, role: 'TUTOR' },
+      start,
+    )).rejects.toThrow('A Session can only be postponed before it starts.');
+    const unchanged = await prisma.session.findUniqueOrThrow({ where: { id: first.id } });
+    expect(unchanged.start_time).toEqual(start);
   });
 
   it('supports THIS_AND_FUTURE and ENTIRE_SERIES edits without changing history rows', async () => {

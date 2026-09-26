@@ -18,7 +18,7 @@ vi.mock('@/features/policies/server/policy-actions', () => ({ getPlatformPolicie
 vi.mock('@/shared/lib/prisma', () => ({ prisma }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-const { createSession, updateSession, deleteSession } = await import('@/features/sessions/server/session-actions');
+const { createSession, updateSession, deleteSession, rescheduleSessionOccurrence } = await import('@/features/sessions/server/session-actions');
 const { createAdminSession, cancelAdminSession } = await import('@/app/(portal)/admin/gadwal/actions');
 
 const input = {
@@ -121,5 +121,19 @@ describe('Admin session mutation boundary', () => {
     prisma.session.findUnique.mockResolvedValue({ id: 'session-1', status: 'ACTIVE' });
     await cancelAdminSession('session-1');
     expect(prisma.session.update).toHaveBeenCalledWith({ where: { id: 'session-1' }, data: { status: 'CANCELLED' } });
+  });
+
+  it('checks the occurrence start inside a serializable transaction before postponing', async () => {
+    const startTime = new Date('2026-10-01T10:00:00.000Z');
+    prisma.session.findUnique.mockResolvedValue(createdSession({ start_time: startTime }));
+
+    await expect(rescheduleSessionOccurrence('session-1', {
+      startTime: '2026-10-02T10:00:00.000Z',
+      endTime: '2026-10-02T12:00:00.000Z',
+      reason: 'Tutor requested a new time.',
+    }, policy, { id: 'tutor-1', role: 'TUTOR' }, startTime)).rejects.toThrow('A Session can only be postponed before it starts.');
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.session.update).not.toHaveBeenCalled();
   });
 });

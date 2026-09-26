@@ -56,6 +56,7 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
 
     const res = await updatePlatformPolicies({
       checkInWindowHours: Number(policies.checkInWindowHours),
+      lateAttendanceRecoveryWindowHours: Number(policies.lateAttendanceRecoveryWindowHours),
       groupSessionPrice: policies.groupSessionPrice.toFixed(2),
       privateSessionPrice: policies.privateSessionPrice.toFixed(2),
       allowOverdraft: Boolean(policies.allowOverdraft),
@@ -201,6 +202,27 @@ export function AdminPoliciesView({ initialPolicies }: AdminPoliciesViewProps) {
             <p className="text-xs text-stone-500 self-center leading-relaxed">
               Sessions scheduled in Gadwal dynamically adopt this grace period. Tutor attendance opens at the concrete start and closes after the concrete end plus this value.
             </p>
+          </div>
+        </motion.div>
+
+        <motion.div variants={itemVariants} className="rounded-2xl border border-stone-200/80 bg-white p-6 shadow-xs space-y-3">
+          <div>
+            <h2 className="text-base font-bold text-stone-900">Late attendance recovery</h2>
+            <p className="mt-1 text-xs text-stone-500">This is a separate, Admin-granted window after the normal attendance deadline. Each grant snapshots this duration.</p>
+          </div>
+          <label htmlFor="lateAttendanceRecoveryWindowHours" className="block text-xs font-semibold text-stone-700">Recovery duration (hours)</label>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              id="lateAttendanceRecoveryWindowHours"
+              type="number"
+              min="1"
+              max="168"
+              required
+              value={policies.lateAttendanceRecoveryWindowHours}
+              onChange={(event) => setPolicies({ ...policies, lateAttendanceRecoveryWindowHours: Number(event.target.value) })}
+              className="min-h-[44px] w-32 rounded-lg border border-stone-200 bg-stone-50/50 px-3 py-2 text-sm font-semibold focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+            />
+            <span className="text-xs text-stone-500">hours per new recovery grant</span>
           </div>
         </motion.div>
 

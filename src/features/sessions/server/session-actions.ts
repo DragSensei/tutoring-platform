@@ -1,5 +1,6 @@
 import { prisma } from '@/shared/lib/prisma';
 import { computeAttendanceClosesAt, getAttendanceWindowState } from '@/shared/utils/deadline';
+import { canPostponeSession, classifySessionOccurrence } from '@/shared/utils/session-timing';
 import type { SessionType, TutorVolumeKPIs } from '@/shared/types';
 import { formatSessionCode } from '@/shared/utils/session-code';
 import { createSessionSchema, type CreateSessionInput, type SessionFilterInput } from '../schemas';
@@ -8,9 +9,14 @@ import { Prisma } from '@prisma/client';
 
 export interface SessionPricingConfig {
   checkInWindowHours: number;
+  defaultTutorHourlyRate?: string;
   groupSessionPrice: number;
   privateSessionPrice: number;
 }
+
+export type TutorSessionScope =
+  | { mode: 'timetable'; horizonDays: number }
+  | { mode: 'upcoming'; horizonDays: number | null };
 
 const SESSION_INCLUDE = {
   tutor: { select: { id: true, name: true, email: true } },
@@ -131,17 +137,15 @@ export async function createSession(input: CreateSessionInput, policy: SessionPr
   return serializeSession(session, policy);
 }
 
-export async function getGadwalSessions(filter: SessionFilterInput | undefined, policy: SessionPricingConfig) {
+export async function getGadwalSessions(filter: SessionFilterInput | undefined, policy: SessionPricingConfig, currentTime = new Date()) {
   const whereClause: {
     tutor_id?: string;
     historical_only?: boolean;
-    status?: 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
     start_time?: { gte?: Date; lte?: Date };
   } = {};
 
   whereClause.historical_only = false;
   if (filter?.tutorId) whereClause.tutor_id = filter.tutorId;
-  if (filter?.status) whereClause.status = filter.status;
   if (filter?.startDate || filter?.endDate) {
     whereClause.start_time = {};
     if (filter?.startDate) whereClause.start_time.gte = new Date(filter.startDate);
@@ -170,6 +174,7 @@ export async function getGadwalSessions(filter: SessionFilterInput | undefined, 
     attendanceClosesAt: computeAttendanceClosesAt(s.end_time, policy.checkInWindowHours).toISOString(),
     token: s.token,
     status: s.status,
+    occurrenceState: classifySessionOccurrence(s.start_time, s.end_time, currentTime),
     attendeeCount: s._count.attendances,
     participantCount: s.participants.length,
     transactionCount: s._count.transactions,
@@ -284,6 +289,7 @@ export async function rescheduleSessionOccurrence(
   input: { startTime: string; endTime: string; reason: string },
   policy: SessionPricingConfig,
   actor: { id: string; role: 'ADMIN' | 'TUTOR' },
+  currentTime?: Date,
 ) {
   const start = new Date(input.startTime);
   const end = new Date(input.endTime);
@@ -292,47 +298,66 @@ export async function rescheduleSessionOccurrence(
   }
   if (input.reason.trim().length < 3) throw new Error('A reschedule reason is required');
 
-  const existing = await prisma.session.findUnique({
-    where: { id: sessionId },
-    select: {
-      id: true,
-      tutor_id: true,
-      status: true,
-      historical_only: true,
-      _count: { select: { attendances: true, transactions: true } },
-    },
-  });
-  if (!existing || (actor.role === 'TUTOR' && existing.tutor_id !== actor.id)) {
-    throw new Error('Session is not available to this user');
-  }
-  if (existing.historical_only) throw new Error('Historical schedule records cannot be postponed');
-  if (existing.status === 'COMPLETED' || existing.status === 'CANCELLED') {
-    throw new Error('Completed or cancelled sessions cannot be postponed');
-  }
-  if (existing._count.attendances > 0 || existing._count.transactions > 0) {
-    throw new Error('Sessions with attendance or financial history cannot be postponed');
-  }
+  const updated = await prisma.$transaction(async (tx) => {
+    const existing = await tx.session.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        tutor_id: true,
+        status: true,
+        start_time: true,
+        historical_only: true,
+        _count: { select: { attendances: true, transactions: true } },
+      },
+    });
+    if (!existing || (actor.role === 'TUTOR' && existing.tutor_id !== actor.id)) {
+      throw new Error('Session is not available to this user');
+    }
+    if (existing.historical_only) throw new Error('Historical schedule records cannot be postponed');
+    if (!canPostponeSession(existing.start_time, currentTime ?? new Date())) throw new Error('A Session can only be postponed before it starts.');
+    if (existing.status === 'COMPLETED' || existing.status === 'CANCELLED') {
+      throw new Error('Completed or cancelled sessions cannot be postponed');
+    }
+    if (existing._count.attendances > 0 || existing._count.transactions > 0) {
+      throw new Error('Sessions with attendance or financial history cannot be postponed');
+    }
 
-  const updated = await prisma.session.update({
-    where: { id: sessionId },
-    data: {
-      start_time: start,
-      end_time: end,
-      deadline: computeAttendanceClosesAt(end, policy.checkInWindowHours),
-      series_exception: true,
-      series_exception_reason: input.reason.trim(),
-    },
-    include: SESSION_INCLUDE,
-  });
+    return tx.session.update({
+      where: { id: sessionId },
+      data: {
+        start_time: start,
+        end_time: end,
+        deadline: computeAttendanceClosesAt(end, policy.checkInWindowHours),
+        series_exception: true,
+        series_exception_reason: input.reason.trim(),
+      },
+      include: SESSION_INCLUDE,
+    });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   return serializeSession(updated, policy);
 }
 
-export async function getTutorSessions(tutorId: string, policy: SessionPricingConfig, currentTime = new Date()) {
-  await materializeActiveSeriesForTutor(tutorId, policy, currentTime);
+export async function getTutorSessions(tutorId: string, policy: SessionPricingConfig, currentTime = new Date(), scope?: TutorSessionScope) {
+  if (!scope) await materializeActiveSeriesForTutor(tutorId, policy, currentTime);
+  const horizonLimit = scope && scope.horizonDays !== null
+    ? new Date(currentTime.getTime() + scope.horizonDays * 86_400_000)
+    : null;
+  const where = scope?.mode === 'upcoming'
+    ? { tutor_id: tutorId, start_time: { gt: currentTime, ...(horizonLimit ? { lte: horizonLimit } : {}) } }
+    : scope?.mode === 'timetable'
+      ? {
+          tutor_id: tutorId,
+          OR: [
+            { end_time: { lte: currentTime } },
+            { AND: [{ start_time: { lte: currentTime } }, { end_time: { gt: currentTime } }] },
+            { start_time: { gt: currentTime, ...(horizonLimit ? { lte: horizonLimit } : {}) } },
+          ],
+        }
+      : { tutor_id: tutorId };
   const sessions = await prisma.session.findMany({
-    where: { tutor_id: tutorId },
+    where,
     include: {
-      tutor: { select: { id: true, name: true } },
+      tutor: { select: { id: true, name: true, tutor_hourly_rate_override: true } },
       _count: { select: { attendances: true } },
       participants: {
         include: {
@@ -341,12 +366,20 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
       },
       series: { select: { start_minute: true } },
       attendances: { select: { student_id: true } },
+      tutor_compensation: { select: { amount: true, hourly_rate: true, delivered_minutes: true } },
+      attendance_recovery_grants: {
+        orderBy: { opened_at: 'desc' },
+        take: 5,
+      },
     },
     orderBy: { start_time: 'desc' },
   });
 
   return sessions.map((s) => {
     const attendedIds = new Set(s.attendances.map((a) => a.student_id));
+    const recoveryGrant = s.attendance_recovery_grants.find((grant) => !grant.used_at && currentTime >= grant.opened_at && currentTime <= grant.closes_at);
+    const usedRecoveryGrant = s.attendance_recovery_grants.find((grant) => Boolean(grant.used_at));
+    const effectiveRate = s.tutor.tutor_hourly_rate_override ?? Number(policy.defaultTutorHourlyRate ?? 0);
     const assignedStudents = s.participants.map((participant) => displayProfile(participant.student.name));
     const sessionCode = formatSessionCode({
       title: s.title,
@@ -359,6 +392,7 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
       name: displayProfile(participant.student.name),
       email: displayProfile(participant.student.email),
       attended: attendedIds.has(participant.student.id),
+      outcome: participant.attendance_outcome,
     }));
 
     return {
@@ -373,6 +407,7 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
       deadline: computeAttendanceClosesAt(s.end_time, policy.checkInWindowHours).toISOString(),
       attendanceClosesAt: computeAttendanceClosesAt(s.end_time, policy.checkInWindowHours).toISOString(),
       attendanceSavedAt: s.attendance_saved_at?.toISOString() || null,
+      attendanceSubmittedAt: s.attendance_submitted_at?.toISOString() || null,
       attendanceFinalizedAt: s.attendance_finalized_at?.toISOString() || null,
       attendanceWindowState: getAttendanceWindowState(s.start_time, computeAttendanceClosesAt(s.end_time, policy.checkInWindowHours), currentTime),
       baseStartTime: s.series && s.occurrence_date ? academyDateTime(s.occurrence_date, s.series.start_minute).toISOString() : s.start_time.toISOString(),
@@ -382,6 +417,25 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
       status: s.status,
       historicalOnly: s.historical_only,
       attendeeCount: s._count.attendances,
+      tutorCompensation: s.tutor_compensation ? {
+        amount: s.tutor_compensation.amount.toFixed(2),
+        hourlyRate: s.tutor_compensation.hourly_rate.toFixed(2),
+        deliveredMinutes: s.tutor_compensation.delivered_minutes,
+      } : null,
+      tutorRateMissing: Boolean(s.attendance_submitted_at && s.participants.some((participant) => participant.attendance_outcome === 'PRESENT') && !s.tutor_compensation && Number(effectiveRate) <= 0),
+      recoveryGrant: recoveryGrant ? {
+        id: recoveryGrant.id,
+        openedAt: recoveryGrant.opened_at.toISOString(),
+        closesAt: recoveryGrant.closes_at.toISOString(),
+      } : null,
+      recoveryGrantUsed: usedRecoveryGrant ? {
+        id: usedRecoveryGrant.id,
+        adminReason: usedRecoveryGrant.admin_reason,
+        tutorExplanation: usedRecoveryGrant.tutor_explanation,
+        tutorAttestedAt: usedRecoveryGrant.tutor_attested_at?.toISOString() || null,
+        screenshotUnavailable: usedRecoveryGrant.screenshot_unavailable,
+        usedAt: usedRecoveryGrant.used_at?.toISOString() || null,
+      } : null,
       attendanceNotes: s.attendance_notes,
       assignedStudents,
       roster,

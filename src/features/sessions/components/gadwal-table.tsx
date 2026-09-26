@@ -13,12 +13,14 @@ import { useTablePagination } from '@/shared/hooks/use-table-pagination';
 import { TableToolbar } from '@/shared/components/table-toolbar';
 import { matchesTableSearch } from '@/shared/utils/table-search';
 import { SessionType, SessionStatus } from '@/shared/types';
+import type { SessionOccurrenceState } from '@/shared/utils/session-timing';
 
 export interface SessionStudentAttendee {
   id: string;
   name: string;
   email: string;
   attended: boolean;
+  outcome?: 'PRESENT' | 'ABSENT' | null;
 }
 
 export interface GadwalSessionItem {
@@ -33,14 +35,20 @@ export interface GadwalSessionItem {
   token: string | null;
   attendanceClosesAt?: string;
   attendanceSavedAt?: string | null;
+  attendanceSubmittedAt?: string | null;
   attendanceFinalizedAt?: string | null;
   attendanceWindowState?: 'BEFORE' | 'OPEN' | 'CLOSED';
   baseStartTime?: string;
   isRescheduled?: boolean;
   rescheduleReason?: string | null;
   status: SessionStatus;
+  occurrenceState?: SessionOccurrenceState;
   historicalOnly?: boolean;
   attendeeCount: number;
+  tutorCompensation?: { amount: string; hourlyRate: string; deliveredMinutes: number } | null;
+  tutorRateMissing?: boolean;
+  recoveryGrant?: { id: string; openedAt: string; closesAt: string } | null;
+  recoveryGrantUsed?: { id: string; adminReason: string; tutorExplanation: string | null; tutorAttestedAt: string | null; screenshotUnavailable: boolean | null; usedAt: string | null } | null;
   participantCount?: number;
   transactionCount?: number;
   attendanceNotes?: string | null;
@@ -77,9 +85,10 @@ export function GadwalTable({ sessions, showTutorColumn = true, showAdminActions
   const [pendingAction, setPendingAction] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [confirmation, setConfirmation] = React.useState<{ session: GadwalSessionItem; mode: 'delete' | 'cancel' } | null>(null);
+  const timetableStatus = (session: GadwalSessionItem): SessionStatus => session.status === 'CANCELLED' ? 'CANCELLED' : session.occurrenceState ?? session.status;
   const filteredSessions = sessions.filter((session) =>
-    matchesTableSearch([session.title, session.tutorName, session.sessionType, session.status], search) &&
-    (!statusFilter || session.status === statusFilter) &&
+    matchesTableSearch([session.title, session.tutorName, session.sessionType, timetableStatus(session)], search) &&
+    (!statusFilter || timetableStatus(session) === statusFilter) &&
     (!typeFilter || session.sessionType === typeFilter)
   );
   const pagination = useTablePagination(filteredSessions);
@@ -168,7 +177,7 @@ export function GadwalTable({ sessions, showTutorColumn = true, showAdminActions
                       {formatDateTime(s.deadline)}
                     </td>
                     <td className="px-4 py-3 font-medium">{s.attendeeCount}</td>
-                    <td className="px-4 py-3">{getStatusBadge(s.status)}</td>
+                    <td className="px-4 py-3">{getStatusBadge(timetableStatus(s))}</td>
                     {showAdminActions && <td className="px-4 py-3 text-right">
                       <div className="flex min-w-[180px] items-center justify-end gap-2">
                         {s.status !== 'COMPLETED' && s.status !== 'CANCELLED' && <Link href={`/admin/gadwal/${s.id}/edit`} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-stone-200 px-3 text-xs font-semibold text-stone-700 hover:bg-stone-50" title="Edit session">

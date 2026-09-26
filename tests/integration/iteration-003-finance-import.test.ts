@@ -13,7 +13,7 @@ vi.mock('@/shared/server/session', () => ({ requireAuth: vi.fn() }));
 
 const { prisma } = await import('@/shared/lib/prisma');
 const { requireAuth } = await import('@/shared/server/session');
-const { saveTutorAttendance } = await import('@/app/(portal)/tutor/attendance/actions');
+const { saveTutorAttendanceDraft, submitTutorAttendance } = await import('@/app/(portal)/tutor/attendance/actions');
 const { finalizeDueAttendance } = await import('@/features/attendance/server/finalize-due-attendance');
 const { accrueTutorCompensation, reconcileSessionFinancialState } = await import('@/features/attendance/server/session-financials');
 const { updatePlatformPolicies } = await import('@/features/policies/server/policy-actions');
@@ -192,12 +192,14 @@ describe('Iteration 003 financial and import database invariants', () => {
     await setPolicy({ defaultRate: '600.00', commissionEnabled: true, commissionRateBps: 1000, groupPrice: '375.00', ruleVersion: 12 });
 
     const now = new Date();
-    const start = new Date(now.getTime() - 8 * 60 * 60_000);
+    const start = new Date(now.getTime() - 6 * 60 * 60_000);
     const end = new Date(start.getTime() + 2 * 60 * 60_000);
     const session = await createSession({ tutorId: tutor.id, studentId: student.id, title: 'settled', start, end });
     vi.mocked(requireAuth).mockResolvedValue({ userId: tutor.id, email: tutor.email!, name: tutor.name!, role: 'TUTOR' });
     const saveTime = new Date(start.getTime() + 60 * 60_000);
-    expect((await saveTutorAttendance({ sessionId: session.id, presentStudentIds: [student.id], notes: 'Delivered and reviewed.' }, saveTime)).success).toBe(true);
+    const submitTime = new Date(end.getTime() + 60_000);
+    expect((await saveTutorAttendanceDraft({ sessionId: session.id, outcomes: { [student.id]: 'PRESENT' }, notes: 'Delivered and reviewed.' }, saveTime)).success).toBe(true);
+    expect((await submitTutorAttendance({ sessionId: session.id, outcomes: { [student.id]: 'PRESENT' }, notes: 'Delivered and reviewed.', normalEvidenceSelected: true }, submitTime)).success).toBe(true);
 
     const historicalStart = new Date(start.getTime() - 10 * 60 * 60_000);
     const historicalEnd = new Date(historicalStart.getTime() + 2 * 60 * 60_000);
@@ -216,7 +218,7 @@ describe('Iteration 003 financial and import database invariants', () => {
       where: {
         status: { in: ['SCHEDULED', 'ACTIVE'] },
         historical_only: false,
-        attendance_saved_at: { not: null },
+        attendance_submitted_at: { not: null },
         attendance_finalized_at: null,
       },
       select: { id: true, end_time: true },
@@ -274,6 +276,7 @@ describe('Iteration 003 financial and import database invariants', () => {
     });
     expect(await updatePlatformPolicies({
       checkInWindowHours: 4,
+      lateAttendanceRecoveryWindowHours: 1,
       groupSessionPrice: '500.00',
       privateSessionPrice: '700.00',
       allowOverdraft: true,

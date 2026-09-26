@@ -4,6 +4,7 @@ import { prisma } from '@/shared/lib/prisma';
 import { addCalendarDays, formatCalendarDate, parseCalendarDate } from '@/shared/utils/calendar-date';
 import { startOfCairoDay } from '@/shared/utils/academy-day';
 import { formatAcademyDateInput } from '@/shared/utils/date-format';
+import { CHECKIN_WINDOW_HOURS, computeAttendanceClosesAt } from '@/shared/utils/deadline';
 import { netPayout } from '@/features/finances/domain/payout-math';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -69,7 +70,7 @@ export async function getAdminFinanceReport(input: FinanceDateRangeInput = {}) {
       where: {
         historical_only: false,
         status: 'COMPLETED',
-        attendance_saved_at: { not: null },
+        attendance_submitted_at: { not: null },
         attendance_finalized_at: { gte: range.from, lt: range.until },
       },
       select: {
@@ -304,13 +305,18 @@ export async function getAdminFinanceSessionDetail(sessionId: string) {
       start_time: true,
       end_time: true,
       attendance_saved_at: true,
+      attendance_submitted_at: true,
       attendance_finalized_at: true,
       student_price_snapshot: true,
       pricing_profile_name_snapshot: true,
       tutor: { select: { id: true, name: true } },
-      participants: { select: { student: { select: { id: true, name: true } } } },
+      participants: { select: { attendance_outcome: true, student: { select: { id: true, name: true } } } },
       attendances: { select: { student_id: true } },
       tutor_compensation: { select: { tutor_id: true, delivered_minutes: true, hourly_rate: true, amount: true, created_at: true } },
+      attendance_recovery_grants: {
+        include: { granted_by_admin: { select: { name: true } } },
+        orderBy: { opened_at: 'desc' },
+      },
       transactions: {
         where: { transaction_type: 'SESSION_DEDUCTION', created_by_user_id: null },
         select: {
@@ -335,6 +341,10 @@ export async function getAdminFinanceSessionDetail(sessionId: string) {
     },
   });
   if (!session) return null;
+  const policy = await prisma.platformPolicy.findUnique({ where: { id: 'default' }, select: { check_in_window_hours: true } });
+  const now = new Date();
+  const attendanceClosesAt = computeAttendanceClosesAt(session.end_time, policy?.check_in_window_hours ?? CHECKIN_WINDOW_HOURS);
+  const activeRecovery = session.attendance_recovery_grants.some((grant) => !grant.used_at && grant.opened_at <= now && grant.closes_at >= now);
   const presentIds = new Set(session.attendances.map(({ student_id }) => student_id));
   return {
     id: session.id,
@@ -345,14 +355,30 @@ export async function getAdminFinanceSessionDetail(sessionId: string) {
     startTime: session.start_time.toISOString(),
     endTime: session.end_time.toISOString(),
     attendanceSavedAt: session.attendance_saved_at?.toISOString() ?? null,
+    attendanceSubmittedAt: session.attendance_submitted_at?.toISOString() ?? null,
     finalizedAt: session.attendance_finalized_at?.toISOString() ?? null,
+    attendanceClosesAt: attendanceClosesAt.toISOString(),
+    recoveryEligible: !session.historical_only && session.status !== 'CANCELLED' && !session.attendance_submitted_at && !session.attendance_finalized_at && session.participants.length > 0 && now > attendanceClosesAt && !activeRecovery,
+    recoveryGrants: session.attendance_recovery_grants.map((grant) => ({
+      id: grant.id,
+      adminName: grant.granted_by_admin.name ?? 'Admin',
+      adminReason: grant.admin_reason,
+      durationHours: grant.policy_duration_hours,
+      openedAt: grant.opened_at.toISOString(),
+      closesAt: grant.closes_at.toISOString(),
+      tutorExplanation: grant.tutor_explanation,
+      tutorAttestedAt: grant.tutor_attested_at?.toISOString() ?? null,
+      screenshotUnavailable: grant.screenshot_unavailable,
+      usedAt: grant.used_at?.toISOString() ?? null,
+    })),
     priceSnapshot: session.student_price_snapshot?.toFixed(2) ?? null,
     pricingProfileNameSnapshot: session.pricing_profile_name_snapshot,
     tutor: { id: session.tutor.id, name: session.tutor.name ?? 'Unnamed tutor' },
-    students: session.participants.map(({ student }) => ({
-      id: student.id,
-      name: student.name ?? 'Unnamed student',
-      attended: presentIds.has(student.id),
+    students: session.participants.map((participant) => ({
+      id: participant.student.id,
+      name: participant.student.name ?? 'Unnamed student',
+      attended: presentIds.has(participant.student.id),
+      outcome: participant.attendance_outcome,
     })),
     compensation: session.tutor_compensation ? {
       tutorId: session.tutor_compensation.tutor_id,

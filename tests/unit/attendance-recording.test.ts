@@ -5,7 +5,7 @@ import {
   getPresentStudentIds,
   isAttendanceWorkflowComplete,
   markAllAttendance,
-  toggleStudentAttendance,
+  setAttendanceOutcome,
 } from '@/features/attendance/utils/attendance-review';
 
 describe('Tutor Dashboard Attendance Recording & Cohort Capacity', () => {
@@ -95,24 +95,24 @@ describe('Tutor Dashboard Attendance Recording & Cohort Capacity', () => {
   });
 
   it('treats an explicitly reviewed all-absent cohort as complete', () => {
-    const reviewed = markAllAttendance(mockStudents, false);
+    const reviewed = markAllAttendance(mockStudents, 'ABSENT');
 
     expect(getPresentStudentIds(mockStudents, reviewed)).toEqual([]);
-    expect(isAttendanceWorkflowComplete(reviewed, 'All students were absent.', true)).toBe(true);
+    expect(isAttendanceWorkflowComplete(mockStudents, reviewed, 'All students were absent.', true)).toBe(true);
   });
 
-  it('does not infer attendance review from a zero present count', () => {
+  it('keeps undecided attendance unresolved rather than inferring ABSENT', () => {
     const untouched = createAttendanceReviewState(mockStudents);
 
     expect(getPresentStudentIds(mockStudents, untouched)).toEqual([]);
-    expect(isAttendanceWorkflowComplete(untouched, 'All students were absent.', true)).toBe(false);
+    expect(isAttendanceWorkflowComplete(mockStudents, untouched, 'All students were absent.', true)).toBe(false);
   });
 
   it('supports one student, four students, and larger mixed cohorts deterministically', () => {
-    const oneStudent = markAllAttendance(mockStudents.slice(0, 1), true);
+    const oneStudent = markAllAttendance(mockStudents.slice(0, 1), 'PRESENT');
     const fourStudents = markAllAttendance(
       [...mockStudents, { id: 'st-4', name: 'Nour Adel', email: 'nour@student.com', attended: false }],
-      true
+      'PRESENT'
     );
     const largeRoster = Array.from({ length: 18 }, (_, index) => ({
       id: `student-${index}`,
@@ -121,8 +121,8 @@ describe('Tutor Dashboard Attendance Recording & Cohort Capacity', () => {
       attended: false,
     }));
     let mixed = createAttendanceReviewState(largeRoster);
-    mixed = toggleStudentAttendance(mixed, 'student-0');
-    mixed = toggleStudentAttendance(mixed, 'student-17');
+    mixed = setAttendanceOutcome(mixed, 'student-0', 'PRESENT');
+    mixed = setAttendanceOutcome(mixed, 'student-17', 'PRESENT');
 
     expect(getPresentStudentIds(mockStudents.slice(0, 1), oneStudent)).toHaveLength(1);
     expect(getPresentStudentIds([...mockStudents, { id: 'st-4', name: 'Nour Adel', email: 'nour@student.com', attended: false }], fourStudents)).toHaveLength(4);
