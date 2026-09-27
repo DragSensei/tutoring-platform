@@ -7,6 +7,7 @@ import {
   cancelSession,
   createSession,
   deleteSession,
+  getGadwalSessions,
   getAdminSession as getSessionRecord,
   rescheduleSessionOccurrence,
   updateSession,
@@ -21,6 +22,7 @@ import {
   updateSessionSeries,
 } from '@/features/sessions/server/series-actions';
 import type { CreateSessionInput, RecurrenceScope, SessionSeriesInput } from '@/features/sessions/schemas';
+import { getAdminAttendanceAttention } from '@/features/attendance/server/admin-attendance';
 
 /** Admin orchestration boundary for the session domain operation. */
 export async function createAdminSession(input: CreateSessionInput) {
@@ -122,8 +124,21 @@ export async function getAdminWeeklySeries(tutorId?: string) {
   return getAdminWeeklySchedule(tutorId, await getPlatformPolicies());
 }
 
+export async function getAdminTimetableSessions(tutorId?: string) {
+  await requireAuth(['ADMIN']);
+  const now = new Date();
+  const [policy, attention] = await Promise.all([getPlatformPolicies(), getAdminAttendanceAttention(now)]);
+  const sessions = await getGadwalSessions(tutorId ? { tutorId } : undefined, policy, now);
+  return {
+    sessions,
+    attentionSessionIds: attention.filter((item) => item.kind !== 'LINKED_STUDENTS' && !item.adminHandledAt).map((item) => item.id),
+    asOf: now.toISOString(),
+  };
+}
+
 function revalidateSessionSurfaces() {
   revalidatePath('/admin/gadwal');
+  revalidatePath('/admin/needs-attention');
   revalidatePath('/admin/gadwal/new');
   revalidatePath('/tutor/agenda');
   revalidatePath('/tutor/dashboard');

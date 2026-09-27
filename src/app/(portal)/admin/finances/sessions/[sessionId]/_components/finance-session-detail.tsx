@@ -40,6 +40,7 @@ export function FinanceSessionDetail({ detail }: { detail: SessionDetail }) {
         eligible={detail.recoveryEligible}
         attendanceDeadline={detail.attendanceClosesAt}
         submittedAt={detail.attendanceSubmittedAt}
+        adminHandling={detail.adminHandling}
         grants={detail.recoveryGrants}
       />
 

@@ -54,6 +54,7 @@ export const adminNavigation: PortalNavigationConfig = {
       items: [
         { label: 'Overview', href: '/admin', icon: LayoutDashboard },
         { label: 'Timetable', href: '/admin/gadwal', icon: CalendarDays },
+        { label: 'Needs Attention', href: '/admin/needs-attention', icon: ListTodo },
         { label: 'Accounts', href: '/admin/accounts', icon: UserRoundSearch },
       ],
     },

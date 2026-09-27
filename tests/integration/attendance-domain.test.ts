@@ -14,6 +14,7 @@ const { requireAuth } = await import('@/features/auth/server/session');
 const { saveTutorAttendanceDraft, submitTutorAttendance } = await import('@/app/(portal)/tutor/attendance/actions');
 const { finalizeDueAttendance } = await import('@/features/attendance/server/finalize-due-attendance');
 const { executeStudentCheckIn } = await import('@/features/attendance/server/checkin-action');
+const { getAdminAttendanceInterventionBoard, grantLateAttendanceRecovery, markAdminAttendanceHandled } = await import('@/features/attendance/server/admin-attendance');
 const { getTutorSessions } = await import('@/features/sessions/server/session-actions');
 const { getPlatformPolicies } = await import('@/features/policies/server/policy-actions');
 
@@ -43,8 +44,17 @@ async function createFixture(start: Date, end: Date) {
 }
 
 async function cleanup() {
+  const sessions = await prisma.session.findMany({ where: { title: { contains: prefix } }, select: { id: true } });
+  await prisma.attendanceRecoveryGrant.deleteMany({ where: { session_id: { in: sessions.map(({ id }) => id) } } });
   await prisma.session.deleteMany({ where: { title: { contains: prefix } } });
   await prisma.user.deleteMany({ where: { email: { startsWith: prefix } } });
+}
+
+async function createAdmin() {
+  const marker = `${prefix}${counter++}`;
+  return prisma.user.create({
+    data: { name: `Admin ${marker}`, email: `${marker}-admin@example.com`, phone: `+20${Date.now()}${counter}`, password_hash: 'test', role: 'ADMIN' },
+  });
 }
 
 async function walletState(studentId: string, sessionId: string) {
@@ -149,5 +159,78 @@ describe('final Tutor attendance and settlement contract', () => {
     ]);
     expect(one.finalizedCount + two.finalizedCount).toBe(1);
     expect((await walletState(fixture.student.id, fixture.session.id)).transactions.filter((entry) => entry.transaction_type === 'SESSION_DEDUCTION')).toHaveLength(1);
+  });
+
+  it('persists one Admin recovery intervention, lists it as handled, and rejects repeats', async () => {
+    const fixture = await createFixture(new Date('2026-10-01T06:00:00.000Z'), new Date('2026-10-01T08:00:00.000Z'));
+    const admin = await createAdmin();
+    const handledAt = new Date('2026-10-01T18:00:00.000Z');
+    const grant = await grantLateAttendanceRecovery(admin.id, fixture.session.id, 'Tutor reported a connection outage.', handledAt);
+    expect(grant.closes_at).toEqual(new Date('2026-10-01T19:00:00.000Z'));
+    await expect(grantLateAttendanceRecovery(admin.id, fixture.session.id, 'Try the recovery action again.', new Date('2026-10-01T20:00:00.000Z'))).rejects.toThrow('already been handled by Admin');
+    expect(await prisma.attendanceRecoveryGrant.count({ where: { session_id: fixture.session.id } })).toBe(1);
+
+    const board = await getAdminAttendanceInterventionBoard(handledAt);
+    expect(board.needsAction.some(({ id }) => id === fixture.session.id)).toBe(false);
+    expect(board.handled.find(({ id }) => id === fixture.session.id)).toMatchObject({ recoveryWindowActive: true, adminName: admin.name });
+
+    const cutoff = new Date(handledAt.getTime() - 30 * 24 * 60 * 60 * 1000);
+    await prisma.session.update({ where: { id: fixture.session.id }, data: { admin_attendance_handled_at: cutoff } });
+    await prisma.attendanceRecoveryGrant.update({ where: { id: grant.id }, data: { opened_at: cutoff, closes_at: new Date(cutoff.getTime() + 60 * 60 * 1000) } });
+    const atBoundary = await getAdminAttendanceInterventionBoard(handledAt);
+    expect(atBoundary.handled.find(({ id }) => id === fixture.session.id)).toMatchObject({ openedAt: cutoff.toISOString(), recoveryWindowActive: false });
+    await prisma.session.update({ where: { id: fixture.session.id }, data: { admin_attendance_handled_at: new Date(cutoff.getTime() - 1) } });
+    await prisma.attendanceRecoveryGrant.update({ where: { id: grant.id }, data: { opened_at: new Date(cutoff.getTime() - 1) } });
+    const outsideWindow = await getAdminAttendanceInterventionBoard(handledAt);
+    expect(outsideWindow.handled.some(({ id }) => id === fixture.session.id)).toBe(false);
+    expect(outsideWindow.needsAction.some(({ id }) => id === fixture.session.id)).toBe(false);
+  });
+
+  it('serializes simultaneous Admin recovery submissions into one durable grant', async () => {
+    const fixture = await createFixture(new Date('2026-10-01T06:00:00.000Z'), new Date('2026-10-01T08:00:00.000Z'));
+    const admin = await createAdmin();
+    const handledAt = new Date('2026-10-01T18:00:00.000Z');
+    const results = await Promise.allSettled([
+      grantLateAttendanceRecovery(admin.id, fixture.session.id, 'Tutor reported a connection outage.', handledAt),
+      grantLateAttendanceRecovery(admin.id, fixture.session.id, 'Tutor reported a connection outage.', handledAt),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(await prisma.attendanceRecoveryGrant.count({ where: { session_id: fixture.session.id } })).toBe(1);
+  });
+
+  it('records no-window resolutions in handled history and rejects later recovery', async () => {
+    const fixture = await createFixture(new Date('2026-10-01T06:00:00.000Z'), new Date('2026-10-01T08:00:00.000Z'));
+    const admin = await createAdmin();
+    const handledAt = new Date('2026-10-01T18:00:00.000Z');
+    await markAdminAttendanceHandled(admin.id, fixture.session.id, 'Resolved the dispute with the Tutor.', handledAt);
+    await expect(markAdminAttendanceHandled(admin.id, fixture.session.id, 'Tried to mark it again.', new Date('2026-10-01T19:00:00.000Z'))).rejects.toThrow('already been handled by Admin');
+    await expect(grantLateAttendanceRecovery(admin.id, fixture.session.id, 'Try a recovery grant anyway.', new Date('2026-10-01T20:00:00.000Z'))).rejects.toThrow('already been handled by Admin');
+    expect(await prisma.attendanceRecoveryGrant.count({ where: { session_id: fixture.session.id } })).toBe(0);
+    const board = await getAdminAttendanceInterventionBoard(handledAt);
+    expect(board.needsAction.some(({ id }) => id === fixture.session.id)).toBe(false);
+    expect(board.handled.find(({ id }) => id === fixture.session.id)).toMatchObject({
+      interventionKind: 'ADMIN_RESOLVED', recoveryWindowActive: false, closesAt: null,
+      adminName: admin.name, adminReason: 'Resolved the dispute with the Tutor.',
+    });
+  });
+
+  it('serializes competing mark-handled and recovery submissions to one Admin intervention', async () => {
+    const fixture = await createFixture(new Date('2026-10-01T06:00:00.000Z'), new Date('2026-10-01T08:00:00.000Z'));
+    const admin = await createAdmin();
+    const handledAt = new Date('2026-10-01T18:00:00.000Z');
+    const results = await Promise.allSettled([
+      markAdminAttendanceHandled(admin.id, fixture.session.id, 'Resolved the dispute with the Tutor.', handledAt),
+      grantLateAttendanceRecovery(admin.id, fixture.session.id, 'Tutor reported a connection outage.', handledAt),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    const [session, grantCount] = await Promise.all([
+      prisma.session.findUniqueOrThrow({ where: { id: fixture.session.id }, select: { admin_attendance_handled_at: true, admin_attendance_handling_note: true } }),
+      prisma.attendanceRecoveryGrant.count({ where: { session_id: fixture.session.id } }),
+    ]);
+    expect(session.admin_attendance_handled_at).not.toBeNull();
+    expect(session.admin_attendance_handling_note).toBeTruthy();
+    expect(grantCount).toBeLessThanOrEqual(1);
   });
 });

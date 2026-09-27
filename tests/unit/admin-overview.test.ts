@@ -1,8 +1,22 @@
 import { describe, it, expect } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { recentSessionState } from '@/features/sessions/utils/recent-session-presentation';
 import { getCairoDayRange } from '@/app/(portal)/admin/_components/admin-overview-data';
+import { AdminOverviewView } from '@/app/(portal)/admin/_components/admin-overview-view';
 
 describe('Admin Overview Data Transformations & Business Rules', () => {
+  it('shows a count-only Needs Attention card that links to the dedicated page', () => {
+    const markup = renderToStaticMarkup(createElement(AdminOverviewView, {
+      date: '2026-10-01', asOf: '2026-10-01T14:00:00.000Z', checkInWindowHours: 4,
+      sessions: [], attention: [], attentionCount: 3,
+    }));
+    expect(markup).toContain('href="/admin/needs-attention"');
+    expect(markup).toContain('Sessions need attention');
+    expect(markup).toContain('>3</p>');
+    expect(markup).not.toContain('No other follow-up items');
+  });
+
   it('uses Cairo midnight as the inclusive start and exclusive end of Today', () => {
     const beforeMidnight = getCairoDayRange(new Date('2026-09-25T20:59:59.000Z'));
     const atMidnight = getCairoDayRange(new Date('2026-09-25T21:00:00.000Z'));

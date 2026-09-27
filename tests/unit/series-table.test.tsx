@@ -24,9 +24,9 @@ describe('Admin weekly series lifecycle presentation', () => {
     expect(CANCELLATION_SCOPE_OPTIONS.every(({ sublabel }) => sublabel.includes('past') || sublabel.includes('history'))).toBe(true);
   });
 
-  it('presents ended schedules as archived history without the active edit action', () => {
+  it('keeps ended schedules visibly archived without the active edit action', () => {
     const html = renderToStaticMarkup(<WeeklySeriesTable series={[{ ...item, status: 'ENDED', nextOccurrence: null }]} onCancelSeries={vi.fn()} />);
-    expect(html).toContain('Ended and cancelled schedules');
+    expect(html).toContain('ended');
     expect(html).toContain('/admin/gadwal/series/series-1/history');
     expect(html).toContain('View history');
     expect(html).not.toContain('Edit series');

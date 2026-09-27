@@ -18,7 +18,7 @@ const warningLabels: Record<AdminAttendanceWarning, string> = {
 export function NeedsAttentionPanel({ items }: { items: AdminAttendanceAttentionItem[] }) {
   return (
     <Card className="border-status-warning/40 bg-status-warning/5" aria-labelledby="needs-attention-heading">
-      <CardHeader><CardTitle id="needs-attention-heading" className="flex items-center gap-2 text-lg"><AlertTriangle className="h-5 w-5 text-status-warning" aria-hidden="true" />Needs attention</CardTitle></CardHeader>
+      <CardHeader><CardTitle id="needs-attention-heading" className="flex items-center gap-2 text-lg"><AlertTriangle className="h-5 w-5 text-status-warning" aria-hidden="true" />Other Admin follow-up</CardTitle></CardHeader>
       <CardContent>
         {items.length ? <ol className="divide-y divide-border-subtle">{items.map((item) => (
           <li key={item.id} className="flex min-w-0 flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
@@ -34,7 +34,7 @@ export function NeedsAttentionPanel({ items }: { items: AdminAttendanceAttention
             </div>
             <Link href={item.reviewHref ?? `/admin/finances/sessions/${encodeURIComponent(item.id)}`} className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-canvas px-4 text-sm font-semibold text-text-primary hover:bg-canvas-subtle">Review</Link>
           </li>
-        ))}</ol> : <p className="rounded-lg border border-dashed border-border-subtle bg-canvas p-5 text-center text-sm text-text-muted">No unresolved attendance or Tutor-pay items.</p>}
+        ))}</ol> : <p className="rounded-lg border border-dashed border-border-subtle bg-canvas p-5 text-center text-sm text-text-muted">No other follow-up items.</p>}
       </CardContent>
     </Card>
   );

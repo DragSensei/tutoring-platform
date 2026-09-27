@@ -1,7 +1,7 @@
 # PROJECT STATE: tutoring-platform
 
 - **Active Project:** tutoring-platform (Next.js 14 App Router, Prisma ORM, Neon PostgreSQL, Tailwind CSS, Motion.dev)
-- **Latest Completed Task:** Completed Iteration 003.2E monthly Student receivable owner and linked discount, including explicit-period Admin preview/confirmation, isolated test-database acceptance, authenticated responsive QA, and full test/build verification.
+- **Latest Completed Task:** Added Admin Needs Attention overview/history, one-time attendance interventions, grouped Admin timetable categories, branded protected-route 404s, and compact account actions on `004-admin-attention-auth-ux`.
 - **Previous Feature Work:** Added bounded recurring-session materialization, secure Admin account setup, and Iteration 003 finance/account/import operations:
   1. `SessionSeries` owns weekly assignments; concrete `Session` rows remain authoritative for attendance, wallets, completion, cancellation, and audit history.
   2. Materialization is Cairo-aware, bounded to 12 weeks, idempotent, concurrency-tested, and stops for ended/cancelled series.
@@ -12,8 +12,20 @@
   7. Tutor attendance is manual, opens at the concrete Session start, remains editable through end plus policy grace, and finalizes wallet state only after the grace close.
   8. Concrete Session rows now own effective one-occurrence postpones; the weekly SessionSeries pattern remains unchanged.
   9. Public/student attendance-link behavior and new token issuance were removed while historical token storage remains intact.
-- **Immediate Next Move:** Select the Student billing-cycle anchor before automating future period creation. Admins can currently preview and generate only explicit periods. Production migration baseline and authenticated attendance-finalizer scheduler remain separate deployment blockers.
-- **Blockers / Open Decisions:** The future automatic Student billing-cycle anchor is undefined; no calendar-month, 22nd-to-22nd, or Session-derived cycle is assumed. Production Prisma migration history remains unresolved, and the 003.2D/003.2E additive SQL drafts are not deployable and were not applied. Production deployment still needs a migration baseline strategy and an authenticated scheduler POST to `/api/internal/attendance/finalize` with `CRON_SECRET`. Commission basis remains a settled internal wallet charge and does not prove external cash receipt.
+- **Immediate Next Move:** Establish a reviewed production Prisma migration baseline before deploying the new additive Admin-handled Session fields. Future automatic Student billing-cycle anchoring and the attendance-finalizer scheduler remain separate work.
+- **Blockers / Open Decisions:** Production Prisma migration history remains unresolved; the 003.2D/003.2E and Iteration 004 additive SQL drafts are not deployable and were not applied. Production attendance finalization still needs an authenticated scheduler POST to `/api/internal/attendance/finalize` with `CRON_SECRET`. The future automatic Student billing-cycle anchor remains undefined. Commission basis remains a settled internal wallet charge and does not prove external cash receipt.
+
+## Iteration 004 — Admin attention and protected-route UX
+
+- Admin portal layouts return the canonical branded 404 for anonymous and wrong-role page navigation. Middleware continues role-checking non-UI requests and server-action POSTs; route actions and domain mutations retain server-side authorization.
+- Concrete Sessions own Admin handling timestamp, actor, and note. Granting recovery and marking an issue resolved both claim this state transactionally; handled interventions are excluded from action counts and retained in the rolling 30-day history.
+- Admin Overview links the actionable count to Needs Attention. Admin Gadwal separates Upcoming, Active, Needs Attention, Completed, and Cancelled concrete Sessions. Accounts uses compact red Create Account and Import CSV triggers.
+- Guarded test-database integration and authenticated responsive route QA passed. The additive SQL draft is for future migration planning only and was not applied outside the isolated test database.
+
+## Tier 2 Verification
+
+- Final staged-commit machine evidence is recorded in `.git/tier2-evidence.json`; automated verification covers tests, repository secret/environment scanning, frontend architecture, and token/route invariants.
+
 
 ## Iteration 003.2E — Monthly Student receivable and linked discount (complete)
 

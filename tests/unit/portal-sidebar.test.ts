@@ -88,6 +88,7 @@ describe('Portal Sidebar Architectural Primitive', () => {
       expect(allHrefs).toEqual([
         '/admin',
         '/admin/gadwal',
+        '/admin/needs-attention',
         '/admin/accounts',
         '/admin/finances',
         '/admin/wallets',

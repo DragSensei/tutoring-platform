@@ -60,6 +60,8 @@ export async function submitTutorAttendance(
     const result = await withSerializableRetry((tx) => submitAttendanceTx(tx, tutorId, parsed.data, currentTime));
     revalidateAttendanceRoutes(result.sessionId);
     revalidatePath('/admin');
+    revalidatePath('/admin/needs-attention');
+    revalidatePath('/admin/gadwal');
     revalidatePath('/admin/finances/tutors');
     revalidatePath(`/admin/finances/sessions/${result.sessionId}`);
     return result;

@@ -1,22 +1,9 @@
-'use client';
-
 import type { ReactNode } from 'react';
-import * as React from 'react';
-import { TutorSidebar } from './_components/tutor-sidebar';
+import { notFound } from 'next/navigation';
+import { hasPortalAccess } from '../_components/protected-portal';
+import { TutorPortalShell } from './_components/tutor-portal-shell';
 
-export default function TutorLayout({ children }: { children: ReactNode }) {
-  const [isCollapsed, setIsCollapsed] = React.useState(false);
-  return (
-    <div className="flex min-h-screen w-full bg-canvas">
-      <TutorSidebar isCollapsed={isCollapsed} onToggleCollapse={() => setIsCollapsed((current) => !current)} />
-      <div className="flex min-w-0 flex-1 flex-col bg-canvas">
-        <header className="flex items-center justify-between border-b border-stone-200/80 bg-white px-4 py-3 md:hidden">
-          <TutorSidebar mobileOnly />
-        </header>
-        <main className="w-full min-w-0 flex-1 p-4 sm:p-6 lg:p-10">
-          <div className="mx-auto w-full max-w-[1600px]">{children}</div>
-        </main>
-      </div>
-    </div>
-  );
+export default async function TutorLayout({ children }: { children: ReactNode }) {
+  if (!await hasPortalAccess('TUTOR')) notFound();
+  return <TutorPortalShell>{children}</TutorPortalShell>;
 }

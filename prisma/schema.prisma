@@ -104,6 +104,7 @@ model User {
   tutor_payouts              PayoutSettlement[]              @relation("TutorPayoutRecipient")
   created_payouts            PayoutSettlement[]              @relation("PayoutCreator")
   granted_attendance_recoveries AttendanceRecoveryGrant[]    @relation("AttendanceRecoveryGrantAdmin")
+  handled_attendance_sessions   Session[]                     @relation("SessionAttendanceHandler")
   created_linked_relationships LinkedStudentRelationship[]   @relation("LinkedRelationshipCreator")
   ended_linked_relationships   LinkedStudentRelationship[]   @relation("LinkedRelationshipEnder")
   linked_student_as_a          LinkedStudentRelationship[]   @relation("LinkedStudentA")
@@ -241,6 +242,10 @@ model Session {
   attendance_saved_at           DateTime?
   attendance_submitted_at       DateTime?
   attendance_finalized_at       DateTime?
+  admin_attendance_handled_at   DateTime?
+  admin_attendance_handled_by_id String?
+  admin_attendance_handled_by   User?            @relation("SessionAttendanceHandler", fields: [admin_attendance_handled_by_id], references: [id], onDelete: Restrict)
+  admin_attendance_handling_note String?          @db.Text
   series_exception_reason       String?
   created_at                    DateTime        @default(now())
   updated_at                    DateTime        @updatedAt
@@ -258,6 +263,7 @@ model Session {
   @@index([token])
   @@index([start_time])
   @@index([attendance_submitted_at, attendance_finalized_at])
+  @@index([admin_attendance_handled_at])
 }
 
 model SessionSeries {

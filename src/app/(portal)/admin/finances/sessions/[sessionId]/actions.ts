@@ -9,6 +9,8 @@ export async function grantAdminAttendanceRecovery(sessionId: string, reason: st
     const admin = await requireAuth(['ADMIN']);
     const grant = await grantLateAttendanceRecovery(admin.userId, sessionId, reason);
     revalidatePath('/admin');
+    revalidatePath('/admin/needs-attention');
+    revalidatePath('/admin/gadwal');
     revalidatePath(`/admin/finances/sessions/${sessionId}`);
     revalidatePath('/tutor/agenda');
     revalidatePath('/tutor/timetable');

@@ -73,10 +73,12 @@ export function AccountsView({ accounts, referralSources, linkedStudentCandidate
         </div>
       </div>
 
-      <AccountCreateForm referralSources={referralSources} linkedStudentCandidates={linkedStudentCandidates} />
+      <div className="flex flex-wrap items-start gap-3" aria-label="Account actions">
+        <AccountCreateForm referralSources={referralSources} linkedStudentCandidates={linkedStudentCandidates} />
+        <StudentCsvImport />
+      </div>
       {accountUpdated && <p role="status" className="rounded-lg border border-brand-border bg-brand-subtle px-4 py-3 text-sm font-semibold text-brand-primary">Account changes saved.</p>}
       <ReferralSourceManager sources={referralSources} />
-      <StudentCsvImport />
 
       {accounts.length === 0 ? (
         <Card className="w-full rounded-2xl border-stone-200/80 bg-white shadow-xs">

@@ -46,9 +46,10 @@ export function AccountCreateForm({ referralSources, linkedStudentCandidates }: 
   }
 
   return (
-    <details className="rounded-2xl border border-stone-200/80 bg-white shadow-xs">
-      <summary className="flex min-h-[56px] cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 font-semibold text-stone-900"><span className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-brand-primary" /> Create account</span><span className="text-xs font-medium text-stone-500">No password entry or retrieval</span></summary>
-      <form onSubmit={submit} className="grid gap-4 border-t border-stone-100 p-5 md:grid-cols-4">
+    <details className="w-fit max-w-full [&[open]]:w-full">
+      <summary className="inline-flex min-h-[44px] w-fit cursor-pointer list-none items-center gap-2 rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2"><UserPlus className="h-4 w-4" aria-hidden="true" />Create Account</summary>
+      <form onSubmit={submit} className="mt-4 grid w-full gap-4 rounded-2xl border border-border-subtle bg-canvas p-5 shadow-xs md:grid-cols-4">
+        <p className="text-sm text-text-muted md:col-span-4">No password entry or retrieval; new accounts use a one-time setup link.</p>
         <label className="block"><span className="mb-1.5 block text-xs font-semibold text-stone-700">Account type</span><Combobox options={[{ value: 'STUDENT', label: 'Student', sublabel: 'May be partial' }, { value: 'TUTOR', label: 'Tutor', sublabel: 'Requires complete profile' }]} value={role} onChange={(value) => { const nextRole = value as typeof role; setRole(nextRole); if (nextRole === 'TUTOR') setReferralSourceId('__none__'); }} placeholder="Select account type" searchPlaceholder="Search account types" required /></label>
         <label className="block"><span className="mb-1.5 block text-xs font-semibold text-stone-700">Name {role === 'STUDENT' && <span className="font-normal text-stone-400">(if known)</span>}</span><input value={name} onChange={(event) => setName(event.target.value)} className={inputClass} /></label>
         <label className="block"><span className="mb-1.5 block text-xs font-semibold text-stone-700">Email {role === 'STUDENT' && <span className="font-normal text-stone-400">(if known)</span>}</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} className={inputClass} /></label>

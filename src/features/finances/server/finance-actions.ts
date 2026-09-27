@@ -307,6 +307,9 @@ export async function getAdminFinanceSessionDetail(sessionId: string) {
       attendance_saved_at: true,
       attendance_submitted_at: true,
       attendance_finalized_at: true,
+      admin_attendance_handled_at: true,
+      admin_attendance_handling_note: true,
+      admin_attendance_handled_by: { select: { name: true } },
       student_price_snapshot: true,
       pricing_profile_name_snapshot: true,
       tutor: { select: { id: true, name: true } },
@@ -344,7 +347,7 @@ export async function getAdminFinanceSessionDetail(sessionId: string) {
   const policy = await prisma.platformPolicy.findUnique({ where: { id: 'default' }, select: { check_in_window_hours: true } });
   const now = new Date();
   const attendanceClosesAt = computeAttendanceClosesAt(session.end_time, policy?.check_in_window_hours ?? CHECKIN_WINDOW_HOURS);
-  const activeRecovery = session.attendance_recovery_grants.some((grant) => !grant.used_at && grant.opened_at <= now && grant.closes_at >= now);
+  const hasRecoveryGrant = session.attendance_recovery_grants.length > 0;
   const presentIds = new Set(session.attendances.map(({ student_id }) => student_id));
   return {
     id: session.id,
@@ -357,8 +360,13 @@ export async function getAdminFinanceSessionDetail(sessionId: string) {
     attendanceSavedAt: session.attendance_saved_at?.toISOString() ?? null,
     attendanceSubmittedAt: session.attendance_submitted_at?.toISOString() ?? null,
     finalizedAt: session.attendance_finalized_at?.toISOString() ?? null,
+    adminHandling: session.admin_attendance_handled_at ? {
+      handledAt: session.admin_attendance_handled_at.toISOString(),
+      adminName: session.admin_attendance_handled_by?.name ?? 'Admin',
+      note: session.admin_attendance_handling_note ?? 'Admin intervention completed.',
+    } : null,
     attendanceClosesAt: attendanceClosesAt.toISOString(),
-    recoveryEligible: !session.historical_only && session.status !== 'CANCELLED' && !session.attendance_submitted_at && !session.attendance_finalized_at && session.participants.length > 0 && now > attendanceClosesAt && !activeRecovery,
+    recoveryEligible: !session.historical_only && session.status !== 'CANCELLED' && !session.attendance_submitted_at && !session.attendance_finalized_at && !session.admin_attendance_handled_at && session.participants.length > 0 && now > attendanceClosesAt && !hasRecoveryGrant,
     recoveryGrants: session.attendance_recovery_grants.map((grant) => ({
       id: grant.id,
       adminName: grant.granted_by_admin.name ?? 'Admin',
@@ -366,6 +374,7 @@ export async function getAdminFinanceSessionDetail(sessionId: string) {
       durationHours: grant.policy_duration_hours,
       openedAt: grant.opened_at.toISOString(),
       closesAt: grant.closes_at.toISOString(),
+      isActive: !grant.used_at && grant.opened_at <= now && grant.closes_at >= now,
       tutorExplanation: grant.tutor_explanation,
       tutorAttestedAt: grant.tutor_attested_at?.toISOString() ?? null,
       screenshotUnavailable: grant.screenshot_unavailable,

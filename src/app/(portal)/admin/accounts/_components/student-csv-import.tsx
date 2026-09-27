@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { confirmAdminStudentImport, previewAdminStudentImport } from '../actions';
 import { parseCsv, type StudentImportField } from '@/features/accounts/csv/parse-student-csv';
 import { Combobox } from '@/shared/components/combobox';
+import { Upload } from 'lucide-react';
 
 type Mapping = Record<StudentImportField | 'referralSource', string | null>;
 type PreviewRow = {
@@ -171,12 +172,14 @@ export function StudentCsvImport() {
   const mappedHeaderCount = new Set(Object.values(mapping).filter(Boolean)).size;
 
   return (
-    <section className="rounded-2xl border border-border-subtle bg-canvas shadow-xs">
-      <div className="border-b border-border-subtle px-5 py-4">
-        <h2 className="text-base font-semibold text-text-primary">Import Students from CSV</h2>
-        <p className="mt-1 text-sm text-text-muted">Preview and map columns to safe account fields. New accounts start without credentials; issue setup links from each account after import.</p>
-      </div>
-      <div className="space-y-5 p-5">
+    <details className="w-fit max-w-full [&[open]]:w-full">
+      <summary className="inline-flex min-h-[44px] w-fit cursor-pointer list-none items-center gap-2 rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2"><Upload className="h-4 w-4" aria-hidden="true" />Import CSV</summary>
+      <section className="mt-4 rounded-2xl border border-border-subtle bg-canvas shadow-xs">
+        <div className="border-b border-border-subtle px-5 py-4">
+          <h2 className="text-base font-semibold text-text-primary">Import Students from CSV</h2>
+          <p className="mt-1 text-sm text-text-muted">Preview and map columns to safe account fields. New accounts start without credentials; issue setup links from each account after import.</p>
+        </div>
+        <div className="space-y-5 p-5">
         <label className="block text-sm font-medium text-text-primary">
           CSV file (1 MB, up to 500 rows)
           <input type="file" accept=".csv,text/csv" onChange={(event) => void chooseFile(event.target.files?.[0])} className="mt-2 block min-h-[52px] w-full rounded-lg border border-border-strong bg-canvas px-3 py-1.5 text-sm text-text-primary file:mr-3 file:min-h-[44px] file:rounded-md file:border-0 file:bg-brand-subtle file:px-3 file:font-semibold file:text-brand-primary" />
@@ -240,7 +243,8 @@ export function StudentCsvImport() {
         )}
         {message && <p role="status" className="rounded-lg bg-brand-subtle px-3 py-2 text-sm text-brand-primary">{message}</p>}
         {error && <p role="alert" className="rounded-lg bg-brand-subtle px-3 py-2 text-sm text-brand-primary">{error}</p>}
-      </div>
-    </section>
+        </div>
+      </section>
+    </details>
   );
 }

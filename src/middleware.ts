@@ -23,6 +23,12 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // Protected page layouts own the canonical 404 response for browser/RSC navigation.
+  // Mutations and non-UI requests still pass through the role gate below.
+  const isPageNavigation = (req.method === 'GET' || req.method === 'HEAD')
+    && (req.headers.get('rsc') === '1' || req.headers.get('accept')?.includes('text/html'));
+  if (isPageNavigation) return NextResponse.next();
+
   const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
 
   if (!token) {

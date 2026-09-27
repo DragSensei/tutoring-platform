@@ -95,8 +95,6 @@ export function WeeklySeriesTable({ series, onCancelSeries }: WeeklySeriesTableP
     );
   }
 
-  const activeSeries = series.filter((item) => item.status === 'ACTIVE');
-  const archivedSeries = series.filter((item) => item.status !== 'ACTIVE');
   const renderSeries = (items: WeeklySeriesItem[]) => items.map((item) => (
     <article key={item.id} className="flex flex-col gap-4 px-4 py-5 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
       <div className="min-w-0">
@@ -124,8 +122,7 @@ export function WeeklySeriesTable({ series, onCancelSeries }: WeeklySeriesTableP
       <CardHeader className="border-b border-stone-100"><CardTitle className="text-lg">Weekly teaching assignments</CardTitle></CardHeader>
       {error && !confirmation && <p role="alert" className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-sm text-rose-800">{error}</p>}
       <CardContent className="p-0">
-        {activeSeries.length > 0 && <section aria-labelledby="active-series-heading"><h3 id="active-series-heading" className="border-b border-stone-100 px-5 py-3 text-sm font-semibold text-stone-700">Active schedules</h3><div className="divide-y divide-stone-100">{renderSeries(activeSeries)}</div></section>}
-        {archivedSeries.length > 0 && <section aria-labelledby="archived-series-heading"><h3 id="archived-series-heading" className="border-y border-stone-100 bg-stone-50 px-5 py-3 text-sm font-semibold text-stone-700">Ended and cancelled schedules</h3><div className="divide-y divide-stone-100">{renderSeries(archivedSeries)}</div></section>}
+        <div className="divide-y divide-stone-100">{renderSeries(series)}</div>
       </CardContent>
     </Card>
     <ConfirmDialog

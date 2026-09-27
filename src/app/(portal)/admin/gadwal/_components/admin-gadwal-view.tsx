@@ -6,9 +6,14 @@ import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import { cancelAdminSeries } from '../actions';
 import { WeeklySeriesTable, type WeeklySeriesItem } from '@/features/sessions/components/series-table';
+import { AdminTimetableCategories } from './admin-timetable-categories';
+import type { GadwalSessionItem } from '@/features/sessions/types';
 
 interface AdminGadwalViewProps {
   series: WeeklySeriesItem[];
+  sessions: GadwalSessionItem[];
+  attentionSessionIds: string[];
+  asOf: string;
   tutorFilter?: { id: string; name: string | null };
 }
 
@@ -31,7 +36,7 @@ const itemVariants = {
   },
 };
 
-export function AdminGadwalView({ series, tutorFilter }: AdminGadwalViewProps) {
+export function AdminGadwalView({ series, sessions, attentionSessionIds, asOf, tutorFilter }: AdminGadwalViewProps) {
   return (
     <motion.div
       variants={containerVariants}
@@ -48,13 +53,11 @@ export function AdminGadwalView({ series, tutorFilter }: AdminGadwalViewProps) {
             <span className="inline-flex items-center rounded-md bg-brand-subtle border border-brand-border/60 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-brand-primary">
               Admin Console
             </span>
-            <span className="text-xs font-semibold text-stone-500">Timetable & Schedule</span>
+            <span className="text-xs font-semibold text-stone-500">Admin timetable</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 mt-1">
-            Admin Gadwal Management (إدارة الجدول)
-          </h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 mt-1">Timetable</h1>
           <p className="text-xs sm:text-sm text-stone-500 mt-1">
-            Weekly teaching assignments materialize concrete occurrences for attendance, completion, and wallet history.
+            Concrete Sessions are grouped by their current schedule and attendance state.
           </p>
         </div>
         <Link href="/admin/gadwal/new" className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-lg bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2">
@@ -70,8 +73,13 @@ export function AdminGadwalView({ series, tutorFilter }: AdminGadwalViewProps) {
         </motion.div>
       )}
 
+      <AdminTimetableCategories sessions={sessions} attentionSessionIds={attentionSessionIds} asOf={asOf} />
+
       <motion.div variants={itemVariants}>
-        <WeeklySeriesTable series={series} onCancelSeries={cancelAdminSeries} />
+        <details className="rounded-2xl border border-border-subtle bg-canvas">
+          <summary className="flex min-h-[52px] cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-semibold text-text-primary"><span>Weekly series management</span><span className="text-xs font-medium text-text-muted">{series.length} recurring assignment{series.length === 1 ? '' : 's'}</span></summary>
+          <div className="border-t border-border-subtle p-3 sm:p-5"><WeeklySeriesTable series={series} onCancelSeries={cancelAdminSeries} /></div>
+        </details>
       </motion.div>
     </motion.div>
   );

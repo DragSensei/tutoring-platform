@@ -18,6 +18,30 @@ export interface AdminAttendanceAttentionItem {
   kind?: 'SESSION' | 'LINKED_STUDENTS';
   reviewHref?: string;
   linkedStudents?: Array<{ id: string; name: string; enrollment: string }>;
+  adminHandledAt?: string;
+}
+
+export interface AdminAttendanceHandledItem {
+  id: string;
+  title: string;
+  tutorName: string;
+  startTime: string;
+  endTime: string;
+  adminName: string;
+  adminReason: string;
+  interventionKind: 'RECOVERY_GRANTED' | 'ADMIN_RESOLVED';
+  openedAt: string;
+  closesAt: string | null;
+  recoveryWindowActive: boolean;
+  usedAt: string | null;
+  tutorExplanation: string | null;
+}
+
+export interface AdminAttendanceInterventionBoard {
+  needsAction: AdminAttendanceAttentionItem[];
+  handled: AdminAttendanceHandledItem[];
+  otherAttention: AdminAttendanceAttentionItem[];
+  attention: AdminAttendanceAttentionItem[];
 }
 
 export async function getAdminAttendanceAttention(now = new Date()): Promise<AdminAttendanceAttentionItem[]> {
@@ -40,18 +64,17 @@ export async function getAdminAttendanceAttention(now = new Date()): Promise<Adm
       attendance_recovery_grants: { orderBy: { opened_at: 'desc' }, take: 5 },
     },
     orderBy: { end_time: 'desc' },
-    take: 300,
   });
 
   const items: AdminAttendanceAttentionItem[] = missing.flatMap((session) => {
     const closesAt = computeAttendanceClosesAt(session.end_time, graceHours);
     if (now <= closesAt) return [];
-    const latestGrant = session.attendance_recovery_grants.find((grant) => !grant.used_at);
-    const active = latestGrant && now >= latestGrant.opened_at && now <= latestGrant.closes_at;
+    const latestGrant = session.attendance_recovery_grants[0];
+    const active = latestGrant && !latestGrant.used_at && now >= latestGrant.opened_at && now <= latestGrant.closes_at;
     const warnings: AdminAttendanceWarning[] = ['ATTENDANCE_MISSING'];
     if (!session.participants.length) warnings.push('ATTENDANCE_NEEDS_REVIEW');
     if (active) warnings.push('RECOVERY_ACTIVE');
-    else if (latestGrant && now > latestGrant.closes_at) warnings.push('RECOVERY_EXPIRED');
+    else if (latestGrant && !latestGrant.used_at && now > latestGrant.closes_at) warnings.push('RECOVERY_EXPIRED');
     return [{
       id: session.id,
       title: session.title,
@@ -61,6 +84,7 @@ export async function getAdminAttendanceAttention(now = new Date()): Promise<Adm
       deadline: closesAt.toISOString(),
       grantClosesAt: latestGrant?.closes_at.toISOString(),
       adminReason: latestGrant?.admin_reason,
+      adminHandledAt: (session.admin_attendance_handled_at ?? latestGrant?.opened_at)?.toISOString(),
       reviewDetail: !session.participants.length
         ? session.attendances.length
           ? `${session.attendances.length} legacy attendance records exist without a Student roster; attendance cannot be finalized safely.`
@@ -88,7 +112,6 @@ export async function getAdminAttendanceAttention(now = new Date()): Promise<Adm
       tutor: { select: { name: true, tutor_hourly_rate_override: true } },
     },
     orderBy: { end_time: 'desc' },
-    take: 300,
   });
   for (const session of eligibleForPay) {
     const warnings: AdminAttendanceWarning[] = [];
@@ -149,9 +172,80 @@ export async function getAdminAttendanceAttention(now = new Date()): Promise<Adm
   return [...bySession.values()];
 }
 
+export async function getAdminAttendanceInterventionBoard(now = new Date()): Promise<AdminAttendanceInterventionBoard> {
+  const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const [attention, handledSessions] = await Promise.all([
+    getAdminAttendanceAttention(now),
+    prisma.session.findMany({
+      where: {
+        OR: [
+          { admin_attendance_handled_at: { gte: cutoff, lte: now } },
+          { attendance_recovery_grants: { some: { opened_at: { gte: cutoff, lte: now } } } },
+        ],
+      },
+      select: {
+        id: true,
+        title: true,
+        start_time: true,
+        end_time: true,
+        admin_attendance_handled_at: true,
+        admin_attendance_handled_by: { select: { name: true } },
+        admin_attendance_handling_note: true,
+        tutor: { select: { name: true } },
+        attendance_recovery_grants: {
+          where: { opened_at: { gte: cutoff, lte: now } },
+          orderBy: { opened_at: 'desc' },
+          take: 1,
+          select: {
+            admin_reason: true,
+            opened_at: true,
+            closes_at: true,
+            used_at: true,
+            tutor_explanation: true,
+            granted_by_admin: { select: { name: true } },
+          },
+        },
+      },
+    }),
+  ]);
+  const handledBySession = new Map<string, AdminAttendanceHandledItem>();
+  for (const session of handledSessions) {
+    const grant = session.attendance_recovery_grants[0];
+    const handledAt = session.admin_attendance_handled_at ?? grant?.opened_at;
+    if (!handledAt) continue;
+    handledBySession.set(session.id, {
+      id: session.id,
+      title: session.title,
+      tutorName: session.tutor.name ?? 'Tutor',
+      startTime: session.start_time.toISOString(),
+      endTime: session.end_time.toISOString(),
+      adminName: session.admin_attendance_handled_by?.name ?? grant?.granted_by_admin.name ?? 'Admin',
+      adminReason: session.admin_attendance_handling_note ?? grant?.admin_reason ?? 'Admin intervention completed.',
+      interventionKind: grant ? 'RECOVERY_GRANTED' : 'ADMIN_RESOLVED',
+      openedAt: handledAt.toISOString(),
+      closesAt: grant?.closes_at.toISOString() ?? null,
+      recoveryWindowActive: Boolean(grant && !grant.used_at && grant.opened_at <= now && grant.closes_at >= now),
+      usedAt: grant?.used_at?.toISOString() ?? null,
+      tutorExplanation: grant?.tutor_explanation ?? null,
+    });
+  }
+  const handled = [...handledBySession.values()].sort((left, right) => Date.parse(right.openedAt) - Date.parse(left.openedAt));
+  const attendanceWarnings = new Set<AdminAttendanceWarning>([
+    'ATTENDANCE_MISSING', 'ATTENDANCE_NEEDS_REVIEW', 'RECOVERY_ACTIVE', 'RECOVERY_EXPIRED',
+  ]);
+  return {
+    attention,
+    needsAction: attention.filter((item) => item.warnings.includes('ATTENDANCE_MISSING') && !item.adminHandledAt),
+    handled,
+    otherAttention: attention.flatMap((item) => {
+      const warnings = item.warnings.filter((warning) => !attendanceWarnings.has(warning));
+      return warnings.length ? [{ ...item, warnings }] : [];
+    }),
+  };
+}
+
 export async function grantLateAttendanceRecovery(adminId: string, sessionId: string, adminReason: string, currentTime = new Date()) {
-  const reason = adminReason.trim();
-  if (reason.length < 8 || reason.length > 1000) throw new Error('Add a short note explaining why attendance could not be submitted.');
+  const reason = requireHandlingNote(adminReason, 'Add a short note explaining why attendance could not be submitted.');
 
   return withSerializableRetry(() => prisma.$transaction(async (tx) => {
     const admin = await tx.user.findUnique({ where: { id: adminId, role: 'ADMIN' }, select: { id: true } });
@@ -163,12 +257,14 @@ export async function grantLateAttendanceRecovery(adminId: string, sessionId: st
         end_time: true,
         status: true,
         historical_only: true,
+        admin_attendance_handled_at: true,
         attendance_submitted_at: true,
         attendance_finalized_at: true,
         _count: { select: { participants: true } },
       },
     });
     if (!session || session.historical_only || session.status === 'CANCELLED') throw new Error('Session is not eligible for attendance recovery.');
+    if (session.admin_attendance_handled_at) throw new Error('This Session has already been handled by Admin.');
     if (session.attendance_submitted_at || session.attendance_finalized_at) throw new Error('Submitted or finalized attendance cannot be reopened.');
 
     const policy = await tx.platformPolicy.findUnique({
@@ -180,11 +276,17 @@ export async function grantLateAttendanceRecovery(adminId: string, sessionId: st
     if (!session._count.participants || currentTime <= computeAttendanceClosesAt(session.end_time, grace)) {
       throw new Error('Only overdue Sessions with an assigned Student roster can be reopened.');
     }
-    const activeGrant = await tx.attendanceRecoveryGrant.findFirst({
-      where: { session_id: session.id, used_at: null, opened_at: { lte: currentTime }, closes_at: { gte: currentTime } },
+    const previousGrant = await tx.attendanceRecoveryGrant.findFirst({
+      where: { session_id: session.id },
       select: { id: true },
     });
-    if (activeGrant) throw new Error('A recovery window is already active for this Session.');
+    if (previousGrant) throw new Error('This Session has already been handled by Admin and cannot receive another recovery window.');
+
+    const handled = await tx.session.updateMany({
+      where: { id: session.id, admin_attendance_handled_at: null, attendance_submitted_at: null, attendance_finalized_at: null, status: { not: 'CANCELLED' }, historical_only: false },
+      data: { admin_attendance_handled_at: currentTime, admin_attendance_handled_by_id: admin.id, admin_attendance_handling_note: reason },
+    });
+    if (handled.count !== 1) throw new Error('This Session has already been handled by Admin.');
 
     const closesAt = new Date(currentTime.getTime() + duration * 60 * 60 * 1000);
     return tx.attendanceRecoveryGrant.create({
@@ -199,6 +301,44 @@ export async function grantLateAttendanceRecovery(adminId: string, sessionId: st
       select: { id: true, opened_at: true, closes_at: true, policy_duration_hours: true },
     });
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
+}
+
+export async function markAdminAttendanceHandled(adminId: string, sessionId: string, adminNote: string, currentTime = new Date()) {
+  const note = requireHandlingNote(adminNote, 'Add a note explaining how this Session was handled.');
+  return withSerializableRetry(() => prisma.$transaction(async (tx) => {
+    const admin = await tx.user.findUnique({ where: { id: adminId, role: 'ADMIN' }, select: { id: true } });
+    if (!admin) throw new Error('Admin authorization is required.');
+    const session = await tx.session.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true, end_time: true, status: true, historical_only: true,
+        admin_attendance_handled_at: true, attendance_submitted_at: true, attendance_finalized_at: true,
+      },
+    });
+    if (!session || session.historical_only || session.status === 'CANCELLED') throw new Error('Session is not eligible for Admin handling.');
+    if (session.admin_attendance_handled_at) throw new Error('This Session has already been handled by Admin.');
+    if (session.attendance_submitted_at || session.attendance_finalized_at) throw new Error('Submitted or finalized attendance cannot be marked as unresolved.');
+
+    const previousGrant = await tx.attendanceRecoveryGrant.findFirst({ where: { session_id: session.id }, select: { id: true } });
+    if (previousGrant) throw new Error('This Session already has a recovery intervention.');
+    const policy = await tx.platformPolicy.findUnique({ where: { id: 'default' }, select: { check_in_window_hours: true } });
+    if (currentTime <= computeAttendanceClosesAt(session.end_time, policy?.check_in_window_hours ?? 4)) {
+      throw new Error('Only overdue Sessions can be marked handled by Admin.');
+    }
+
+    const handled = await tx.session.updateMany({
+      where: { id: session.id, admin_attendance_handled_at: null, attendance_submitted_at: null, attendance_finalized_at: null, status: { not: 'CANCELLED' }, historical_only: false },
+      data: { admin_attendance_handled_at: currentTime, admin_attendance_handled_by_id: admin.id, admin_attendance_handling_note: note },
+    });
+    if (handled.count !== 1) throw new Error('This Session has already been handled by Admin.');
+    return { handledAt: currentTime, note };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
+}
+
+function requireHandlingNote(input: string, errorMessage: string) {
+  const note = input.trim();
+  if (note.length < 8 || note.length > 1000) throw new Error(errorMessage);
+  return note;
 }
 
 async function withSerializableRetry<T>(work: () => Promise<T>): Promise<T> {

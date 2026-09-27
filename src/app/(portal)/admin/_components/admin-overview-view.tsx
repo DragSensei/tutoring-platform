@@ -1,7 +1,8 @@
 'use client';
 
+import React from 'react';
 import Link from 'next/link';
-import { CalendarDays, Clock3, Users } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Clock3, Users } from 'lucide-react';
 import { Badge } from '@/shared/components/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/card';
 import { formatDateTime } from '@/shared/utils/date-format';
@@ -9,7 +10,7 @@ import type { AdminOverviewData } from './admin-overview-data';
 import { classifySessionOccurrence } from '@/shared/utils/session-timing';
 import { NeedsAttentionPanel } from './needs-attention-panel';
 
-export function AdminOverviewView({ date, asOf, sessions, attention }: AdminOverviewData) {
+export function AdminOverviewView({ date, asOf, sessions, attention, attentionCount }: AdminOverviewData) {
   const now = new Date(asOf);
   const occurrenceState = (session: AdminOverviewData['sessions'][number]) => session.status === 'CANCELLED' ? 'CANCELLED' : classifySessionOccurrence(session.startTime, session.endTime, now);
   const finished = sessions.filter((session) => occurrenceState(session) === 'COMPLETED').length;
@@ -27,12 +28,13 @@ export function AdminOverviewView({ date, asOf, sessions, attention }: AdminOver
         <Link href="/admin/gadwal" className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-brand-primary px-4 text-sm font-semibold text-white hover:bg-brand-hover">Open schedule</Link>
       </header>
 
-      <NeedsAttentionPanel items={attention} />
+      {attention.length > 0 && <NeedsAttentionPanel items={attention} />}
 
-      <section className="grid gap-3 sm:grid-cols-3" aria-label="Today's session summary">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Today's session summary">
         <SummaryCard label="Scheduled today" value={sessions.length} icon={<CalendarDays aria-hidden="true" className="h-5 w-5" />} />
         <SummaryCard label="In progress" value={active} icon={<Clock3 aria-hidden="true" className="h-5 w-5" />} />
         <SummaryCard label="Attendance pending" value={pendingAttendance} icon={<Users aria-hidden="true" className="h-5 w-5" />} detail={`${finished} completed`} />
+        <SummaryCard href="/admin/needs-attention" label="Sessions need attention" value={attentionCount} icon={<AlertTriangle aria-hidden="true" className="h-5 w-5" />} />
       </section>
 
       <Card className="border-border-subtle bg-canvas">
@@ -56,6 +58,7 @@ export function AdminOverviewView({ date, asOf, sessions, attention }: AdminOver
   );
 }
 
-function SummaryCard({ label, value, icon, detail }: { label: string; value: number; icon: React.ReactNode; detail?: string }) {
-  return <Card className="border-border-subtle bg-canvas"><CardContent className="flex items-center justify-between gap-3 p-4"><div><p className="text-sm text-text-muted">{label}</p><p className="mt-1 font-mono text-2xl font-bold tabular-nums text-text-primary">{value}</p>{detail && <p className="text-xs text-text-muted">{detail}</p>}</div><span className="text-brand-primary">{icon}</span></CardContent></Card>;
+function SummaryCard({ label, value, icon, detail, href }: { label: string; value: number; icon: React.ReactNode; detail?: string; href?: string }) {
+  const card = <Card className="h-full border-border-subtle bg-canvas"><CardContent className="flex items-center justify-between gap-3 p-4"><div><p className="text-sm text-text-muted">{label}</p><p className="mt-1 font-mono text-2xl font-bold tabular-nums text-text-primary">{value}</p>{detail && <p className="text-xs text-text-muted">{detail}</p>}</div><span className="text-brand-primary">{icon}</span></CardContent></Card>;
+  return href ? <Link href={href} className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2">{card}</Link> : card;
 }
