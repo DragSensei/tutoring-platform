@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
 import { ShieldCheck } from 'lucide-react';
 import { formatDateTime } from '@/shared/utils/date-format';
@@ -25,7 +26,7 @@ export function SessionSelectionGrid({ sessions }: { sessions: GadwalSessionItem
         <span className="shrink-0 text-sm tabular-nums text-stone-500">{sessions.length} sessions</span>
       </div>
       <div className="divide-y divide-stone-100 overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-xs">
-        {sessions.map((session) => {
+        {sessions.slice(0, 4).map((session) => {
           const sessionCode = session.sessionCode || formatSessionCode({
             title: session.title,
             startTime: session.startTime,
@@ -43,7 +44,7 @@ export function SessionSelectionGrid({ sessions }: { sessions: GadwalSessionItem
                 <h3 className="mt-1 truncate text-sm font-semibold text-stone-800">{session.title}</h3>
                 <p className="mt-1 text-xs text-stone-500">{formatDateTime(session.startTime)} · {studentCount} student{studentCount === 1 ? '' : 's'}</p>
               </div>
-              {session.attendanceWindowState === 'OPEN' && (
+              {session.attendanceWindowState === 'OPEN' && session.attendanceDisposition === 'HAS_ROSTER' && !session.attendanceSubmittedAt && (
                 <Link
                   href={`/tutor/attendance/${session.id}`}
                   className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2"
@@ -55,6 +56,7 @@ export function SessionSelectionGrid({ sessions }: { sessions: GadwalSessionItem
           );
         })}
       </div>
+      <Link href="/tutor/timetable" className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 text-sm font-semibold text-brand-primary hover:text-brand-hover">View full timetable <span aria-hidden="true">→</span></Link>
     </section>
   );
 }

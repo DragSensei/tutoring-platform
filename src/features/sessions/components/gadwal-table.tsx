@@ -38,6 +38,8 @@ export interface GadwalSessionItem {
   attendanceSubmittedAt?: string | null;
   attendanceFinalizedAt?: string | null;
   attendanceWindowState?: 'BEFORE' | 'OPEN' | 'CLOSED';
+  seriesId?: string | null;
+  seriesSchedule?: { weekday: number; startMinute: number; durationMinutes: number };
   baseStartTime?: string;
   isRescheduled?: boolean;
   rescheduleReason?: string | null;
@@ -47,10 +49,13 @@ export interface GadwalSessionItem {
   attendeeCount: number;
   tutorCompensation?: { amount: string; hourlyRate: string; deliveredMinutes: number } | null;
   tutorRateMissing?: boolean;
-  recoveryGrant?: { id: string; openedAt: string; closesAt: string } | null;
+  recoveryGrant?: { id: string; openedAt: string; closesAt: string; adminName?: string; adminReason?: string; observedAt?: string } | null;
+  recoveryGrantExpired?: boolean;
   recoveryGrantUsed?: { id: string; adminReason: string; tutorExplanation: string | null; tutorAttestedAt: string | null; screenshotUnavailable: boolean | null; usedAt: string | null } | null;
   participantCount?: number;
   transactionCount?: number;
+  commissionEntryCount?: number;
+  attendanceDisposition?: 'HAS_ROSTER' | 'NO_ACTION' | 'ADMIN_REVIEW';
   attendanceNotes?: string | null;
   price: number;
   assignedStudents?: string[];

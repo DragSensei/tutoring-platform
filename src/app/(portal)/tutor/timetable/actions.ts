@@ -5,11 +5,11 @@ import { getPlatformPolicies } from '@/features/policies/server/policy-actions';
 import { getTutorSessions, rescheduleSessionOccurrence } from '@/features/sessions/server/session-actions';
 import { revalidatePath } from 'next/cache';
 
-export async function getTutorUpcomingSessions(horizon: 14 | 30 | 'all') {
+export async function getTutorUpcomingSessions(horizon: 7 | 14 | 30) {
   const auth = await requireAuth(['TUTOR']);
   return getTutorSessions(auth.userId, await getPlatformPolicies(), new Date(), {
     mode: 'upcoming',
-    horizonDays: horizon === 'all' ? null : horizon,
+    horizonDays: horizon,
   });
 }
 

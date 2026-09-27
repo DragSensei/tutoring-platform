@@ -172,7 +172,21 @@ describe('final Tutor attendance and settlement contract', () => {
 
     const board = await getAdminAttendanceInterventionBoard(handledAt);
     expect(board.needsAction.some(({ id }) => id === fixture.session.id)).toBe(false);
-    expect(board.handled.find(({ id }) => id === fixture.session.id)).toMatchObject({ recoveryWindowActive: true, adminName: admin.name });
+    expect(board.recoveryActive.find(({ id }) => id === fixture.session.id)).toMatchObject({
+      recoveryWindowActive: true, adminName: admin.name, closesAt: grant.closes_at.toISOString(), adminReason: 'Tutor reported a connection outage.',
+    });
+    expect(board.handled.some(({ id }) => id === fixture.session.id)).toBe(false);
+
+    const tutorView = await getTutorSessions(fixture.tutor.id, policy, handledAt, { mode: 'single', sessionId: fixture.session.id });
+    expect(tutorView[0]).toMatchObject({ recoveryGrant: {
+      id: grant.id, adminName: admin.name, adminReason: 'Tutor reported a connection outage.', closesAt: grant.closes_at.toISOString(),
+    } });
+
+    const atDeadline = await getAdminAttendanceInterventionBoard(grant.closes_at);
+    expect(atDeadline.recoveryActive.some(({ id }) => id === fixture.session.id)).toBe(true);
+    const afterDeadline = await getAdminAttendanceInterventionBoard(new Date(grant.closes_at.getTime() + 1));
+    expect(afterDeadline.recoveryActive.some(({ id }) => id === fixture.session.id)).toBe(false);
+    expect(afterDeadline.handled.find(({ id }) => id === fixture.session.id)).toMatchObject({ recoveryWindowActive: false });
 
     const cutoff = new Date(handledAt.getTime() - 30 * 24 * 60 * 60 * 1000);
     await prisma.session.update({ where: { id: fixture.session.id }, data: { admin_attendance_handled_at: cutoff } });
@@ -184,6 +198,35 @@ describe('final Tutor attendance and settlement contract', () => {
     const outsideWindow = await getAdminAttendanceInterventionBoard(handledAt);
     expect(outsideWindow.handled.some(({ id }) => id === fixture.session.id)).toBe(false);
     expect(outsideWindow.needsAction.some(({ id }) => id === fixture.session.id)).toBe(false);
+  });
+
+  it('keeps zero-roster legacy attendance for Admin review and blocks Tutor edits without financial changes', async () => {
+    const legacy = await createFixture(new Date('2026-10-01T06:00:00.000Z'), new Date('2026-10-01T08:00:00.000Z'));
+    const clean = await createFixture(new Date('2026-10-01T06:00:00.000Z'), new Date('2026-10-01T08:00:00.000Z'));
+    const afterNormalClose = new Date('2026-10-01T12:00:00.001Z');
+    await prisma.sessionParticipant.deleteMany({ where: { session_id: { in: [legacy.session.id, clean.session.id] } } });
+    await prisma.attendanceRecord.create({ data: { session_id: legacy.session.id, student_id: legacy.student.id, attended_at: new Date('2026-10-01T09:00:00.000Z') } });
+
+    const beforeWallet = await walletState(legacy.student.id, legacy.session.id);
+    const beforeTransactions = await prisma.walletTransaction.count({ where: { session_id: legacy.session.id } });
+    const beforeCompensation = await prisma.tutorCompensationLedgerEntry.count({ where: { session_id: legacy.session.id } });
+    const beforeCommission = await prisma.commissionLedgerEntry.count({ where: { session_id: legacy.session.id } });
+    vi.mocked(requireAuth).mockResolvedValue({ userId: legacy.tutor.id, email: legacy.tutor.email!, name: legacy.tutor.name!, role: 'TUTOR' });
+
+    const tutorView = await getTutorSessions(legacy.tutor.id, policy, afterNormalClose, { mode: 'single', sessionId: legacy.session.id });
+    expect(tutorView[0].attendanceDisposition).toBe('ADMIN_REVIEW');
+    const saveResult = await saveTutorAttendanceDraft({ sessionId: legacy.session.id, outcomes: {}, notes: 'No roster data should not be edited.' }, afterNormalClose);
+    expect(saveResult).toMatchObject({ success: false, message: expect.stringContaining('without an assigned Student roster') });
+
+    const board = await getAdminAttendanceInterventionBoard(afterNormalClose);
+    expect(board.needsAction.find(({ id }) => id === legacy.session.id)).toMatchObject({ warnings: ['ATTENDANCE_NEEDS_REVIEW'] });
+    expect(board.needsAction.find(({ id }) => id === clean.session.id)).toBeUndefined();
+    expect((await prisma.session.findUniqueOrThrow({ where: { id: legacy.session.id } })).attendance_notes).toBeNull();
+    expect(await prisma.attendanceRecord.count({ where: { session_id: legacy.session.id } })).toBe(1);
+    expect(await walletState(legacy.student.id, legacy.session.id)).toEqual(beforeWallet);
+    expect(await prisma.walletTransaction.count({ where: { session_id: legacy.session.id } })).toBe(beforeTransactions);
+    expect(await prisma.tutorCompensationLedgerEntry.count({ where: { session_id: legacy.session.id } })).toBe(beforeCompensation);
+    expect(await prisma.commissionLedgerEntry.count({ where: { session_id: legacy.session.id } })).toBe(beforeCommission);
   });
 
   it('serializes simultaneous Admin recovery submissions into one durable grant', async () => {

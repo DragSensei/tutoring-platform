@@ -11,6 +11,8 @@ import { SessionRescheduleDialog } from '@/features/sessions/components/session-
 import type { WeeklyScheduleSession } from '@/features/sessions/components/weekly-session-schedule';
 import type { TutorDashboardData } from '../../dashboard/_components/dashboard-data';
 import { getAttendanceWindowState } from '@/shared/utils/deadline';
+import { isRecoveryWindowActive } from '@/features/attendance/utils/recovery-time';
+import { AttendanceRecoveryAlert } from '@/features/attendance/components/attendance-recovery-alert';
 import { canPostponeSession, classifySessionOccurrence, sortSessionOccurrences } from '@/shared/utils/session-timing';
 import { postponeTutorSession } from '../../timetable/actions';
 import {
@@ -50,6 +52,8 @@ export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashb
       .filter((session) => !session.historicalOnly)
       .filter((session) => session.status !== 'CANCELLED')
       .filter((session) => classifySessionOccurrence(session.startTime, session.endTime, now) === 'COMPLETED' && !session.attendanceSubmittedAt)
+      .filter((session) => session.attendanceDisposition === 'HAS_ROSTER'
+        && (session.attendanceWindowState === 'OPEN' || isRecoveryWindowActive(session.recoveryGrant, now)))
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
     [sessionsAtNow, now]
   );
@@ -82,7 +86,7 @@ export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashb
           <p className="mt-1 text-sm text-stone-500">Welcome back, {tutor.name}. Prioritize the next session and anything still awaiting documentation.</p>
         </div>
         <Link href="/tutor/timetable" className="inline-flex min-h-[44px] w-fit items-center rounded-lg border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-700 hover:bg-stone-50">
-          Open timetable
+          View full timetable
         </Link>
       </header>
 
@@ -96,6 +100,10 @@ export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashb
         </div>
       )}
 
+      {sessionsAtNow.filter((session) => isRecoveryWindowActive(session.recoveryGrant, now)).length > 0 && <section className="space-y-3" aria-label="Active Admin attendance recovery">
+        {sessionsAtNow.filter((session) => isRecoveryWindowActive(session.recoveryGrant, now)).map((session) => <AttendanceRecoveryAlert key={session.id} title={session.title} sessionId={session.id} grant={session.recoveryGrant!} />)}
+      </section>}
+
       <div className="grid min-w-0 items-start gap-8 xl:grid-cols-12">
         <div className="min-w-0 space-y-8 xl:col-span-8">
           <section className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs sm:p-7" aria-label="Next or current session">
@@ -105,7 +113,7 @@ export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashb
               onPostpone={nextSession && canPostponeSession(nextSession.startTime, now) ? () => setRescheduleSession(nextSession) : undefined}
             />
           </section>
-          <NeedsAttention sessions={needsAttentionSessions} />
+          <NeedsAttention sessions={needsAttentionSessions} now={now} />
           <SessionSelectionGrid sessions={activeSessions} />
         </div>
 

@@ -123,11 +123,11 @@ describe('Admin attendance recovery and attention', () => {
     expect(warnings).toHaveLength(3);
     expect(warnings.find(({ id }) => id === 'session-1')?.warnings).toEqual(expect.arrayContaining(['ATTENDANCE_MISSING', 'RECOVERY_ACTIVE', 'TUTOR_RATE_MISSING', 'SETTLEMENT_PENDING']));
     expect(warnings.find(({ id }) => id === 'session-2')?.warnings).toEqual(expect.arrayContaining(['ATTENDANCE_MISSING', 'RECOVERY_EXPIRED']));
-    expect(warnings.find(({ id }) => id === 'session-3')?.warnings).toEqual(expect.arrayContaining(['ATTENDANCE_MISSING', 'ATTENDANCE_NEEDS_REVIEW']));
-    expect(warnings.find(({ id }) => id === 'session-3')?.reviewDetail).toContain('3 legacy attendance records');
+    expect(warnings.find(({ id }) => id === 'session-3')?.warnings).toEqual(['ATTENDANCE_NEEDS_REVIEW']);
+    expect(warnings.find(({ id }) => id === 'session-3')?.reviewDetail).toContain('3 attendance records');
   });
 
-  it('uses one exact rolling 30-day cutoff and puts a granted Session only in handled history', async () => {
+  it('uses one exact rolling 30-day cutoff and separates active recovery from handled history', async () => {
     const activeGrant = {
       id: 'grant-active', session_id: 'session-handled', admin_reason: 'Tutor reported a connection outage.',
       opened_at: new Date('2026-10-01T13:00:00.000Z'), closes_at: new Date('2026-10-01T15:00:00.000Z'),
@@ -150,9 +150,10 @@ describe('Admin attendance recovery and attention', () => {
 
     const board = await getAdminAttendanceInterventionBoard(NOW);
     expect(board.needsAction.map(({ id }) => id)).toEqual(['session-action']);
-    expect(board.handled).toHaveLength(1);
-    expect(board.handled[0]).toMatchObject({ id: 'session-handled', recoveryWindowActive: true, adminName: 'Admin' });
-    expect(board.needsAction.some(({ id }) => id === board.handled[0].id)).toBe(false);
+    expect(board.recoveryActive).toHaveLength(1);
+    expect(board.recoveryActive[0]).toMatchObject({ id: 'session-handled', recoveryWindowActive: true, adminName: 'Admin', closesAt: '2026-10-01T15:00:00.000Z', adminReason: 'Tutor reported a connection outage.' });
+    expect(board.handled).toHaveLength(0);
+    expect(board.needsAction.some(({ id }) => id === board.recoveryActive[0].id)).toBe(false);
     expect(mocks.sessionFind).toHaveBeenCalledWith(expect.objectContaining({
       where: { OR: [
         { admin_attendance_handled_at: { gte: new Date('2026-09-01T14:00:00.000Z'), lte: NOW } },
@@ -161,7 +162,7 @@ describe('Admin attendance recovery and attention', () => {
     }));
   });
 
-  it('includes another Admin follow-up warning without counting it as an attendance action', async () => {
+  it('keeps non-attendance Admin follow-ups out of attendance categories', async () => {
     mocks.sessionFind.mockResolvedValue([]);
     mocks.linkedPairFind.mockResolvedValue([{
       id: 'pair-1', created_at: NOW,
@@ -170,6 +171,6 @@ describe('Admin attendance recovery and attention', () => {
     }]);
     const board = await getAdminAttendanceInterventionBoard(NOW);
     expect(board.needsAction).toHaveLength(0);
-    expect(board.otherAttention[0]).toMatchObject({ id: 'linked-pair-1', warnings: ['LINKED_STUDENTS_DIFFERENT_ENROLLMENT'] });
+    expect(board.otherAttention).toMatchObject([{ id: 'linked-pair-1', warnings: ['LINKED_STUDENTS_DIFFERENT_ENROLLMENT'] }]);
   });
 });

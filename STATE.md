@@ -168,3 +168,11 @@
   - `src/app/(portal)/student/wallet/page.tsx` (Hardened student user lookup)
   - `tests/unit/wallet-resilience.test.ts` (Added regression tests for non-existent users and safe wallet creation)
 - **Verification:** Vitest 35/35 passing, Playwright multi-viewport visual audit passing with HTTP 200 and zero horizontal spill.
+
+## Attendance + Timetable UX Cleanup (2026-09-27)
+- Admin attendance attention now separates Needs Action, Recovery Active, and Handled (last 30 days), using the stored recovery deadline and Admin grant details.
+- Tutor Agenda is a compact action preview; the full Timetable groups by recurring-series ID and paginates groups; recovery alerts persist across Tutor views.
+- Zero-roster Sessions with no history require no Tutor action; records with legacy attendance or financial effects remain Admin-reviewable. No schema or financial-ledger mutation was added.
+- Verification: TypeScript, lint, and production build passed; 234 unit tests passed; guarded attendance integration passed 10/10.
+- Authenticated mobile/tablet/desktop visual QA was not run because this checkout has no existing Admin/Tutor Playwright storage states and the available login journey did not reach its password step.
+- NEXT RECOMMENDED PHASE: Run authenticated responsive route audits when project-provided Admin and Tutor storage states are available.

@@ -2,8 +2,9 @@ import Link from 'next/link';
 import { ArrowRight, CalendarClock, CheckCircle2 } from 'lucide-react';
 import { formatDateTime, formatTime } from '@/shared/utils/date-format';
 import type { GadwalSessionItem } from '@/features/sessions/types';
+import { isRecoveryWindowActive } from '@/features/attendance/utils/recovery-time';
 
-export function NeedsAttention({ sessions }: { sessions: GadwalSessionItem[] }) {
+export function NeedsAttention({ sessions, now }: { sessions: GadwalSessionItem[]; now: number }) {
   return (
     <section className="rounded-2xl border border-stone-200/80 bg-white p-5 shadow-xs" aria-labelledby="needs-attention-heading">
       <div className="flex items-start justify-between gap-3">
@@ -20,7 +21,7 @@ export function NeedsAttention({ sessions }: { sessions: GadwalSessionItem[] }) 
       ) : (
         <div className="mt-4 divide-y divide-stone-100">
           {sessions.slice(0, 4).map((session) => (
-            session.attendanceWindowState === 'CLOSED' && !session.attendanceSavedAt ? (
+            session.attendanceWindowState === 'CLOSED' && !session.attendanceSavedAt && !isRecoveryWindowActive(session.recoveryGrant, now) ? (
               <div key={session.id} className="flex min-h-[56px] items-center justify-between gap-3 rounded-lg px-2 py-3 text-sm">
                 <span className="min-w-0">
                   <span className="block truncate font-semibold text-stone-900">{session.title}</span>
@@ -31,7 +32,7 @@ export function NeedsAttention({ sessions }: { sessions: GadwalSessionItem[] }) 
               <Link key={session.id} href={`/tutor/attendance/${session.id}`} className="flex min-h-[56px] items-center justify-between gap-3 rounded-lg px-2 py-3 text-sm transition-colors hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
                 <span className="min-w-0">
                   <span className="block truncate font-semibold text-stone-900">{session.title}</span>
-                  <span className="block text-xs text-stone-500">{session.sessionCode || session.sessionType} · Attendance open</span>
+                <span className="block text-xs text-stone-500">{session.sessionCode || session.sessionType} · {isRecoveryWindowActive(session.recoveryGrant, now) ? 'Admin recovery active' : 'Attendance open'}</span>
                 </span>
                 <ArrowRight className="h-4 w-4 shrink-0 text-stone-400" aria-hidden="true" />
               </Link>
@@ -60,7 +61,7 @@ export function SchedulePreview({
           <h2 id="schedule-preview-heading" className="text-base font-semibold text-stone-900">Upcoming schedule</h2>
           <p className="mt-0.5 text-xs text-stone-500">Next classes this week.</p>
         </div>
-        <Link href="/tutor/timetable" className="inline-flex min-h-[44px] shrink-0 items-center px-1 text-xs font-semibold text-brand-primary hover:text-brand-hover">Full timetable</Link>
+        <Link href="/tutor/timetable" className="inline-flex min-h-[44px] shrink-0 items-center px-1 text-xs font-semibold text-brand-primary hover:text-brand-hover">View full timetable</Link>
       </div>
       <div className="mt-3 divide-y divide-stone-100">
         {previewSessions.length === 0 ? (

@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/shared/lib/prisma';
 import { computeAttendanceClosesAt } from '@/shared/utils/deadline';
+import { classifyZeroRosterSession } from '@/shared/utils/zero-roster';
 
 export type AdminAttendanceWarning = 'ATTENDANCE_MISSING' | 'ATTENDANCE_NEEDS_REVIEW' | 'RECOVERY_ACTIVE' | 'RECOVERY_EXPIRED' | 'TUTOR_RATE_MISSING' | 'SETTLEMENT_PENDING' | 'LINKED_STUDENTS_DIFFERENT_ENROLLMENT' | 'LINKED_STUDENTS_DIFFERENT_GROUPS';
 
@@ -39,6 +40,7 @@ export interface AdminAttendanceHandledItem {
 
 export interface AdminAttendanceInterventionBoard {
   needsAction: AdminAttendanceAttentionItem[];
+  recoveryActive: AdminAttendanceHandledItem[];
   handled: AdminAttendanceHandledItem[];
   otherAttention: AdminAttendanceAttentionItem[];
   attention: AdminAttendanceAttentionItem[];
@@ -61,6 +63,8 @@ export async function getAdminAttendanceAttention(now = new Date()): Promise<Adm
       tutor: { select: { name: true } },
       participants: { select: { student_id: true } },
       attendances: { select: { id: true } },
+      _count: { select: { transactions: true, commission_entries: true } },
+      tutor_compensation: { select: { id: true } },
       attendance_recovery_grants: { orderBy: { opened_at: 'desc' }, take: 5 },
     },
     orderBy: { end_time: 'desc' },
@@ -69,10 +73,17 @@ export async function getAdminAttendanceAttention(now = new Date()): Promise<Adm
   const items: AdminAttendanceAttentionItem[] = missing.flatMap((session) => {
     const closesAt = computeAttendanceClosesAt(session.end_time, graceHours);
     if (now <= closesAt) return [];
+    const disposition = classifyZeroRosterSession({
+      participantCount: session.participants.length,
+      attendanceRecordCount: session.attendances.length,
+      transactionCount: session._count?.transactions ?? 0,
+      commissionEntryCount: session._count?.commission_entries ?? 0,
+      hasTutorCompensation: Boolean(session.tutor_compensation),
+    });
+    if (disposition === 'NO_ACTION') return [];
     const latestGrant = session.attendance_recovery_grants[0];
     const active = latestGrant && !latestGrant.used_at && now >= latestGrant.opened_at && now <= latestGrant.closes_at;
-    const warnings: AdminAttendanceWarning[] = ['ATTENDANCE_MISSING'];
-    if (!session.participants.length) warnings.push('ATTENDANCE_NEEDS_REVIEW');
+    const warnings: AdminAttendanceWarning[] = disposition === 'HAS_ROSTER' ? ['ATTENDANCE_MISSING'] : ['ATTENDANCE_NEEDS_REVIEW'];
     if (active) warnings.push('RECOVERY_ACTIVE');
     else if (latestGrant && !latestGrant.used_at && now > latestGrant.closes_at) warnings.push('RECOVERY_EXPIRED');
     return [{
@@ -85,10 +96,13 @@ export async function getAdminAttendanceAttention(now = new Date()): Promise<Adm
       grantClosesAt: latestGrant?.closes_at.toISOString(),
       adminReason: latestGrant?.admin_reason,
       adminHandledAt: (session.admin_attendance_handled_at ?? latestGrant?.opened_at)?.toISOString(),
-      reviewDetail: !session.participants.length
-        ? session.attendances.length
-          ? `${session.attendances.length} legacy attendance records exist without a Student roster; attendance cannot be finalized safely.`
-          : 'This Session has no Student roster, so attendance cannot be finalized safely.'
+      reviewDetail: disposition === 'ADMIN_REVIEW'
+        ? `No Student roster exists; ${[
+            session.attendances.length ? `${session.attendances.length} attendance records` : '',
+            (session._count?.transactions ?? 0) ? `${session._count.transactions} wallet transactions` : '',
+            (session._count?.commission_entries ?? 0) ? `${session._count.commission_entries} commission records` : '',
+            session.tutor_compensation ? 'Tutor compensation' : '',
+          ].filter(Boolean).join(', ')} are retained for Admin data review. Tutor attendance is unavailable.`
         : undefined,
       warnings,
     }];
@@ -230,13 +244,12 @@ export async function getAdminAttendanceInterventionBoard(now = new Date()): Pro
     });
   }
   const handled = [...handledBySession.values()].sort((left, right) => Date.parse(right.openedAt) - Date.parse(left.openedAt));
-  const attendanceWarnings = new Set<AdminAttendanceWarning>([
-    'ATTENDANCE_MISSING', 'ATTENDANCE_NEEDS_REVIEW', 'RECOVERY_ACTIVE', 'RECOVERY_EXPIRED',
-  ]);
+  const attendanceWarnings = new Set<AdminAttendanceWarning>(['ATTENDANCE_MISSING', 'ATTENDANCE_NEEDS_REVIEW', 'RECOVERY_ACTIVE', 'RECOVERY_EXPIRED']);
   return {
     attention,
-    needsAction: attention.filter((item) => item.warnings.includes('ATTENDANCE_MISSING') && !item.adminHandledAt),
-    handled,
+    needsAction: attention.filter((item) => !item.adminHandledAt && item.warnings.some((warning) => warning === 'ATTENDANCE_MISSING' || warning === 'ATTENDANCE_NEEDS_REVIEW')),
+    recoveryActive: handled.filter((item) => item.recoveryWindowActive),
+    handled: handled.filter((item) => !item.recoveryWindowActive),
     otherAttention: attention.flatMap((item) => {
       const warnings = item.warnings.filter((warning) => !attendanceWarnings.has(warning));
       return warnings.length ? [{ ...item, warnings }] : [];

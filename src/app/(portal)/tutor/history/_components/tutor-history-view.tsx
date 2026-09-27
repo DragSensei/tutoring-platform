@@ -133,7 +133,7 @@ export function TutorHistoryView({
                   </div>
 
                   {/* Right side: Edit Action */}
-                  {!session.historicalOnly && (
+                  {!session.historicalOnly && session.attendanceDisposition === 'HAS_ROSTER' && (
                     <div className="flex items-center gap-4 self-end md:self-center flex-shrink-0">
                       <Link
                         href={`/tutor/attendance/${session.id}`}
@@ -143,6 +143,12 @@ export function TutorHistoryView({
                         <span>Edit Attendance</span>
                       </Link>
                     </div>
+                  )}
+                  {!session.historicalOnly && session.attendanceDisposition === 'ADMIN_REVIEW' && (
+                    <p className="self-end rounded-lg border border-status-warning/40 bg-status-warning/5 px-3 py-2 text-sm font-medium text-text-primary md:self-center">Admin data review · no Tutor action</p>
+                  )}
+                  {!session.historicalOnly && session.attendanceDisposition === 'NO_ACTION' && (
+                    <p className="self-end text-sm text-text-muted md:self-center">No Tutor attendance required</p>
                   )}
                 </div>
               );

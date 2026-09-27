@@ -9,7 +9,8 @@ const policy = {
 };
 const prisma = {
   user: { findUnique: vi.fn(), findMany: vi.fn() },
-  session: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
+  session: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), delete: vi.fn() },
+  sessionSeries: { findMany: vi.fn().mockResolvedValue([]) },
   $transaction: vi.fn(),
 };
 
@@ -18,7 +19,7 @@ vi.mock('@/features/policies/server/policy-actions', () => ({ getPlatformPolicie
 vi.mock('@/shared/lib/prisma', () => ({ prisma }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-const { createSession, updateSession, deleteSession, rescheduleSessionOccurrence } = await import('@/features/sessions/server/session-actions');
+const { createSession, updateSession, deleteSession, rescheduleSessionOccurrence, getTutorSessions } = await import('@/features/sessions/server/session-actions');
 const { createAdminSession, cancelAdminSession } = await import('@/app/(portal)/admin/gadwal/actions');
 
 const input = {
@@ -135,5 +136,70 @@ describe('Admin session mutation boundary', () => {
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(prisma.session.update).not.toHaveBeenCalled();
+  });
+
+  it('reads durable recovery details and recurring identity for one Tutor-owned Session', async () => {
+    const currentTime = new Date('2026-10-01T14:00:00.000Z');
+    prisma.session.findMany.mockResolvedValueOnce([{
+      id: 'session-1', title: input.title, tutor_id: 'tutor-1', session_type: 'GROUP',
+      series_id: 'series-1', occurrence_date: new Date('2026-10-01T00:00:00.000Z'),
+      start_time: new Date('2026-10-01T14:00:00.000Z'), end_time: new Date('2026-10-01T16:00:00.000Z'),
+      attendance_saved_at: null, attendance_submitted_at: null, attendance_finalized_at: null,
+      attendance_notes: null, series_exception: false, series_exception_reason: null, token: null,
+      status: 'SCHEDULED', historical_only: false,
+      tutor: { id: 'tutor-1', name: 'Omar', tutor_hourly_rate_override: null },
+      series: { weekday: 4, start_minute: 1020, duration_minutes: 120 },
+      participants: [{ student: { id: 'student-1', name: 'Karim', email: 'karim@example.com' }, attendance_outcome: null }],
+      attendances: [], tutor_compensation: null,
+      _count: { attendances: 0, transactions: 0, commission_entries: 0 },
+      attendance_recovery_grants: [{ id: 'grant-1', opened_at: new Date('2026-10-01T13:00:00.000Z'), closes_at: new Date('2026-10-01T15:00:00.000Z'), used_at: null, admin_reason: 'Tutor had an internet outage.', granted_by_admin: { name: 'Amina' } }],
+    }]);
+
+    const sessions = await getTutorSessions('tutor-1', { ...policy, defaultTutorHourlyRate: '0' }, currentTime, { mode: 'single', sessionId: 'session-1' });
+
+    expect(prisma.session.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'session-1', tutor_id: 'tutor-1' } }));
+    expect(sessions[0]).toMatchObject({
+      attendanceNotes: null,
+      seriesId: 'series-1', seriesSchedule: { weekday: 4, startMinute: 1020, durationMinutes: 120 },
+      attendanceDisposition: 'HAS_ROSTER', recoveryGrant: {
+        id: 'grant-1', openedAt: '2026-10-01T13:00:00.000Z', closesAt: '2026-10-01T15:00:00.000Z',
+        adminName: 'Amina', adminReason: 'Tutor had an internet outage.', observedAt: currentTime.toISOString(),
+      },
+    });
+  });
+
+  it('bounds Agenda reads and distinguishes clean and history-bearing zero-roster Sessions', async () => {
+    const currentTime = new Date('2026-10-01T14:00:00.000Z');
+    prisma.session.findMany.mockResolvedValueOnce([
+      {
+        id: 'session-clean', title: 'Robotics Lab', tutor_id: 'tutor-1', session_type: 'GROUP', series_id: null, occurrence_date: null,
+        start_time: new Date('2026-10-02T14:00:00.000Z'), end_time: new Date('2026-10-02T16:00:00.000Z'),
+        attendance_saved_at: null, attendance_submitted_at: null, attendance_finalized_at: null, attendance_notes: null,
+        series_exception: false, series_exception_reason: null, token: null, status: 'SCHEDULED', historical_only: false,
+        tutor: { id: 'tutor-1', name: 'Omar', tutor_hourly_rate_override: null }, series: null, participants: [], attendances: [],
+        tutor_compensation: null, _count: { attendances: 0, transactions: 0, commission_entries: 0 }, attendance_recovery_grants: [],
+      },
+      {
+        id: 'session-legacy', title: 'Old Session', tutor_id: 'tutor-1', session_type: 'GROUP', series_id: null, occurrence_date: null,
+        start_time: new Date('2026-09-28T14:00:00.000Z'), end_time: new Date('2026-09-28T16:00:00.000Z'),
+        attendance_saved_at: null, attendance_submitted_at: null, attendance_finalized_at: null, attendance_notes: null,
+        series_exception: false, series_exception_reason: null, token: null, status: 'SCHEDULED', historical_only: false,
+        tutor: { id: 'tutor-1', name: 'Omar', tutor_hourly_rate_override: null }, series: null, participants: [], attendances: [{ student_id: 'student-1' }],
+        tutor_compensation: null, _count: { attendances: 1, transactions: 0, commission_entries: 0 }, attendance_recovery_grants: [],
+      },
+    ]);
+
+    const sessions = await getTutorSessions('tutor-1', { ...policy, defaultTutorHourlyRate: '0' }, currentTime, { mode: 'agenda', horizonDays: 7 });
+
+    expect(prisma.session.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        tutor_id: 'tutor-1', historical_only: false, status: { not: 'CANCELLED' },
+        OR: expect.arrayContaining([
+          expect.objectContaining({ start_time: expect.objectContaining({ gt: currentTime, lte: new Date('2026-10-08T14:00:00.000Z') }) }),
+          expect.objectContaining({ participants: { some: {} }, attendance_submitted_at: null }),
+        ]),
+      }),
+    }));
+    expect(sessions.map(({ attendanceDisposition }) => attendanceDisposition)).toEqual(['NO_ACTION', 'ADMIN_REVIEW']);
   });
 });

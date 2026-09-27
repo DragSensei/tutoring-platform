@@ -16,12 +16,16 @@ export interface TutorDashboardData {
   sessions: GadwalSessionItem[];
 }
 
-export async function getTutorDashboardData(): Promise<TutorDashboardData> {
+export async function getTutorDashboardData(view: 'full' | 'agenda' = 'full'): Promise<TutorDashboardData> {
   const authSession = await requireAuth(['TUTOR']);
   const tutorId = authSession.userId;
   const tutorName = authSession.name;
 
-  const sessions = await getTutorSessions(tutorId, await getPlatformPolicies());
+  const currentTime = new Date();
+  const platformPolicy = await getPlatformPolicies();
+  const sessions = view === 'agenda'
+    ? await getTutorSessions(tutorId, platformPolicy, currentTime, { mode: 'agenda', horizonDays: 7 })
+    : await getTutorSessions(tutorId, platformPolicy, currentTime);
   const closestSession = findClosestSessionDue(sessions);
 
   return {

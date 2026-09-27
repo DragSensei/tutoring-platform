@@ -7,6 +7,6 @@ export const dynamic = 'force-dynamic';
 
 export default async function TutorTimetablePage() {
   const auth = await requireAuth(['TUTOR']);
-  const sessions = await getTutorSessions(auth.userId, await getPlatformPolicies(), new Date(), { mode: 'timetable', horizonDays: 7 });
+  const sessions = await getTutorSessions(auth.userId, await getPlatformPolicies(), new Date(), { mode: 'timetable', horizonDays: null });
   return <TutorTimetableView tutor={{ id: auth.userId, name: auth.name }} sessions={sessions} />;
 }

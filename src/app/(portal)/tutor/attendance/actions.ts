@@ -224,6 +224,7 @@ async function getTutorAttendanceSession(tx: Prisma.TransactionClient, tutorId: 
 function assertEditableSession(session: Awaited<ReturnType<typeof getTutorAttendanceSession>>) {
   if (session.historical_only) throw new AttendanceStateError('Historical schedule records cannot record attendance.');
   if (session.status === 'CANCELLED') throw new AttendanceStateError('Cancelled sessions cannot record attendance.');
+  if (session.participants.length === 0) throw new AttendanceStateError('Attendance cannot be edited without an assigned Student roster. Ask Admin to review legacy Session data.');
   if (session.attendance_submitted_at || session.attendance_finalized_at) {
     throw new AttendanceStateError('Submitted attendance cannot be edited.');
   }

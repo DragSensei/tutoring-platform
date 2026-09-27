@@ -4,6 +4,6 @@ import { TutorAgendaView } from './_components/tutor-agenda-view';
 export const dynamic = 'force-dynamic';
 
 export default async function TutorAgendaPage() {
-  const data = await getTutorDashboardData();
+  const data = await getTutorDashboardData('agenda');
   return <TutorAgendaView {...data} />;
 }

@@ -7,6 +7,7 @@ import { createSessionSchema, type CreateSessionInput, type SessionFilterInput }
 import { academyDateTime, materializeActiveSeriesForTutor } from './recurrence';
 import { Prisma } from '@prisma/client';
 import { expandLinkedGroupParticipantsTx } from './linked-group-pairing';
+import { classifyZeroRosterSession } from '@/shared/utils/zero-roster';
 
 export interface SessionPricingConfig {
   checkInWindowHours: number;
@@ -16,8 +17,10 @@ export interface SessionPricingConfig {
 }
 
 export type TutorSessionScope =
-  | { mode: 'timetable'; horizonDays: number }
-  | { mode: 'upcoming'; horizonDays: number | null };
+  | { mode: 'timetable'; horizonDays: number | null }
+  | { mode: 'upcoming'; horizonDays: number | null }
+  | { mode: 'agenda'; horizonDays: number }
+  | { mode: 'single'; sessionId: string };
 
 const SESSION_INCLUDE = {
   tutor: { select: { id: true, name: true, email: true } },
@@ -349,38 +352,62 @@ export async function rescheduleSessionOccurrence(
 }
 
 export async function getTutorSessions(tutorId: string, policy: SessionPricingConfig, currentTime = new Date(), scope?: TutorSessionScope) {
-  if (!scope) await materializeActiveSeriesForTutor(tutorId, policy, currentTime);
-  const horizonLimit = scope && scope.horizonDays !== null
-    ? new Date(currentTime.getTime() + scope.horizonDays * 86_400_000)
-    : null;
-  const where = scope?.mode === 'upcoming'
-    ? { tutor_id: tutorId, start_time: { gt: currentTime, ...(horizonLimit ? { lte: horizonLimit } : {}) } }
-    : scope?.mode === 'timetable'
-      ? {
-          tutor_id: tutorId,
-          OR: [
-            { end_time: { lte: currentTime } },
-            { AND: [{ start_time: { lte: currentTime } }, { end_time: { gt: currentTime } }] },
-            { start_time: { gt: currentTime, ...(horizonLimit ? { lte: horizonLimit } : {}) } },
-          ],
-        }
-      : { tutor_id: tutorId };
+  if (!scope || scope.mode === 'agenda') await materializeActiveSeriesForTutor(tutorId, policy, currentTime);
+  const horizonDays = scope && 'horizonDays' in scope ? scope.horizonDays : null;
+  const horizonLimit = horizonDays === null ? null : new Date(currentTime.getTime() + horizonDays * 86_400_000);
+  const agendaGraceStart = new Date(currentTime.getTime() - policy.checkInWindowHours * 3_600_000);
+  const recentHistoryStart = new Date(currentTime.getTime() - 30 * 86_400_000);
+  let where: Prisma.SessionWhereInput;
+  if (scope?.mode === 'single') {
+    where = { id: scope.sessionId, tutor_id: tutorId };
+  } else if (scope?.mode === 'upcoming') {
+    where = { tutor_id: tutorId, start_time: { gt: currentTime, ...(horizonLimit ? { lte: horizonLimit } : {}) } };
+  } else if (scope?.mode === 'timetable') {
+    where = {
+      tutor_id: tutorId,
+      OR: [
+        { end_time: { lte: currentTime } },
+        { AND: [{ start_time: { lte: currentTime } }, { end_time: { gt: currentTime } }] },
+        { start_time: { gt: currentTime, ...(horizonLimit ? { lte: horizonLimit } : {}) } },
+      ],
+    };
+  } else if (scope?.mode === 'agenda') {
+    where = {
+      tutor_id: tutorId,
+      historical_only: false,
+      status: { not: 'CANCELLED' },
+      OR: [
+        { start_time: { gt: currentTime, lte: horizonLimit ?? undefined } },
+        { start_time: { lte: currentTime }, end_time: { gt: currentTime } },
+        { end_time: { lte: currentTime, gte: agendaGraceStart }, attendance_submitted_at: null, participants: { some: {} } },
+        {
+          attendance_submitted_at: null,
+          participants: { some: {} },
+          attendance_recovery_grants: { some: { used_at: null, opened_at: { lte: currentTime }, closes_at: { gte: currentTime } } },
+        },
+        { end_time: { gte: recentHistoryStart, lte: currentTime }, attendance_submitted_at: { not: null } },
+      ],
+    };
+  } else {
+    where = { tutor_id: tutorId };
+  }
   const sessions = await prisma.session.findMany({
     where,
     include: {
       tutor: { select: { id: true, name: true, tutor_hourly_rate_override: true } },
-      _count: { select: { attendances: true } },
+      _count: { select: { attendances: true, transactions: true, commission_entries: true } },
       participants: {
         include: {
           student: { select: { id: true, name: true, email: true } },
         },
       },
-      series: { select: { start_minute: true } },
+      series: { select: { weekday: true, start_minute: true, duration_minutes: true } },
       attendances: { select: { student_id: true } },
       tutor_compensation: { select: { amount: true, hourly_rate: true, delivered_minutes: true } },
       attendance_recovery_grants: {
         orderBy: { opened_at: 'desc' },
         take: 5,
+        include: { granted_by_admin: { select: { name: true } } },
       },
     },
     orderBy: { start_time: 'desc' },
@@ -389,6 +416,8 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
   return sessions.map((s) => {
     const attendedIds = new Set(s.attendances.map((a) => a.student_id));
     const recoveryGrant = s.attendance_recovery_grants.find((grant) => !grant.used_at && currentTime >= grant.opened_at && currentTime <= grant.closes_at);
+    const latestRecoveryGrant = s.attendance_recovery_grants[0];
+    const recoveryGrantExpired = Boolean(latestRecoveryGrant && !latestRecoveryGrant.used_at && currentTime > latestRecoveryGrant.closes_at);
     const usedRecoveryGrant = s.attendance_recovery_grants.find((grant) => Boolean(grant.used_at));
     const effectiveRate = s.tutor.tutor_hourly_rate_override ?? Number(policy.defaultTutorHourlyRate ?? 0);
     const assignedStudents = s.participants.map((participant) => displayProfile(participant.student.name));
@@ -420,6 +449,8 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
       attendanceSavedAt: s.attendance_saved_at?.toISOString() || null,
       attendanceSubmittedAt: s.attendance_submitted_at?.toISOString() || null,
       attendanceFinalizedAt: s.attendance_finalized_at?.toISOString() || null,
+      seriesId: s.series_id,
+      seriesSchedule: s.series ? { weekday: s.series.weekday, startMinute: s.series.start_minute, durationMinutes: s.series.duration_minutes } : undefined,
       attendanceWindowState: getAttendanceWindowState(s.start_time, computeAttendanceClosesAt(s.end_time, policy.checkInWindowHours), currentTime),
       baseStartTime: s.series && s.occurrence_date ? academyDateTime(s.occurrence_date, s.series.start_minute).toISOString() : s.start_time.toISOString(),
       isRescheduled: s.series_exception,
@@ -428,6 +459,16 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
       status: s.status,
       historicalOnly: s.historical_only,
       attendeeCount: s._count.attendances,
+      participantCount: s.participants.length,
+      transactionCount: s._count.transactions,
+      commissionEntryCount: s._count.commission_entries,
+      attendanceDisposition: classifyZeroRosterSession({
+        participantCount: s.participants.length,
+        attendanceRecordCount: s.attendances.length,
+        transactionCount: s._count.transactions,
+        commissionEntryCount: s._count.commission_entries,
+        hasTutorCompensation: Boolean(s.tutor_compensation),
+      }),
       tutorCompensation: s.tutor_compensation ? {
         amount: s.tutor_compensation.amount.toFixed(2),
         hourlyRate: s.tutor_compensation.hourly_rate.toFixed(2),
@@ -438,7 +479,11 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
         id: recoveryGrant.id,
         openedAt: recoveryGrant.opened_at.toISOString(),
         closesAt: recoveryGrant.closes_at.toISOString(),
+        adminName: recoveryGrant.granted_by_admin.name ?? 'Admin',
+        adminReason: recoveryGrant.admin_reason,
+        observedAt: currentTime.toISOString(),
       } : null,
+      recoveryGrantExpired,
       recoveryGrantUsed: usedRecoveryGrant ? {
         id: usedRecoveryGrant.id,
         adminReason: usedRecoveryGrant.admin_reason,
