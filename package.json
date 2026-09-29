@@ -17,6 +17,9 @@
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push"
   },
+  "prisma": {
+    "seed": "node scripts/run-prisma-seed.cjs"
+  },
   "dependencies": {
     "@prisma/client": "^5.21.1",
     "bcryptjs": "^2.4.3",

@@ -176,3 +176,10 @@
 - Verification: TypeScript, lint, and production build passed; 234 unit tests passed; guarded attendance integration passed 10/10.
 - Authenticated mobile/tablet/desktop visual QA was not run because this checkout has no existing Admin/Tutor Playwright storage states and the available login journey did not reach its password step.
 - NEXT RECOMMENDED PHASE: Run authenticated responsive route audits when project-provided Admin and Tutor storage states are available.
+
+## Canonical three-Tutor development seed (2026-09-29)
+- `prisma/seed.ts` now owns a deterministic local dataset for Omnia Samy, Ahmed Alaa, and Omar Ashraf, their known Student/group mappings, 15 separate weekly SessionSeries, and bounded concrete future Sessions. The existing Admin identity and local password convention remain available.
+- Ahmed's Monday assignment is 16:30–18:30; Omar has Sunday 19:00–21:00 and Wednesday 18:00–20:00, with no active Friday series. Omnia's Saturday 10:00 entry is backed by the local schedule manifest. The Wednesday 14:00 mapping remains P1L1 Lego because the monthly note labels it P3L1; parenthesized counts were not imported.
+- Omar's Wednesday roster remains empty because source evidence does not map Students to it. No linked-student, attendance, wallet, compensation, commission, receivable, payment, or payout history was created.
+- Guarded reseeds and persistence checks used only `tutoring_platform_test`; both repeated CLI runs retained 24 canonical Tutor/Student rows, 15 series, and 180 bounded occurrences. Ahmed's obsolete 16:20 schedule and Omar's prior Friday series were regression-tested and removed from the active schedule.
+- NEXT RECOMMENDED PHASE: Finance discovery/modeling from the existing CSV, the real 60%/40% revenue rule, Omnia's monthly reconciliation message, and the cleaned canonical data.
