@@ -16,6 +16,7 @@ import {
   cancelSessionSeries,
   createSessionSeries,
   getAdminWeeklySchedule,
+  getAdminUpcomingSeriesPage as queryAdminUpcomingSeriesPage,
   getSessionSeries,
   getSessionSeriesHistory,
   previewHistoricalSeries,
@@ -122,6 +123,12 @@ export async function getAdminSeriesHistory(seriesId: string) {
 export async function getAdminWeeklySeries(tutorId?: string) {
   await requireAuth(['ADMIN']);
   return getAdminWeeklySchedule(tutorId, await getPlatformPolicies());
+}
+
+export async function getAdminUpcomingSeriesPage(tutorId: string | undefined, page: number) {
+  await requireAuth(['ADMIN']);
+  const now = new Date();
+  return queryAdminUpcomingSeriesPage(tutorId, page, await getPlatformPolicies(), now);
 }
 
 export async function getAdminTimetableSessions(tutorId?: string) {

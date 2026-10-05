@@ -49,6 +49,13 @@ enum SessionSeriesStatus {
   CANCELLED
 }
 
+enum ProgramCode {
+  P1
+  P3
+  P4
+  P5
+}
+
 enum TransactionType {
   ADMIN_DEPOSIT
   SESSION_DEDUCTION
@@ -224,6 +231,8 @@ model Session {
   tutor                         User            @relation("TutorSessions", fields: [tutor_id], references: [id], onDelete: Restrict)
   series_id                     String?
   series                        SessionSeries?  @relation(fields: [series_id], references: [id], onDelete: SetNull)
+  series_slot_id                String?
+  series_slot                   SessionSeriesSlot? @relation(fields: [series_slot_id], references: [id], onDelete: SetNull)
   occurrence_date               DateTime?
   series_exception              Boolean         @default(false)
   title                         String
@@ -257,7 +266,7 @@ model Session {
   commission_entries CommissionLedgerEntry[]
   attendance_recovery_grants AttendanceRecoveryGrant[]
 
-  @@unique([series_id, occurrence_date])
+  @@unique([series_slot_id, occurrence_date])
   @@index([tutor_id])
   @@index([series_id, occurrence_date])
   @@index([token])
@@ -271,6 +280,9 @@ model SessionSeries {
   tutor_id           String
   tutor              User                @relation("TutorSeries", fields: [tutor_id], references: [id], onDelete: Restrict)
   title              String
+  program_code       ProgramCode?
+  course_name        String?
+  level              Int?
   session_type       SessionType
   weekday            Int
   start_minute       Int
@@ -284,10 +296,27 @@ model SessionSeries {
   updated_at         DateTime            @updatedAt
 
   participants SessionSeriesParticipant[]
+  slots        SessionSeriesSlot[]
   occurrences  Session[]
 
   @@index([tutor_id, status])
   @@index([status, starts_on])
+}
+
+model SessionSeriesSlot {
+  id               String        @id @default(cuid())
+  series_id        String
+  series           SessionSeries @relation(fields: [series_id], references: [id], onDelete: Cascade)
+  weekday          Int
+  start_minute     Int
+  duration_minutes Int
+  timezone         String        @default("Africa/Cairo")
+  active           Boolean       @default(true)
+  created_at       DateTime      @default(now())
+  occurrences      Session[]
+
+  @@unique([series_id, weekday, start_minute, duration_minutes])
+  @@index([series_id, active])
 }
 
 model SessionSeriesParticipant {

@@ -1,4 +1,5 @@
 import { prisma } from '@/shared/lib/prisma';
+import { collectPrismaPages } from '@/shared/lib/prisma-pagination';
 import { computeAttendanceClosesAt, getAttendanceWindowState } from '@/shared/utils/deadline';
 import { canPostponeSession, classifySessionOccurrence } from '@/shared/utils/session-timing';
 import type { SessionType, TutorVolumeKPIs } from '@/shared/types';
@@ -25,6 +26,7 @@ export type TutorSessionScope =
 const SESSION_INCLUDE = {
   tutor: { select: { id: true, name: true, email: true } },
   series: { select: { start_minute: true } },
+  series_slot: { select: { start_minute: true } },
   participants: {
     include: { student: { select: { id: true, name: true, email: true } } },
   },
@@ -71,6 +73,7 @@ async function validateSessionReferences(input: CreateSessionInput, db: typeof p
   const students = await db.user.findMany({
     where: { id: { in: input.participantIds }, role: 'STUDENT' },
     select: { id: true },
+    take: 4,
   });
   if (students.length !== input.participantIds.length) {
     throw new Error('Every assigned participant must be a Student account');
@@ -83,7 +86,7 @@ function serializeSession(
 ) {
   const attendanceClosesAt = computeAttendanceClosesAt(session.end_time, policy.checkInWindowHours);
   const baseStartTime = session.series && session.occurrence_date
-    ? academyDateTime(session.occurrence_date, session.series.start_minute)
+    ? academyDateTime(session.occurrence_date, session.series_slot?.start_minute ?? session.series.start_minute)
     : session.start_time;
   return {
     id: session.id,
@@ -157,7 +160,7 @@ export async function getGadwalSessions(filter: SessionFilterInput | undefined, 
     if (filter?.endDate) whereClause.start_time.lte = new Date(filter.endDate);
   }
 
-  const sessions = await prisma.session.findMany({
+  const sessions = await collectPrismaPages((cursorId) => prisma.session.findMany({
     where: whereClause,
     include: {
       tutor: { select: { id: true, name: true } },
@@ -165,8 +168,11 @@ export async function getGadwalSessions(filter: SessionFilterInput | undefined, 
       attendance_recovery_grants: { orderBy: { opened_at: 'desc' }, take: 1 },
       _count: { select: { attendances: true, transactions: true } },
     },
-    orderBy: { start_time: 'desc' },
-  });
+    orderBy: [{ start_time: 'desc' }, { id: 'desc' }],
+    take: 200,
+    cursor: cursorId ? { id: cursorId } : undefined,
+    skip: cursorId ? 1 : 0,
+  }));
 
   return sessions.map((s) => ({
     id: s.id,
@@ -391,7 +397,7 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
   } else {
     where = { tutor_id: tutorId };
   }
-  const sessions = await prisma.session.findMany({
+  const sessions = await collectPrismaPages((cursorId) => prisma.session.findMany({
     where,
     include: {
       tutor: { select: { id: true, name: true, tutor_hourly_rate_override: true } },
@@ -401,7 +407,8 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
           student: { select: { id: true, name: true, email: true } },
         },
       },
-      series: { select: { weekday: true, start_minute: true, duration_minutes: true } },
+      series: { select: { weekday: true, start_minute: true, duration_minutes: true, slots: { where: { active: true }, select: { weekday: true, start_minute: true, duration_minutes: true } } } },
+      series_slot: { select: { start_minute: true } },
       attendances: { select: { student_id: true } },
       tutor_compensation: { select: { amount: true, hourly_rate: true, delivered_minutes: true } },
       attendance_recovery_grants: {
@@ -410,8 +417,11 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
         include: { granted_by_admin: { select: { name: true } } },
       },
     },
-    orderBy: { start_time: 'desc' },
-  });
+    orderBy: [{ start_time: 'desc' }, { id: 'desc' }],
+    take: 200,
+    cursor: cursorId ? { id: cursorId } : undefined,
+    skip: cursorId ? 1 : 0,
+  }));
 
   return sessions.map((s) => {
     const attendedIds = new Set(s.attendances.map((a) => a.student_id));
@@ -451,8 +461,9 @@ export async function getTutorSessions(tutorId: string, policy: SessionPricingCo
       attendanceFinalizedAt: s.attendance_finalized_at?.toISOString() || null,
       seriesId: s.series_id,
       seriesSchedule: s.series ? { weekday: s.series.weekday, startMinute: s.series.start_minute, durationMinutes: s.series.duration_minutes } : undefined,
+      seriesSchedules: s.series?.slots?.map((slot) => ({ weekday: slot.weekday, startMinute: slot.start_minute, durationMinutes: slot.duration_minutes })),
       attendanceWindowState: getAttendanceWindowState(s.start_time, computeAttendanceClosesAt(s.end_time, policy.checkInWindowHours), currentTime),
-      baseStartTime: s.series && s.occurrence_date ? academyDateTime(s.occurrence_date, s.series.start_minute).toISOString() : s.start_time.toISOString(),
+      baseStartTime: s.series && s.occurrence_date ? academyDateTime(s.occurrence_date, s.series_slot?.start_minute ?? s.series.start_minute).toISOString() : s.start_time.toISOString(),
       isRescheduled: s.series_exception,
       rescheduleReason: s.series_exception_reason,
       token: s.token,

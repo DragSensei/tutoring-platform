@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, CalendarClock, Save } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Plus, Save, Trash2 } from 'lucide-react';
 import { Combobox, MultiCombobox } from '@/shared/components/combobox';
 import { DatePicker } from '@/shared/components/date-picker';
 import { TimePicker } from '@/shared/components/time-picker';
@@ -23,6 +23,10 @@ interface InitialSeries {
   weekday: number;
   startMinute: number;
   durationMinutes: number;
+  weeklySlots?: Array<{ weekday: number; startMinute: number; durationMinutes: number }>;
+  programCode?: 'P1' | 'P3' | 'P4' | 'P5' | null;
+  courseName?: string | null;
+  level?: number | null;
   startsOn: string;
   endsOn: string | null;
   pricingProfileId: string | null;
@@ -40,6 +44,7 @@ interface SeriesFormProps {
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const PROGRAM_OPTIONS = [{ value: 'P1', label: 'P1 · Lego' }, { value: 'P3', label: 'P3 · Electronics' }, { value: 'P4', label: 'P4 · Intermediate' }, { value: 'P5', label: 'P5 · Advanced courses' }];
 const inputClass = 'min-h-[44px] w-full rounded-lg border border-border-subtle bg-canvas px-3 py-2 text-sm text-text-primary focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20';
 
 export function SeriesForm({ mode, tutors, students, policy, pricingProfiles, initialSeries }: SeriesFormProps) {
@@ -48,13 +53,17 @@ export function SeriesForm({ mode, tutors, students, policy, pricingProfiles, in
   const [isPreviewPending, startPreviewTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
   const [title, setTitle] = React.useState(initialSeries?.title || '');
+  const [programCode, setProgramCode] = React.useState<'P1' | 'P3' | 'P4' | 'P5' | ''>(initialSeries?.programCode || '');
+  const [courseName, setCourseName] = React.useState(initialSeries?.courseName || '');
+  const [level, setLevel] = React.useState(initialSeries?.level ? String(initialSeries.level) : '');
   const [tutorId, setTutorId] = React.useState(initialSeries?.tutorId || tutors[0]?.id || '');
   const [sessionType, setSessionType] = React.useState<'PRIVATE' | 'GROUP'>(initialSeries?.sessionType || 'GROUP');
   const [participantIds, setParticipantIds] = React.useState(initialSeries?.participantIds || []);
   const [pricingProfileId, setPricingProfileId] = React.useState(initialSeries?.pricingProfileId || '');
   const [weekday, setWeekday] = React.useState(String(initialSeries?.weekday ?? 1));
   const [startTime, setStartTime] = React.useState(formatTimeInput(initialSeries?.startMinute ?? 17 * 60));
-  const [duration, setDuration] = React.useState(String(initialSeries?.durationMinutes ?? 120));
+  const [endTime, setEndTime] = React.useState(formatTimeInput((initialSeries?.startMinute ?? 17 * 60) + (initialSeries?.durationMinutes ?? 120)));
+  const [extraSlots, setExtraSlots] = React.useState(() => (initialSeries?.weeklySlots || []).slice(1).map((slot) => ({ weekday: String(slot.weekday), startTime: formatTimeInput(slot.startMinute), endTime: formatTimeInput(slot.startMinute + slot.durationMinutes) })));
   const [startsOn, setStartsOn] = React.useState(initialSeries?.startsOn.slice(0, 10) || formatAcademyDateInput());
   const [endsOn, setEndsOn] = React.useState(initialSeries?.endsOn?.slice(0, 10) || '');
   const [endDateManuallySet, setEndDateManuallySet] = React.useState(Boolean(initialSeries));
@@ -67,9 +76,16 @@ export function SeriesForm({ mode, tutors, students, policy, pricingProfiles, in
   const effectiveEndsOn = endDateManuallySet ? endsOn : endMonthCount > 0 ? safeAddMonths(startsOn, endMonthCount) : '';
   const effectiveHistoryStart = historicalEnabled ? historicalStartsOn : '';
   const startMinute = parseTimeMinutes(startTime);
+  const durationMinutes = parseTimeMinutes(endTime) - startMinute;
+  const weeklySlots = [
+    { weekday: Number(weekday), startMinute, durationMinutes },
+    ...extraSlots.map((slot) => ({ weekday: Number(slot.weekday), startMinute: parseTimeMinutes(slot.startTime), durationMinutes: parseTimeMinutes(slot.endTime) - parseTimeMinutes(slot.startTime) })),
+  ];
   const input: SessionSeriesInput = {
     title: title.trim(), tutorId, sessionType, participantIds,
-    weekday: Number(weekday), startMinute, durationMinutes: Number(duration),
+    programCode: programCode || null, courseName: courseName.trim() || null, level: level ? Number(level) : null,
+    weekday: Number(weekday), startMinute, durationMinutes,
+    weeklySlots,
     startsOn, endsOn: effectiveEndsOn, pricingProfileId: pricingProfileId || null,
     historicalStartsOn: effectiveHistoryStart || null,
   };
@@ -95,11 +111,11 @@ export function SeriesForm({ mode, tutors, students, policy, pricingProfiles, in
     : '';
 
   function buildInput() {
-    if (!/^\d{2}:\d{2}$/.test(startTime) || startMinute < 0 || startMinute > 1439) {
-      setError('Choose a valid start time.');
+    if (weeklySlots.some((slot) => slot.startMinute < 0 || slot.startMinute > 1439 || slot.durationMinutes < 30 || slot.durationMinutes > 480 || slot.startMinute + slot.durationMinutes > 1440)) {
+      setError('Choose valid start and end times on the same day.');
       return null;
     }
-    if (!title.trim() || !tutorId || !startsOn || participantIds.length < 1 || (sessionType === 'PRIVATE' && participantIds.length !== 1)) {
+    if (!title.trim() || !programCode || !tutorId || !startsOn || participantIds.length < 1 || (sessionType === 'PRIVATE' && participantIds.length !== 1)) {
       setError(sessionType === 'PRIVATE' ? 'Complete the schedule and assign exactly one student.' : 'Complete the schedule and assign at least one student.');
       return null;
     }
@@ -174,6 +190,9 @@ export function SeriesForm({ mode, tutors, students, policy, pricingProfiles, in
       <form onSubmit={(event) => { event.preventDefault(); submit(); }} className="min-w-0 space-y-6 rounded-2xl border border-border-subtle bg-canvas p-5 shadow-xs sm:p-7">
         <div className="grid min-w-0 gap-5 md:grid-cols-2">
           <label className="block min-w-0 md:col-span-2"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Series title</span><input value={title} onChange={(event) => setTitle(event.target.value)} className={inputClass} placeholder="e.g. Robotics Lab · Mondays" /></label>
+          <label className="block min-w-0"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Program</span><Combobox options={PROGRAM_OPTIONS} value={programCode} onChange={(value) => setProgramCode(value as typeof programCode)} placeholder="Select program" searchPlaceholder="Search programs" required /></label>
+          <label className="block min-w-0"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Level <span className="font-normal text-text-subtle">(if known)</span></span><input type="number" min="1" max="20" value={level} onChange={(event) => setLevel(event.target.value)} className={inputClass} placeholder="e.g. 1" /></label>
+          <label className="block min-w-0 md:col-span-2"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Course <span className="font-normal text-text-subtle">(for P5 or a named track)</span></span><input value={courseName} onChange={(event) => setCourseName(event.target.value)} className={inputClass} placeholder="e.g. Python" /></label>
           <label className="block min-w-0"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Tutor</span><Combobox options={tutorOptions} value={tutorId} onChange={setTutorId} placeholder="Select tutor" searchPlaceholder="Search tutors" required /></label>
           <label className="block min-w-0"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Session type</span><Combobox options={typeOptions} value={sessionType} onChange={(value) => { const next = value as 'PRIVATE' | 'GROUP'; setSessionType(next); if (next === 'PRIVATE') setParticipantIds((current) => current.slice(0, 1)); }} placeholder="Select type" searchPlaceholder="Search types" required /></label>
           <label className="block min-w-0 md:col-span-2"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Pricing profile</span><Combobox options={pricingOptions} value={pricingProfileId} onChange={setPricingProfileId} placeholder="Choose pricing" searchPlaceholder="Search profiles" required disabled={mode === 'edit' && scope === 'THIS'} /><span className="mt-1 block text-xs text-text-muted">{mode === 'edit' && scope === 'THIS' ? 'A single occurrence keeps the series pricing profile.' : 'The selected profile or Platform pricing is resolved when each session is finalized.'}</span></label>
@@ -184,7 +203,14 @@ export function SeriesForm({ mode, tutors, students, policy, pricingProfiles, in
         <div className="grid min-w-0 gap-5 border-t border-border-subtle pt-5 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block min-w-0"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Weekday</span><Combobox options={WEEKDAYS.map((day, index) => ({ value: String(index), label: day }))} value={weekday} onChange={setWeekday} placeholder="Select weekday" searchPlaceholder="Search weekdays" required /></label>
           <label className="block min-w-0"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Start time</span><TimePicker aria-label="Start time" value={startTime} onChange={setStartTime} clearable /></label>
-          <label className="block min-w-0"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Duration (minutes)</span><input type="number" min="30" max="480" step="30" value={duration} onChange={(event) => setDuration(event.target.value)} className={inputClass} /></label>
+          <label className="block min-w-0"><span className="mb-1.5 block text-xs font-semibold text-text-primary">End time</span><TimePicker aria-label="End time" value={endTime} onChange={setEndTime} clearable /></label>
+          {extraSlots.map((slot, index) => <div key={index} className="grid min-w-0 gap-3 rounded-xl border border-border-subtle p-3 sm:col-span-2 sm:grid-cols-[1fr_1fr_1fr_auto] lg:col-span-4">
+            <label className="min-w-0"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Additional day</span><Combobox options={WEEKDAYS.map((day, dayIndex) => ({ value: String(dayIndex), label: day }))} value={slot.weekday} onChange={(value) => setExtraSlots((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, weekday: value } : item))} placeholder="Select weekday" searchPlaceholder="Search weekdays" required /></label>
+            <label className="min-w-0"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Start time</span><TimePicker aria-label={`Additional start time ${index + 1}`} value={slot.startTime} onChange={(value) => setExtraSlots((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, startTime: value } : item))} clearable /></label>
+            <label className="min-w-0"><span className="mb-1.5 block text-xs font-semibold text-text-primary">End time</span><TimePicker aria-label={`Additional end time ${index + 1}`} value={slot.endTime} onChange={(value) => setExtraSlots((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, endTime: value } : item))} clearable /></label>
+            <button type="button" aria-label={`Remove weekly time ${index + 2}`} onClick={() => setExtraSlots((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center self-end rounded-lg border border-border-subtle text-text-muted hover:text-text-primary"><Trash2 className="h-4 w-4" /></button>
+          </div>)}
+          <button type="button" onClick={() => { changeHistorical(false); setScope('ENTIRE_SERIES'); setExtraSlots((current) => [...current, { weekday: String((Number(weekday) + current.length + 1) % 7), startTime, endTime }]); }} className="inline-flex min-h-[44px] items-center gap-2 justify-self-start rounded-lg border border-border-subtle px-3 text-sm font-semibold text-text-primary hover:bg-canvas-subtle sm:col-span-2 lg:col-span-4"><Plus className="h-4 w-4" /> Add another weekly time</button>
           <label className="block min-w-0"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Starts on</span><DatePicker aria-label="Starts on" value={startsOn} onChange={setStartsOn} clearable={false} /></label>
           <div className="min-w-0 space-y-2 sm:col-span-2 lg:col-span-4">
             <span className="block text-xs font-semibold text-text-primary">Ends on <span className="font-normal text-text-subtle">(optional)</span></span>
@@ -197,10 +223,10 @@ export function SeriesForm({ mode, tutors, students, policy, pricingProfiles, in
               <span className="text-xs text-text-muted">Each press adds one calendar month from Starts On. Clear the date to keep the series open-ended.</span>
             </div>
           </div>
-          {firstOccurrence && <p className="text-sm text-text-muted sm:col-span-2 lg:col-span-4">The first session is the first {WEEKDAYS[Number(weekday)]} on or after Starts On: <strong className="font-semibold text-text-primary">{formatCalendarDateLabel(firstOccurrence)}</strong>. Starts On can be any calendar day.</p>}
+          {firstOccurrence && <p className="text-sm text-text-muted sm:col-span-2 lg:col-span-4">The primary weekly time first occurs on {WEEKDAYS[Number(weekday)]}, <strong className="font-semibold text-text-primary">{formatCalendarDateLabel(firstOccurrence)}</strong>. Starts On can be any calendar day.</p>}
         </div>
 
-        <details className="border-t border-border-subtle pt-5">
+        {extraSlots.length === 0 && <details className="border-t border-border-subtle pt-5">
           <summary className="flex min-h-[44px] cursor-pointer items-center text-sm font-semibold text-text-primary">Advanced: pre-system historical schedule</summary>
           <section className="mt-3 space-y-3" aria-labelledby="historical-heading">
           <div className="flex items-start gap-3">
@@ -229,9 +255,9 @@ export function SeriesForm({ mode, tutors, students, policy, pricingProfiles, in
             </div> : preview && <p role="status" className="text-sm text-text-muted">Schedule changed. Preview again to confirm the updated dates.</p>}
           </div>}
           </section>
-        </details>
+        </details>}
 
-        {mode === 'edit' && <label className="block min-w-0 border-t border-border-subtle pt-5"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Apply these changes to</span><Combobox options={[{ value: 'THIS', label: 'Only the next session', sublabel: initialSeries?.nextOccurrence ? `Changes ${new Date(initialSeries.nextOccurrence.startTime).toLocaleDateString('en-GB', { timeZone: 'Africa/Cairo', day: 'numeric', month: 'long' })} only; previous and later sessions stay unchanged.` : 'No upcoming session is available to edit.' }, { value: 'THIS_AND_FUTURE', label: 'This session and future sessions', sublabel: 'Changes this session and scheduled ones after it; previous history stays unchanged.' }, { value: 'ENTIRE_SERIES', label: 'Future schedule for this series', sublabel: 'Replaces the remaining schedule; historical sessions stay unchanged.' }]} value={scope} onChange={(value) => { const next = value as RecurrenceScope; setScope(next); if (next !== 'ENTIRE_SERIES') changeHistorical(false); }} placeholder="Select edit scope" searchPlaceholder="Search edit scopes" required /></label>}
+        {mode === 'edit' && <label className="block min-w-0 border-t border-border-subtle pt-5"><span className="mb-1.5 block text-xs font-semibold text-text-primary">Apply these changes to</span><Combobox options={[...((initialSeries?.weeklySlots?.length || 1) === 1 && extraSlots.length === 0 ? [{ value: 'THIS', label: 'Only the next session', sublabel: initialSeries?.nextOccurrence ? `Changes ${new Date(initialSeries.nextOccurrence.startTime).toLocaleDateString('en-GB', { timeZone: 'Africa/Cairo', day: 'numeric', month: 'long' })} only; previous and later sessions stay unchanged.` : 'No upcoming session is available to edit.' }] : []), { value: 'THIS_AND_FUTURE', label: 'This session and future sessions', sublabel: 'Changes this session and scheduled ones after it; previous history stays unchanged.' }, { value: 'ENTIRE_SERIES', label: 'Future schedule for this series', sublabel: 'Replaces the remaining schedule; historical sessions stay unchanged.' }]} value={scope} onChange={(value) => { const next = value as RecurrenceScope; setScope(next); if (next !== 'ENTIRE_SERIES') changeHistorical(false); }} placeholder="Select edit scope" searchPlaceholder="Search edit scopes" required /></label>}
         {error && <p role="alert" className="rounded-lg border border-brand-border bg-brand-subtle px-3 py-2.5 text-sm font-medium text-brand-hover">{error}</p>}
         <div className="flex flex-col-reverse gap-3 border-t border-border-subtle pt-5 sm:flex-row sm:justify-end"><Button type="button" variant="ghost" className="min-h-[44px]" onClick={() => router.push('/admin/gadwal')}>Cancel</Button><Button type="submit" disabled={isPending} isLoading={isPending} className="min-h-[44px] gap-2"><Save className="h-4 w-4" /> {historicalEnabled && currentPreview ? `Confirm & save ${currentPreview.dates.length} historical ${currentPreview.dates.length === 1 ? 'session' : 'sessions'}` : mode === 'edit' ? 'Save series' : 'Create weekly series'}</Button></div>
       </form>

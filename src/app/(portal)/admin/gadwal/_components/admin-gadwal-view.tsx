@@ -7,13 +7,16 @@ import { Plus } from 'lucide-react';
 import { cancelAdminSeries } from '../actions';
 import { WeeklySeriesTable, type WeeklySeriesItem } from '@/features/sessions/components/series-table';
 import { AdminTimetableCategories } from './admin-timetable-categories';
-import type { GadwalSessionItem } from '@/features/sessions/types';
 
 interface AdminGadwalViewProps {
   series: WeeklySeriesItem[];
-  sessions: GadwalSessionItem[];
-  attentionSessionIds: string[];
-  asOf: string;
+  upcoming: {
+    items: WeeklySeriesItem[];
+    totalCount: number;
+    page: number;
+    pageCount: number;
+    pageSize: number;
+  };
   tutorFilter?: { id: string; name: string | null };
 }
 
@@ -36,7 +39,7 @@ const itemVariants = {
   },
 };
 
-export function AdminGadwalView({ series, sessions, attentionSessionIds, asOf, tutorFilter }: AdminGadwalViewProps) {
+export function AdminGadwalView({ series, upcoming, tutorFilter }: AdminGadwalViewProps) {
   return (
     <motion.div
       variants={containerVariants}
@@ -57,7 +60,7 @@ export function AdminGadwalView({ series, sessions, attentionSessionIds, asOf, t
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 mt-1">Timetable</h1>
           <p className="text-xs sm:text-sm text-stone-500 mt-1">
-            Concrete Sessions are grouped by their current schedule and attendance state.
+            Upcoming schedule groups appear once, with every weekly slot shown together.
           </p>
         </div>
         <Link href="/admin/gadwal/new" className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-lg bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2">
@@ -73,7 +76,7 @@ export function AdminGadwalView({ series, sessions, attentionSessionIds, asOf, t
         </motion.div>
       )}
 
-      <AdminTimetableCategories sessions={sessions} attentionSessionIds={attentionSessionIds} asOf={asOf} />
+      <AdminTimetableCategories upcoming={upcoming} tutorId={tutorFilter?.id} />
 
       <motion.div variants={itemVariants}>
         <details className="rounded-2xl border border-border-subtle bg-canvas">

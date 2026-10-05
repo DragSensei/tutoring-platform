@@ -23,7 +23,7 @@ export function SessionSelectionGrid({ sessions }: { sessions: GadwalSessionItem
           <h2 id="active-sessions-heading" className="text-lg font-semibold text-stone-900">Active and upcoming</h2>
           <p className="mt-1 text-sm text-stone-500">Open attendance only when the concrete session window is open.</p>
         </div>
-        <span className="shrink-0 text-sm tabular-nums text-stone-500">{sessions.length} sessions</span>
+        <span className="shrink-0 text-sm tabular-nums text-stone-500">{sessions.length} schedule items</span>
       </div>
       <div className="divide-y divide-stone-100 overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-xs">
         {sessions.slice(0, 4).map((session) => {

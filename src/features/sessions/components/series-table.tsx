@@ -18,6 +18,10 @@ export interface WeeklySeriesItem {
   weekday: number;
   startMinute: number;
   durationMinutes: number;
+  weeklySlots?: Array<{ weekday: number; startMinute: number; durationMinutes: number }>;
+  programCode?: 'P1' | 'P3' | 'P4' | 'P5' | null;
+  courseName?: string | null;
+  level?: number | null;
   status: 'ACTIVE' | 'ENDED' | 'CANCELLED';
   assignedStudents: string[];
   nextOccurrence: { id: string; startTime: string; endTime: string; status: string } | null;
@@ -102,7 +106,7 @@ export function WeeklySeriesTable({ series, onCancelSeries }: WeeklySeriesTableP
           <h3 className="font-semibold text-stone-900">{item.title}</h3>
           <Badge variant={item.status === 'ACTIVE' ? 'secondary' : 'outline'}>{item.status.toLowerCase()}</Badge>
         </div>
-        <p className="mt-1 text-sm text-stone-600">{WEEKDAYS[item.weekday]} · {formatClock(item.startMinute)} · {Math.round(item.durationMinutes / 60 * 10) / 10}h · {item.sessionType}</p>
+        <p className="mt-1 text-sm text-stone-600">{item.programCode ? `${item.programCode}${item.courseName ? ` · ${item.courseName}` : ''}${item.level ? ` · L${item.level}` : ''} · ` : ''}{(item.weeklySlots?.length ?? 0) > 1 ? 'Intensive · ' : ''}{(item.weeklySlots?.length ? item.weeklySlots : [item]).map((slot) => `${WEEKDAYS[slot.weekday]} ${formatClock(slot.startMinute)}–${formatClock(slot.startMinute + slot.durationMinutes)}`).join(' · ')} · {item.sessionType}</p>
         <p className="mt-1 text-xs text-stone-500">Tutor: {item.tutorName} · Students: {item.assignedStudents.join(', ')}</p>
         <p className="mt-1 text-xs font-medium text-brand-primary">{item.nextOccurrence ? `Next session: ${new Date(item.nextOccurrence.startTime).toLocaleDateString('en-GB', { timeZone: 'Africa/Cairo', day: '2-digit', month: 'short' })}` : item.status === 'ACTIVE' ? 'No upcoming session is currently scheduled' : 'No upcoming session'}</p>
       </div>

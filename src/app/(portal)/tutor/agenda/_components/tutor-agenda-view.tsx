@@ -8,6 +8,7 @@ import { ClosestSessionTimer } from '../../dashboard/_components/ClosestSessionT
 import { SessionSelectionGrid } from '../../dashboard/_components/SessionSelectionGrid';
 import { findClosestSessionDue } from '../../dashboard/_components/timer-utils';
 import { SessionRescheduleDialog } from '@/features/sessions/components/session-reschedule-dialog';
+import { compactTimetablePreview } from '@/features/sessions/utils/timetable-groups';
 import type { WeeklyScheduleSession } from '@/features/sessions/components/weekly-session-schedule';
 import type { TutorDashboardData } from '../../dashboard/_components/dashboard-data';
 import { getAttendanceWindowState } from '@/shared/utils/deadline';
@@ -47,6 +48,7 @@ export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashb
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
     [sessionsAtNow, now]
   );
+  const compactActiveSessions = React.useMemo(() => compactTimetablePreview(activeSessions), [activeSessions]);
   const needsAttentionSessions = React.useMemo(
     () => sessionsAtNow
       .filter((session) => !session.historicalOnly)
@@ -114,11 +116,11 @@ export function TutorAgendaView({ tutor, sessions: initialSessions }: TutorDashb
             />
           </section>
           <NeedsAttention sessions={needsAttentionSessions} now={now} />
-          <SessionSelectionGrid sessions={activeSessions} />
+          <SessionSelectionGrid sessions={compactActiveSessions} />
         </div>
 
         <div className="min-w-0 space-y-6 xl:col-span-4">
-          <SchedulePreview sessions={activeSessions} />
+          <SchedulePreview sessions={compactActiveSessions} />
           <RecentSessionSummary sessions={completedSessions} />
         </div>
       </div>

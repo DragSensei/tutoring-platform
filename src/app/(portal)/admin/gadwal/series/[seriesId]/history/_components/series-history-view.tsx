@@ -6,14 +6,14 @@ type SeriesHistory = Awaited<ReturnType<typeof import('../../../../actions').get
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export function SeriesHistoryView({ series }: { series: SeriesHistory }) {
-  const clock = `${String(Math.floor(series.startMinute / 60) % 12 || 12)}:${String(series.startMinute % 60).padStart(2, '0')} ${series.startMinute >= 720 ? 'PM' : 'AM'}`;
+  const schedule = series.weeklySlots.map((slot) => `${weekdays[slot.weekday]} ${String(Math.floor(slot.startMinute / 60)).padStart(2, '0')}:${String(slot.startMinute % 60).padStart(2, '0')}–${String(Math.floor((slot.startMinute + slot.durationMinutes) / 60)).padStart(2, '0')}:${String((slot.startMinute + slot.durationMinutes) % 60).padStart(2, '0')}`).join(' · ');
   return <main className="w-full min-w-0 space-y-6">
     <Link href="/admin/gadwal" className="inline-flex min-h-[44px] items-center gap-2 text-sm font-semibold text-text-secondary hover:text-text-primary"><ArrowLeft className="h-4 w-4" /> Back to weekly schedules</Link>
     <header className="space-y-2 border-b border-border-subtle pb-5">
       <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{series.status.toLowerCase()}</Badge><span className="text-sm text-text-muted">Read-only schedule history</span></div>
       <h1 className="text-2xl font-bold text-text-primary sm:text-3xl">{series.title}</h1>
       <p className="text-sm text-text-secondary">Tutor: {series.tutorName} · Students: {series.students.join(', ') || 'No current roster recorded'}</p>
-      <p className="text-sm text-text-secondary"><CalendarDays className="mr-1 inline h-4 w-4" />{weekdays[series.weekday]} at {clock} · {series.durationMinutes} minutes · Starts {new Date(series.startsOn).toLocaleDateString('en-GB', { timeZone: 'Africa/Cairo', dateStyle: 'medium' })} · {series.endsOn ? `Schedule end date ${new Date(series.endsOn).toLocaleDateString('en-GB', { timeZone: 'Africa/Cairo', dateStyle: 'medium' })}` : 'No schedule end date recorded'}</p>
+      <p className="text-sm text-text-secondary"><CalendarDays className="mr-1 inline h-4 w-4" />{series.weeklySlots.length > 1 ? 'Intensive · ' : ''}{schedule} · Starts {new Date(series.startsOn).toLocaleDateString('en-GB', { timeZone: 'Africa/Cairo', dateStyle: 'medium' })} · {series.endsOn ? `Schedule end date ${new Date(series.endsOn).toLocaleDateString('en-GB', { timeZone: 'Africa/Cairo', dateStyle: 'medium' })}` : 'No schedule end date recorded'}</p>
       <p className="text-sm text-text-muted">Schedule details reflect the values currently stored on this series; earlier schedule edits were not separately archived.</p>
       <p className="text-sm text-text-muted">A separate cancellation or end timestamp, action scope, and series-level reason were not recorded. The end date above describes the schedule boundary, not when an Admin changed it.</p>
     </header>

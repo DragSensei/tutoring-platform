@@ -1,9 +1,10 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { computeAttendanceClosesAt } from '@/shared/utils/deadline';
-import { addCalendarDays, addCalendarMonthsClamped, parseCalendarDate } from '@/shared/utils/calendar-date';
-import { prisma } from '@/shared/lib/prisma';
+import { computeAttendanceClosesAt } from '../../../shared/utils/deadline';
+import { addCalendarDays, addCalendarMonthsClamped, parseCalendarDate } from '../../../shared/utils/calendar-date';
+import { prisma } from '../../../shared/lib/prisma';
+import { collectPrismaPages } from '../../../shared/lib/prisma-pagination';
 
-export { addCalendarDays, parseCalendarDate } from '@/shared/utils/calendar-date';
+export { addCalendarDays, parseCalendarDate } from '../../../shared/utils/calendar-date';
 
 export const ACADEMY_TIME_ZONE = 'Africa/Cairo';
 // ponytail: twelve weeks keeps reads bounded; add a scheduler only when request-time materialization is insufficient.
@@ -28,6 +29,7 @@ export interface SeriesMaterializationInput {
   ends_on: Date | null;
   pricing_profile_id: string | null;
   status: 'ACTIVE' | 'ENDED' | 'CANCELLED';
+  slots: Array<{ id: string; weekday: number; start_minute: number; duration_minutes: number; timezone: string }>;
   participants: Array<{ student_id: string }>;
 }
 
@@ -122,44 +124,62 @@ export function historicalOccurrenceDates(
   return dates;
 }
 
+export function planOccurrences(series: SeriesMaterializationInput, now: Date) {
+  return series.slots.flatMap((slot) => {
+    if (slot.timezone !== ACADEMY_TIME_ZONE) throw new Error('Unsupported recurring schedule timezone');
+    return occurrenceDates({ ...series, weekday: slot.weekday }, now).map((occurrenceDate) => {
+      const start = academyDateTime(occurrenceDate, slot.start_minute);
+      const end = new Date(start.getTime() + slot.duration_minutes * 60_000);
+      return { slot, occurrenceDate, start, end };
+    });
+  }).filter(({ end }) => end > now);
+}
+
 async function materializeOne(
   db: DatabaseClient,
   series: SeriesMaterializationInput,
   policy: RecurrencePolicy,
   now: Date,
 ) {
-  const dates = occurrenceDates(series, now);
-  if (dates.length === 0) return 0;
+  const candidates = planOccurrences(series, now);
+  if (candidates.length === 0) return 0;
 
   await db.session.createMany({
-    data: dates.map((occurrenceDate) => {
-      const start = academyDateTime(occurrenceDate, series.start_minute);
-      const end = new Date(start.getTime() + series.duration_minutes * 60_000);
-      return {
-        series_id: series.id,
-        occurrence_date: occurrenceDate,
-        tutor_id: series.tutor_id,
-        title: series.title,
-        session_type: series.session_type,
-        pricing_profile_id: series.pricing_profile_id,
-        start_time: start,
-        end_time: end,
-        deadline: computeAttendanceClosesAt(end, policy.checkInWindowHours),
-        status: 'SCHEDULED' as const,
-      };
-    }),
+    data: candidates.map(({ slot, occurrenceDate, start, end }) => ({
+      series_id: series.id,
+      series_slot_id: slot.id,
+      occurrence_date: occurrenceDate,
+      tutor_id: series.tutor_id,
+      title: series.title,
+      session_type: series.session_type,
+      pricing_profile_id: series.pricing_profile_id,
+      start_time: start,
+      end_time: end,
+      deadline: computeAttendanceClosesAt(end, policy.checkInWindowHours),
+      status: 'SCHEDULED' as const,
+    })),
     skipDuplicates: true,
   });
 
-  const occurrences = await db.session.findMany({
+  const occurrences = await collectPrismaPages((cursorId) => db.session.findMany({
     where: {
       series_id: series.id,
-      occurrence_date: { in: dates },
+      series_slot_id: { in: series.slots.map(({ id }) => id) },
+      occurrence_date: { in: [...new Set(candidates.map(({ occurrenceDate }) => occurrenceDate.getTime()))].map((value) => new Date(value)) },
       series_exception: false,
       historical_only: false,
+      status: 'SCHEDULED',
+      attendance_saved_at: null,
+      attendance_finalized_at: null,
+      attendances: { none: {} },
+      transactions: { none: {} },
     },
     select: { id: true },
-  });
+    orderBy: { id: 'asc' },
+    take: 200,
+    cursor: cursorId ? { id: cursorId } : undefined,
+    skip: cursorId ? 1 : 0,
+  }));
 
   if (series.participants.length > 0 && occurrences.length > 0) {
     await db.sessionParticipant.createMany({
@@ -171,13 +191,13 @@ async function materializeOne(
     });
   }
 
-  return dates.length;
+  return candidates.length;
 }
 
 async function getActiveSeries(db: DatabaseClient, where: Prisma.SessionSeriesWhereUniqueInput) {
   return db.sessionSeries.findUnique({
     where,
-    include: { participants: { select: { student_id: true } } },
+    include: { participants: { select: { student_id: true } }, slots: { where: { active: true } } },
   });
 }
 
@@ -186,25 +206,31 @@ function toMaterializationInput(series: Awaited<ReturnType<typeof getActiveSerie
   return series as SeriesMaterializationInput;
 }
 
+export async function materializeSessionSeriesWithClient(db: DatabaseClient, seriesId: string, policy: RecurrencePolicy, now = new Date()) {
+  const series = toMaterializationInput(await getActiveSeries(db, { id: seriesId }));
+  if (!series) throw new Error('Session series not found');
+  const today = academyCalendarDate(now);
+  if (series.status === 'ACTIVE' && series.ends_on && academyCalendarDate(series.ends_on) < today) {
+    await db.sessionSeries.updateMany({ where: { id: series.id, status: 'ACTIVE' }, data: { status: 'ENDED' } });
+    return 0;
+  }
+  return materializeOne(db, series, policy, now);
+}
+
 export async function materializeSessionSeries(seriesId: string, policy: RecurrencePolicy, now = new Date()) {
-  return prisma.$transaction(async (tx) => {
-    const series = toMaterializationInput(await getActiveSeries(tx, { id: seriesId }));
-    if (!series) throw new Error('Session series not found');
-    const today = academyCalendarDate(now);
-    if (series.status === 'ACTIVE' && series.ends_on && academyCalendarDate(series.ends_on) < today) {
-      await tx.sessionSeries.updateMany({ where: { id: series.id, status: 'ACTIVE' }, data: { status: 'ENDED' } });
-      return 0;
-    }
-    return materializeOne(tx, series, policy, now);
-  });
+  return prisma.$transaction((tx) => materializeSessionSeriesWithClient(tx, seriesId, policy, now));
 }
 
 export async function materializeActiveSeriesForTutor(tutorId: string, policy: RecurrencePolicy, now = new Date()) {
   const db = prisma;
-  const series = await db.sessionSeries.findMany({
+  const series = await collectPrismaPages((cursorId) => db.sessionSeries.findMany({
     where: { tutor_id: tutorId, status: 'ACTIVE' },
     select: { id: true },
-  });
+    orderBy: { id: 'asc' },
+    take: 200,
+    cursor: cursorId ? { id: cursorId } : undefined,
+    skip: cursorId ? 1 : 0,
+  }));
   let count = 0;
   for (const item of series) count += await materializeSessionSeries(item.id, policy, now);
   return count;
@@ -212,10 +238,14 @@ export async function materializeActiveSeriesForTutor(tutorId: string, policy: R
 
 export async function materializeActiveSeriesForStudent(studentId: string, policy: RecurrencePolicy, now = new Date()) {
   const db = prisma;
-  const series = await db.sessionSeries.findMany({
+  const series = await collectPrismaPages((cursorId) => db.sessionSeries.findMany({
     where: { status: 'ACTIVE', participants: { some: { student_id: studentId } } },
     select: { id: true },
-  });
+    orderBy: { id: 'asc' },
+    take: 200,
+    cursor: cursorId ? { id: cursorId } : undefined,
+    skip: cursorId ? 1 : 0,
+  }));
   let count = 0;
   for (const item of series) count += await materializeSessionSeries(item.id, policy, now);
   return count;
@@ -223,10 +253,14 @@ export async function materializeActiveSeriesForStudent(studentId: string, polic
 
 export async function materializeAllActiveSeries(policy: RecurrencePolicy, now = new Date()) {
   const db = prisma;
-  const series = await db.sessionSeries.findMany({
+  const series = await collectPrismaPages((cursorId) => db.sessionSeries.findMany({
     where: { status: 'ACTIVE' },
     select: { id: true },
-  });
+    orderBy: { id: 'asc' },
+    take: 200,
+    cursor: cursorId ? { id: cursorId } : undefined,
+    skip: cursorId ? 1 : 0,
+  }));
   let count = 0;
   for (const item of series) count += await materializeSessionSeries(item.id, policy, now);
   return count;

@@ -26,6 +26,25 @@
 
 - Final staged-commit machine evidence is recorded in `.git/tier2-evidence.json`; automated verification covers tests, repository secret/environment scanning, frontend architecture, and token/route invariants.
 
+## BUG TRIAGE LOG
+
+### BUG-2026-001 — Local development database lagged behind the Prisma schema
+- STATUS: RESOLVED
+- ROOT CAUSE: The localhost `tutoring_platform_db` schema predated the additive attendance recovery and monthly billing models, so Prisma selected mapped columns such as `PlatformPolicy.late_attendance_recovery_window_hours` and `Session.attendance_submitted_at` that did not yet exist.
+- CANONICAL OWNER: `prisma/schema.prisma` and the localhost development schema
+- PREVENTION CLASS: DETECTION_ONLY
+- VERIFICATION OWNER: Prisma live-schema diff plus direct `PlatformPolicy` and `Session` reads
+- FIXED-BY REFERENCE: Local development schema synchronized with `prisma db push --skip-generate` on 2026-09-27; no production database was changed.
+- WHY NOT MECHANICALLY PREVENTABLE: This repository has no checked-in Prisma migration history and its production baseline remains unresolved, so automatically mutating an arbitrary configured database at startup would be unsafe. A clean Prisma live-schema diff is required before local runtime QA.
+
+### BUG-2026-002 — Admin attendance columns missing from local development schema
+- STATUS: RESOLVED
+- ROOT CAUSE: The local `tutoring_platform_db` was not synchronized with the Iteration 004 additive Admin-handling fields in `prisma/schema.prisma`.
+- CANONICAL OWNER: `prisma/schema.prisma` and the local development database schema
+- PREVENTION CLASS: DETECTION_ONLY
+- VERIFICATION OWNER: Prisma live-schema diff and authenticated `/admin` route smoke test
+- FIXED-BY REFERENCE: Local development schema synchronized transactionally on 2026-09-27; schema fields were introduced in commit `7fb4740`. No production database was changed.
+- WHY NOT MECHANICALLY PREVENTABLE: The project has no checked-in Prisma migration baseline, and startup must not automatically mutate an arbitrary configured database. The read-only Prisma diff reports schema drift before an explicit local synchronization.
 
 ## Iteration 003.2E — Monthly Student receivable and linked discount (complete)
 
@@ -176,6 +195,23 @@
 - Verification: TypeScript, lint, and production build passed; 234 unit tests passed; guarded attendance integration passed 10/10.
 - Authenticated mobile/tablet/desktop visual QA was not run because this checkout has no existing Admin/Tutor Playwright storage states and the available login journey did not reach its password step.
 - NEXT RECOMMENDED PHASE: Run authenticated responsive route audits when project-provided Admin and Tutor storage states are available.
+
+## Current online schedule and local clean baseline (2026-09-29)
+- The proven loopback `tutoring_platform_db` was reset while preserving the sole existing Admin login identity and credential. `tutoring_platform_test` remained distinct and was used only for user-authorized guarded integration verification.
+- Current baseline: 24 logical groups, 26 weekly schedule slots, 313 bounded concrete occurrences, 35 Students, 8 Tutors, and 35 zero-balance wallets. Galal has one P5 Python group, three Sat/Sun/Mon Cairo slots, one roster entry, and 36 occurrences. Amr Tarek has only the explicitly confirmed P3L2 Friday assignment.
+- A `SessionSeries` now owns one or more durable weekly slots; concrete Sessions reference their slot and retain their own attendance/history. The Admin group form and Tutor timetable/agenda display the logical group once. A generic local importer reads the ignored `.local/current-online-schedule.json` manifest; no raw contact data is tracked.
+- Finance, attendance, recovery, receivable, earnings, commission, and payout history are empty. Pending accounts have no invented email/password; the one phone-based placeholder is marked `PENDING_PROFILE`.
+- The reviewed local SQL artifact and Prisma schema are in parity with the local database. Production migration readiness remains blocked by the pre-existing missing migration baseline; no production target was changed.
+- Unresolved roster identities were omitted: the extra Layal Mekky and unnamed Sunday P3 contacts; the direct Eissa and 3Alaa Friday P3 contacts; and the unnamed Saudi P1 contact. Current group evidence still anchors each affected logical group.
+- Verification: direct local DB invariant audit and twice-repeated materialization passed with no duplicate occurrences; all 303 tests across 61 suites, TypeScript, lint, and production build passed. Authenticated visual audit could not start without a saved Admin browser state. The repository Tier-2 schema preflight is blocked by a workspace OS Prisma 5 CLI argument defect; the direct Prisma schema diff reported zero drift.
+
+## Admin Gadwal logical-group pagination (2026-09-29)
+- Upcoming now counts and renders active `SessionSeries` groups once, shows every weekly slot together, and uses server-side 12-row pagination. Concrete occurrence categories load their rows only after selection; the initial page does not fetch the full materialized Session horizon.
+- Upcoming group ordering uses each group's earliest future occurrence across active slots, sorts globally before server-side pagination, and breaks equal-time ties by series ID.
+- No recurrence data or database rows were changed for this UI fix; the existing 313 materialized Sessions were left intact.
+- Verification: focused Gadwal regressions (2/2), TypeScript, targeted ESLint, token lint, and UI architecture checks passed. Authenticated `/admin/gadwal` visual snapshots remain unavailable because this checkout has no saved Admin browser state; the public-route audit is not counted as route verification.
+- Ordering regressions cover Tuesday 29 September preceding Sunday 4 October, stable ties across a page boundary, and chronological concatenation of all server pages.
+- NEXT RECOMMENDED PHASE: Run the authenticated responsive `/admin/gadwal` audit when a project-provided Admin browser state is available.
 
 ## Canonical three-Tutor development seed (2026-09-29)
 - `prisma/seed.ts` now owns a deterministic local dataset for Omnia Samy, Ahmed Alaa, and Omar Ashraf, their known Student/group mappings, 15 separate weekly SessionSeries, and bounded concrete future Sessions. The existing Admin identity and local password convention remain available.

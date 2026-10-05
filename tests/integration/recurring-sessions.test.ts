@@ -112,6 +112,55 @@ describe('recurring weekly sessions', () => {
     expect(repeated.reduce((sum, item) => sum + item.participants.length, 0)).toBe(first.length);
   });
 
+  it('keeps one multi-day cohort, idempotent slot occurrences, concrete attendance, and completed history', async () => {
+    const tutor = await createUser('TUTOR');
+    const student = await createUser('STUDENT');
+    const input = {
+      ...baseInput(tutor.id, student.id, `${prefix}intensive`),
+      programCode: 'P5' as const, courseName: 'Python', level: null,
+      weekday: 6, startMinute: 1140, durationMinutes: 120,
+      weeklySlots: [
+        { weekday: 6, startMinute: 1140, durationMinutes: 120 },
+        { weekday: 0, startMinute: 1140, durationMinutes: 120 },
+        { weekday: 1, startMinute: 1140, durationMinutes: 120 },
+      ],
+    };
+    const created = await createSessionSeries(input, policy);
+    const stored = await prisma.sessionSeries.findUniqueOrThrow({ where: { id: created.id }, include: { slots: true, participants: true } });
+    expect(stored.slots).toHaveLength(3);
+    expect(stored.participants.map((participant) => participant.student_id)).toEqual([student.id]);
+    expect(await getTutorSeries(tutor.id, policy)).toHaveLength(1);
+
+    const first = await occurrences(created.id);
+    expect(new Set(first.map((item) => item.series_slot_id)).size).toBe(3);
+    expect(first.every((item) => item.tutor_id === tutor.id && item.participants.length === 1 && item.participants[0].student_id === student.id)).toBe(true);
+    await Promise.all([materializeSessionSeries(created.id, policy), materializeSessionSeries(created.id, policy)]);
+    const repeated = await occurrences(created.id);
+    expect(repeated).toHaveLength(first.length);
+    expect(new Set(repeated.map((item) => `${item.series_slot_id}:${item.occurrence_date?.toISOString()}`)).size).toBe(repeated.length);
+
+    const protectedOccurrence = repeated[0];
+    const anotherOccurrence = repeated[1];
+    await prisma.sessionParticipant.update({ where: { session_id_student_id: { session_id: protectedOccurrence.id, student_id: student.id } }, data: { attendance_outcome: 'PRESENT' } });
+    expect((await prisma.sessionParticipant.findUniqueOrThrow({ where: { session_id_student_id: { session_id: anotherOccurrence.id, student_id: student.id } } })).attendance_outcome).toBeNull();
+    await prisma.session.update({ where: { id: protectedOccurrence.id }, data: { status: 'COMPLETED' } });
+    const originalStart = protectedOccurrence.start_time.getTime();
+    await updateSessionSeries(created.id, {
+      ...input,
+      weekday: 5,
+      weeklySlots: [
+        { weekday: 5, startMinute: 1140, durationMinutes: 120 },
+        { weekday: 0, startMinute: 1140, durationMinutes: 120 },
+        { weekday: 1, startMinute: 1140, durationMinutes: 120 },
+      ],
+    }, 'ENTIRE_SERIES', policy);
+    const retained = await prisma.session.findUniqueOrThrow({ where: { id: protectedOccurrence.id }, include: { participants: true } });
+    expect(retained.status).toBe('COMPLETED');
+    expect(retained.start_time.getTime()).toBe(originalStart);
+    expect(retained.participants[0].attendance_outcome).toBe('PRESENT');
+    expect((await prisma.sessionSeries.findUniqueOrThrow({ where: { id: created.id }, include: { slots: { where: { active: true } } } })).slots).toHaveLength(3);
+  });
+
   it('auto-assigns linked Students together for Groups, preserves PRIVATE rosters, and rejects capacity atomically', async () => {
     const admin = await createUser('ADMIN');
     const tutor = await createUser('TUTOR');

@@ -6,6 +6,8 @@ import { computeAttendanceClosesAt } from '@/shared/utils/deadline';
 import { createSessionSchema, recurrenceScopeSchema, sessionSeriesSchema, type RecurrenceScope, type SessionSeriesInput } from '../schemas';
 import { updateSession } from './session-actions';
 import { expandLinkedGroupParticipantsTx } from './linked-group-pairing';
+import { TABLE_PAGE_SIZE } from '@/shared/utils/pagination';
+import { collectPrismaPages } from '@/shared/lib/prisma-pagination';
 
 export interface SeriesPricingPolicy {
   checkInWindowHours: number;
@@ -22,6 +24,7 @@ const SERIES_INCLUDE = {
   tutor: { select: { id: true, name: true, email: true } },
   pricing_profile: { select: { id: true, name: true, private_session_price: true, group_session_price: true } },
   participants: { include: { student: { select: { id: true, name: true, email: true } } } },
+  slots: { where: { active: true }, orderBy: { weekday: 'asc' } },
 } as const;
 
 function requiredProfile(value: string | null, label: string) {
@@ -33,11 +36,21 @@ function priceFor(type: 'PRIVATE' | 'GROUP', policy: SeriesPricingPolicy) {
   return type === 'PRIVATE' ? policy.privateSessionPrice : policy.groupSessionPrice;
 }
 
+function serialWeeklySlots(series: { weekday: number; start_minute: number; duration_minutes: number; slots: Array<{ id: string; weekday: number; start_minute: number; duration_minutes: number; timezone: string }> }) {
+  return [...series.slots].sort((left, right) => {
+    const primary = (slot: typeof left) => Number(slot.weekday === series.weekday && slot.start_minute === series.start_minute && slot.duration_minutes === series.duration_minutes);
+    return primary(right) - primary(left) || left.weekday - right.weekday || left.start_minute - right.start_minute;
+  }).map((slot) => ({ id: slot.id, weekday: slot.weekday, startMinute: slot.start_minute, durationMinutes: slot.duration_minutes, timezone: slot.timezone }));
+}
+
 function parseSeriesInput(input: SessionSeriesInput) {
   const parsed = sessionSeriesSchema.safeParse(input);
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message || 'Invalid recurring schedule');
+  const weeklySlots = parsed.data.weeklySlots ?? [{ weekday: parsed.data.weekday, startMinute: parsed.data.startMinute, durationMinutes: parsed.data.durationMinutes }];
+  if (weeklySlots.length > 1 && parsed.data.historicalStartsOn) throw new Error('Historical backfill is available only for single-slot series');
   return {
     ...parsed.data,
+    weeklySlots,
     startsOn: parseCalendarDate(parsed.data.startsOn),
     endsOn: parsed.data.endsOn ? parseCalendarDate(parsed.data.endsOn) : null,
     historicalStartsOn: parsed.data.historicalStartsOn ? parseCalendarDate(parsed.data.historicalStartsOn) : null,
@@ -54,10 +67,14 @@ export async function previewHistoricalSeries(input: SessionSeriesInput, seriesI
     now,
   );
   if (!seriesId || candidateDates.length === 0) return candidateDates.map(formatCalendarDate);
-  const existing = await prisma.session.findMany({
+  const existing = await collectPrismaPages((cursorId) => prisma.session.findMany({
     where: { series_id: seriesId, occurrence_date: { in: candidateDates } },
-    select: { occurrence_date: true },
-  });
+    select: { id: true, occurrence_date: true },
+    orderBy: { id: 'asc' },
+    take: 200,
+    cursor: cursorId ? { id: cursorId } : undefined,
+    skip: cursorId ? 1 : 0,
+  }));
   const existingKeys = new Set(existing.flatMap(({ occurrence_date }) => occurrence_date ? [formatCalendarDate(occurrence_date)] : []));
   return candidateDates.map(formatCalendarDate).filter((date) => !existingKeys.has(date));
 }
@@ -91,18 +108,19 @@ async function validateSeriesReferences(
   const [tutor, students, pricingProfile] = await Promise.all([
     db.user.findUnique({ where: { id: input.tutorId }, select: { id: true, role: true, account_status: true, name: true } }),
     db.user.findMany({
-      where: { id: { in: input.participantIds }, role: 'STUDENT', account_status: 'ACTIVE' },
+      where: { id: { in: input.participantIds }, role: 'STUDENT', account_status: { in: ['ACTIVE', 'PENDING_CREDENTIALS', 'PENDING_PROFILE'] } },
       select: { id: true, name: true },
+      take: 4,
     }),
     input.pricingProfileId
       ? db.pricingProfile.findFirst({ where: { id: input.pricingProfileId, is_active: true }, select: { id: true } })
       : Promise.resolve(null),
   ]);
-  if (!tutor || tutor.role !== 'TUTOR' || tutor.account_status !== 'ACTIVE' || !tutor.name) {
-    throw new Error('A complete active Tutor account is required');
+  if (!tutor || tutor.role !== 'TUTOR' || tutor.account_status === 'DEACTIVATED' || !tutor.name) {
+    throw new Error('A named current Tutor account is required');
   }
   if (students.length !== input.participantIds.length || students.some((student) => !student.name)) {
-    throw new Error('Every assigned participant must be an active Student with a complete profile');
+    throw new Error('Every assigned participant must be a named current Student');
   }
   if (input.pricingProfileId && !pricingProfile) throw new Error('Select an active pricing profile');
 }
@@ -118,6 +136,7 @@ interface HistoricalSeriesInput {
   starts_on: Date;
   pricing_profile_id: string | null;
   participants: Array<{ student_id: string }>;
+  series_slot_id: string;
 }
 
 async function materializeHistoricalOccurrences(
@@ -134,6 +153,7 @@ async function materializeHistoricalOccurrences(
       const end = new Date(start.getTime() + series.duration_minutes * 60_000);
       return {
         series_id: series.id,
+        series_slot_id: series.series_slot_id,
         occurrence_date: occurrenceDate,
         tutor_id: series.tutor_id,
         title: series.title,
@@ -149,10 +169,14 @@ async function materializeHistoricalOccurrences(
     skipDuplicates: true,
   });
 
-  const occurrences = await tx.session.findMany({
-    where: { series_id: series.id, occurrence_date: { in: dates }, historical_only: true },
+  const occurrences = await collectPrismaPages((cursorId) => tx.session.findMany({
+    where: { series_slot_id: series.series_slot_id, occurrence_date: { in: dates }, historical_only: true },
     select: { id: true },
-  });
+    orderBy: { id: 'asc' },
+    take: 200,
+    cursor: cursorId ? { id: cursorId } : undefined,
+    skip: cursorId ? 1 : 0,
+  }));
   if (series.participants.length > 0 && occurrences.length > 0) {
     await tx.sessionParticipant.createMany({
       data: occurrences.flatMap(({ id }) => series.participants.map(({ student_id }) => ({ session_id: id, student_id }))),
@@ -167,6 +191,7 @@ function serializeSeries(
     tutor: { id: string; name: string | null; email: string | null };
     pricing_profile: { id: string; name: string; private_session_price: Prisma.Decimal; group_session_price: Prisma.Decimal } | null;
     participants: Array<{ student: { id: string; name: string | null; email: string | null } }>;
+    slots: Array<{ id: string; weekday: number; start_minute: number; duration_minutes: number; timezone: string }>;
     occurrences?: Array<{ id: string; start_time: Date; end_time: Date; status: 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' }>;
   },
   policy: SeriesPricingPolicy,
@@ -179,9 +204,13 @@ function serializeSeries(
     tutorName: requiredProfile(series.tutor.name, 'Tutor'),
     tutorEmail: series.tutor.email,
     sessionType: series.session_type,
+    programCode: series.program_code,
+    courseName: series.course_name,
+    level: series.level,
     weekday: series.weekday,
     startMinute: series.start_minute,
     durationMinutes: series.duration_minutes,
+    weeklySlots: serialWeeklySlots(series),
     startsOn: series.starts_on.toISOString(),
     endsOn: series.ends_on?.toISOString() || null,
     pricingProfileId: series.pricing_profile_id,
@@ -212,6 +241,9 @@ export async function createSessionSeries(
     const created = await tx.sessionSeries.create({
       data: {
         title: validInput.title,
+        program_code: validInput.programCode ?? null,
+        course_name: validInput.courseName ?? null,
+        level: validInput.level ?? null,
         tutor_id: validInput.tutorId,
         session_type: validInput.sessionType,
         weekday: validInput.weekday,
@@ -220,6 +252,7 @@ export async function createSessionSeries(
         starts_on: validInput.startsOn,
         ends_on: validInput.endsOn,
         pricing_profile_id: validInput.pricingProfileId,
+        slots: { create: validInput.weeklySlots.map((slot) => ({ weekday: slot.weekday, start_minute: slot.startMinute, duration_minutes: slot.durationMinutes })) },
         participants: { create: participantIds.map((student_id) => ({ student_id })) },
       },
       include: SERIES_INCLUDE,
@@ -227,6 +260,7 @@ export async function createSessionSeries(
     if (historyDates.length > 0) {
       await materializeHistoricalOccurrences(tx, {
         ...created,
+        series_slot_id: created.slots[0].id,
         starts_on: validInput.startsOn,
         weekday: validInput.weekday,
         start_minute: validInput.startMinute,
@@ -262,6 +296,7 @@ export async function getSessionSeriesHistory(seriesId: string) {
     where: { id: seriesId },
     include: {
       tutor: { select: { name: true } },
+      slots: { where: { active: true }, orderBy: [{ weekday: 'asc' }, { start_minute: 'asc' }] },
       participants: { include: { student: { select: { name: true } } } },
       occurrences: {
         orderBy: [{ start_time: 'asc' }, { id: 'asc' }],
@@ -281,6 +316,8 @@ export async function getSessionSeriesHistory(seriesId: string) {
     tutorName: series.tutor.name || 'Tutor profile incomplete',
     students: series.participants.map(({ student }) => student.name || 'Student profile incomplete'),
     weekday: series.weekday, startMinute: series.start_minute, durationMinutes: series.duration_minutes,
+    weeklySlots: serialWeeklySlots(series),
+    programCode: series.program_code, courseName: series.course_name, level: series.level,
     startsOn: series.starts_on.toISOString(), endsOn: series.ends_on?.toISOString() ?? null,
     occurrences: series.occurrences.map((session) => ({
       id: session.id, title: session.title, status: session.status, startTime: session.start_time.toISOString(),
@@ -301,7 +338,7 @@ export async function getAdminSeries(filter: SeriesScheduleFilter | undefined, p
   } else {
     await materializeAllActiveSeries(policy);
   }
-  const series = await prisma.sessionSeries.findMany({
+  const series = await collectPrismaPages((cursorId) => prisma.sessionSeries.findMany({
     where: filter?.tutorId
       ? { tutor_id: filter.tutorId }
       : filter?.studentId
@@ -317,7 +354,10 @@ export async function getAdminSeries(filter: SeriesScheduleFilter | undefined, p
       },
     },
     orderBy: [{ weekday: 'asc' }, { start_minute: 'asc' }, { id: 'asc' }],
-  });
+    take: 200,
+    cursor: cursorId ? { id: cursorId } : undefined,
+    skip: cursorId ? 1 : 0,
+  }));
   return series.map((item) => serializeSeries(item, policy));
 }
 
@@ -327,6 +367,56 @@ export async function getAdminWeeklySchedule(tutorId: string | undefined, policy
     tutorId ? prisma.user.findUnique({ where: { id: tutorId, role: 'TUTOR' }, select: { id: true, name: true } }) : Promise.resolve(null),
   ]);
   return { series, tutorFilter };
+}
+
+export async function getAdminUpcomingSeriesPage(tutorId: string | undefined, page: number, policy: SeriesPricingPolicy, now = new Date()) {
+  const where: Prisma.SessionSeriesWhereInput = {
+    status: 'ACTIVE',
+    ...(tutorId ? { tutor_id: tutorId } : {}),
+    occurrences: {
+      some: {
+        historical_only: false,
+        start_time: { gte: now },
+        status: { in: ['SCHEDULED', 'ACTIVE'] },
+        series_slot: { is: { active: true } },
+      },
+    },
+  };
+  const groups = await collectPrismaPages((cursorId) => prisma.sessionSeries.findMany({
+    where,
+    include: {
+      ...SERIES_INCLUDE,
+      occurrences: {
+        where: {
+          historical_only: false,
+          start_time: { gte: now },
+          status: { in: ['SCHEDULED', 'ACTIVE'] },
+          series_slot: { is: { active: true } },
+        },
+        orderBy: { start_time: 'asc' },
+        take: 1,
+        select: { id: true, start_time: true, end_time: true, status: true },
+      },
+    },
+    orderBy: { id: 'asc' },
+    take: 200,
+    cursor: cursorId ? { id: cursorId } : undefined,
+    skip: cursorId ? 1 : 0,
+  }));
+  const sortedGroups = groups.map((item) => serializeSeries(item, policy)).sort((left, right) => {
+    const timeOrder = Date.parse(left.nextOccurrence!.startTime) - Date.parse(right.nextOccurrence!.startTime);
+    return timeOrder || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+  });
+  const totalCount = sortedGroups.length;
+  const pageCount = Math.max(1, Math.ceil(totalCount / TABLE_PAGE_SIZE));
+  const currentPage = Math.min(Math.max(1, Math.floor(page)), pageCount);
+  return {
+    items: sortedGroups.slice((currentPage - 1) * TABLE_PAGE_SIZE, currentPage * TABLE_PAGE_SIZE),
+    totalCount,
+    page: currentPage,
+    pageCount,
+    pageSize: TABLE_PAGE_SIZE,
+  };
 }
 
 export async function updateSessionSeries(
@@ -347,6 +437,7 @@ export async function updateSessionSeries(
     throw new Error('Historical backfill requires an entire-series edit');
   }
   if (validScope === 'THIS') {
+    if (validInput.weeklySlots.length > 1) throw new Error('Edit the whole group to change multiple weekly times');
     if (validInput.historicalStartsOn) throw new Error('Historical backfill requires a series-wide edit');
     if (!effectiveOccurrenceId) throw new Error('An occurrence is required for this-occurrence edits');
     const occurrence = await prisma.session.findFirst({
@@ -369,7 +460,7 @@ export async function updateSessionSeries(
   const updatedId = await prisma.$transaction(async (tx) => {
     const series = await tx.sessionSeries.findUnique({
       where: { id: seriesId },
-      include: { participants: { select: { student_id: true } } },
+      include: { participants: { select: { student_id: true } }, slots: true },
     });
     if (!series) throw new Error('Session series not found');
     if (series.status !== 'ACTIVE') throw new Error('Ended or cancelled schedules cannot be edited or reactivated');
@@ -380,10 +471,14 @@ export async function updateSessionSeries(
       ? historicalOccurrenceDates({ weekday: validInput.weekday, starts_on: validInput.startsOn }, formatCalendarDate(validInput.historicalStartsOn), now)
       : [];
     const existingHistoryDates = candidateHistoryDates.length > 0
-      ? await tx.session.findMany({
+      ? await collectPrismaPages((cursorId) => tx.session.findMany({
         where: { series_id: seriesId, occurrence_date: { in: candidateHistoryDates } },
-        select: { occurrence_date: true },
-      })
+        select: { id: true, occurrence_date: true },
+        orderBy: { id: 'asc' },
+        take: 200,
+        cursor: cursorId ? { id: cursorId } : undefined,
+        skip: cursorId ? 1 : 0,
+      }))
       : [];
     const existingHistoryKeys = new Set(existingHistoryDates.flatMap(({ occurrence_date }) => occurrence_date ? [formatCalendarDate(occurrence_date)] : []));
     const historyDates = confirmedHistoricalDates(validInput, confirmedDates, now, existingHistoryKeys);
@@ -393,7 +488,7 @@ export async function updateSessionSeries(
       : academyCalendarDate();
     if (!effectiveDate) throw new Error('The selected occurrence does not belong to this series');
 
-    const affected = await tx.session.findMany({
+    const affected = await collectPrismaPages((cursorId) => tx.session.findMany({
       where: { series_id: seriesId, occurrence_date: { gte: effectiveDate }, historical_only: false },
       select: {
         id: true,
@@ -402,7 +497,11 @@ export async function updateSessionSeries(
         attendance_finalized_at: true,
         _count: { select: { attendances: true, transactions: true } },
       },
-    });
+      orderBy: { id: 'asc' },
+      take: 200,
+      cursor: cursorId ? { id: cursorId } : undefined,
+      skip: cursorId ? 1 : 0,
+    }));
     const protectedOccurrences = affected.filter((item) =>
       item.status === 'COMPLETED' || item.attendance_saved_at || item.attendance_finalized_at || item._count.attendances > 0 || item._count.transactions > 0
     );
@@ -415,6 +514,9 @@ export async function updateSessionSeries(
       where: { id: seriesId },
       data: {
         title: validInput.title,
+        program_code: validInput.programCode ?? null,
+        course_name: validInput.courseName ?? null,
+        level: validInput.level ?? null,
         tutor_id: validInput.tutorId,
         session_type: validInput.sessionType,
         weekday: validInput.weekday,
@@ -429,11 +531,22 @@ export async function updateSessionSeries(
           create: participantIds.map((student_id) => ({ student_id })),
         },
       },
-      include: { participants: { select: { student_id: true } } },
+      include: { participants: { select: { student_id: true } }, slots: true },
     });
+    await tx.sessionSeriesSlot.updateMany({ where: { series_id: seriesId }, data: { active: false } });
+    let primarySlotId = '';
+    for (const [index, slot] of validInput.weeklySlots.entries()) {
+      const stored = await tx.sessionSeriesSlot.upsert({
+        where: { series_id_weekday_start_minute_duration_minutes: { series_id: seriesId, weekday: slot.weekday, start_minute: slot.startMinute, duration_minutes: slot.durationMinutes } },
+        update: { active: true },
+        create: { series_id: seriesId, weekday: slot.weekday, start_minute: slot.startMinute, duration_minutes: slot.durationMinutes },
+      });
+      if (index === 0) primarySlotId = stored.id;
+    }
     if (historyDates.length > 0) {
       await materializeHistoricalOccurrences(tx, {
         ...updated,
+        series_slot_id: primarySlotId,
         weekday: validInput.weekday,
         start_minute: validInput.startMinute,
         duration_minutes: validInput.durationMinutes,
@@ -468,10 +581,14 @@ export async function cancelSessionSeries(
       : null;
     if (effectiveOccurrenceId && !selected?.occurrence_date) throw new Error('The selected occurrence does not belong to this series');
     const fromDate = selected?.occurrence_date || academyCalendarDate();
-    const occurrences = await tx.session.findMany({
+    const occurrences = await collectPrismaPages((cursorId) => tx.session.findMany({
       where: { series_id: seriesId, occurrence_date: { gte: fromDate }, historical_only: false },
       select: { id: true, status: true, attendance_saved_at: true, attendance_finalized_at: true, _count: { select: { attendances: true, transactions: true } } },
-    });
+      orderBy: { id: 'asc' },
+      take: 200,
+      cursor: cursorId ? { id: cursorId } : undefined,
+      skip: cursorId ? 1 : 0,
+    }));
     const protectedOccurrences = occurrences.filter((item) => item.status === 'COMPLETED' || item.attendance_saved_at || item.attendance_finalized_at || item._count.attendances > 0 || item._count.transactions > 0);
     if (validScope === 'THIS_AND_FUTURE' && protectedOccurrences.length > 0) {
       throw new Error('Occurrences with attendance or financial history cannot be cancelled');
