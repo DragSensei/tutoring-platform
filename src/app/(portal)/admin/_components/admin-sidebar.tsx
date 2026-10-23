@@ -1,5 +1,3 @@
-'use client';
-
 import {
   PortalSidebar,
   adminNavigation,
@@ -10,9 +8,12 @@ export interface AdminSidebarProps {
   mobileOnly?: boolean;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  collapsible?: boolean;
   asAside?: boolean;
+  userName?: string;
+  userEmail?: string;
 }
 
 export function AdminSidebar(props: AdminSidebarProps) {
-  return <PortalSidebar config={adminNavigation} {...props} />;
+  return <PortalSidebar config={adminNavigation} collapsible {...props} />;
 }
