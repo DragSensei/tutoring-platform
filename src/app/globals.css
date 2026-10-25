@@ -5,19 +5,35 @@
 @tailwind utilities;
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 body {
-  color: var(--foreground);
-  background-color: var(--background);
-  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: rgb(var(--foreground));
+  background-color: rgb(var(--background));
   min-height: 100vh;
+}
+
+@layer base {
+  button,
+  select,
+  input:not([type='checkbox']):not([type='radio']):not([type='file']),
+  textarea {
+    min-height: var(--control-min-height);
+  }
+
+  :focus-visible {
+    outline: var(--focus-ring-width) solid rgb(var(--brand-primary));
+    outline-offset: 2px;
+  }
 }
 
 /* Subtle, Soft Dot Pattern for Warm Light Mode Background */
 .bg-soft-dots {
-  background-image: radial-gradient(#e2e8f0 1.2px, transparent 1.2px);
+  background-image: radial-gradient(rgb(var(--border-subtle)) 1.2px, transparent 1.2px);
   background-size: 20px 20px;
 }

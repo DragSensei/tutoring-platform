@@ -36,3 +36,10 @@ Thumbs.db
 *.tsbuildinfo
 .audit/
 .local/
+
+# Dev server logs
+.server-logs/
+
+# Obsolete plans and local verification residue
+FEATURE_PLAN_*.md
+.verification/

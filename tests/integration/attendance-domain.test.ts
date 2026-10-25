@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
@@ -17,11 +18,18 @@ const { executeStudentCheckIn } = await import('@/features/attendance/server/che
 const { getAdminAttendanceInterventionBoard, grantLateAttendanceRecovery, markAdminAttendanceHandled } = await import('@/features/attendance/server/admin-attendance');
 const { getTutorSessions } = await import('@/features/sessions/server/session-actions');
 const { getPlatformPolicies } = await import('@/features/policies/server/policy-actions');
+const { adminDeposit } = await import('@/features/wallets/server/wallet-actions');
 
 const prefix = `test-final-attendance-${process.pid}-${Date.now()}-`;
 let counter = 0;
 const now = new Date('2026-10-01T12:00:00.000Z');
 const policy = { checkInWindowHours: 4, groupSessionPrice: 375, privateSessionPrice: 500 };
+
+async function atServerTime<T>(time: Date, run: () => Promise<T>) {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(time);
+  try { return await run(); } finally { vi.useRealTimers(); }
+}
 
 async function createFixture(start: Date, end: Date) {
   const marker = `${prefix}${counter++}`;
@@ -40,12 +48,17 @@ async function createFixture(start: Date, end: Date) {
       deadline: new Date(end.getTime() + 4 * 60 * 60 * 1000), participants: { create: [{ student_id: student.id }] },
     },
   });
-  return { tutor, student, session };
+  const evidence = await prisma.attendanceEvidence.create({ data: {
+    session_id: session.id, uploaded_by_user_id: tutor.id, storage_key: `test/${session.id}/evidence`,
+    content_type: 'image/png', size_bytes: 1, sha256: '0'.repeat(64),
+  } });
+  return { tutor, student, session, evidence };
 }
 
 async function cleanup() {
   const sessions = await prisma.session.findMany({ where: { title: { contains: prefix } }, select: { id: true } });
   await prisma.attendanceRecoveryGrant.deleteMany({ where: { session_id: { in: sessions.map(({ id }) => id) } } });
+  await prisma.attendanceEvidence.deleteMany({ where: { session_id: { in: sessions.map(({ id }) => id) } } });
   await prisma.session.deleteMany({ where: { title: { contains: prefix } } });
   await prisma.user.deleteMany({ where: { email: { startsWith: prefix } } });
 }
@@ -86,15 +99,19 @@ describe('final Tutor attendance and settlement contract', () => {
     const fixture = await createFixture(new Date('2026-10-01T13:00:00.000Z'), new Date('2026-10-01T15:00:00.000Z'));
     vi.mocked(requireAuth).mockResolvedValue({ userId: fixture.tutor.id, email: fixture.tutor.email!, name: fixture.tutor.name!, role: 'TUTOR' });
     const outcomes = { [fixture.student.id]: 'PRESENT' as const };
-    const before = await submitTutorAttendance({ sessionId: fixture.session.id, outcomes, notes: 'Too early to record.', normalEvidenceSelected: true }, new Date('2026-10-01T12:59:59.999Z'));
+    const before = await atServerTime(new Date('2026-10-01T12:59:59.999Z'), () => submitTutorAttendance({ sessionId: fixture.session.id, outcomes, notes: 'Too early to record.', screenshotEvidenceId: fixture.evidence.id }));
     expect(before.success).toBe(false);
+    const forgedTime = await atServerTime(new Date('2026-10-01T20:00:00.000Z'), () => Reflect.apply(saveTutorAttendanceDraft, null, [
+      { sessionId: fixture.session.id, outcomes, notes: 'A client supplied clock must be ignored.' }, new Date('2026-10-01T14:00:00.000Z'),
+    ]) as Promise<Awaited<ReturnType<typeof saveTutorAttendanceDraft>>>);
+    expect(forgedTime.success).toBe(false);
     expect(await prisma.attendanceRecord.count({ where: { session_id: fixture.session.id } })).toBe(0);
-    const atStart = await saveTutorAttendanceDraft({ sessionId: fixture.session.id, outcomes, notes: 'Attendance opened at start.' }, fixture.session.start_time);
+    const atStart = await atServerTime(fixture.session.start_time, () => saveTutorAttendanceDraft({ sessionId: fixture.session.id, outcomes, notes: 'Attendance opened at start.' }));
     expect(atStart.success).toBe(true);
     expect(await prisma.attendanceRecord.count({ where: { session_id: fixture.session.id } })).toBe(0);
-    const tooEarlyToSubmit = await submitTutorAttendance({ sessionId: fixture.session.id, outcomes, notes: 'Attendance cannot submit during class.', normalEvidenceSelected: true }, fixture.session.start_time);
+    const tooEarlyToSubmit = await atServerTime(fixture.session.start_time, () => submitTutorAttendance({ sessionId: fixture.session.id, outcomes, notes: 'Attendance cannot submit during class.', screenshotEvidenceId: fixture.evidence.id }));
     expect(tooEarlyToSubmit.success).toBe(false);
-    const submitted = await submitTutorAttendance({ sessionId: fixture.session.id, outcomes, notes: 'Attendance submitted after class.', normalEvidenceSelected: true }, fixture.session.end_time);
+    const submitted = await atServerTime(fixture.session.end_time, () => submitTutorAttendance({ sessionId: fixture.session.id, outcomes, notes: 'Attendance submitted after class.', screenshotEvidenceId: fixture.evidence.id }));
     expect(submitted.success).toBe(true);
     const serialized = (await getTutorSessions(fixture.tutor.id, policy, fixture.session.start_time)).find((item) => item.id === fixture.session.id);
     expect(serialized?.attendanceClosesAt).toBe('2026-10-01T19:00:00.000Z');
@@ -106,10 +123,10 @@ describe('final Tutor attendance and settlement contract', () => {
     const graceTime = new Date('2026-10-01T14:00:00.000Z');
     const close = new Date('2026-10-01T15:00:00.000Z');
     vi.mocked(requireAuth).mockResolvedValue({ userId: fixture.tutor.id, email: fixture.tutor.email!, name: fixture.tutor.name!, role: 'TUTOR' });
-    expect((await saveTutorAttendanceDraft({ sessionId: fixture.session.id, outcomes: { [fixture.student.id]: 'PRESENT' }, notes: 'Present during the workshop.' }, new Date('2026-10-01T10:00:00.000Z'))).success).toBe(true);
-    expect((await saveTutorAttendanceDraft({ sessionId: fixture.session.id, outcomes: { [fixture.student.id]: 'ABSENT' }, notes: 'Final review marked the student absent.' }, graceTime)).success).toBe(true);
+    expect((await atServerTime(new Date('2026-10-01T10:00:00.000Z'), () => saveTutorAttendanceDraft({ sessionId: fixture.session.id, outcomes: { [fixture.student.id]: 'PRESENT' }, notes: 'Present during the workshop.' }))).success).toBe(true);
+    expect((await atServerTime(graceTime, () => saveTutorAttendanceDraft({ sessionId: fixture.session.id, outcomes: { [fixture.student.id]: 'ABSENT' }, notes: 'Final review marked the student absent.' }))).success).toBe(true);
     expect((await walletState(fixture.student.id, fixture.session.id)).transactions).toHaveLength(0);
-    const presentAgain = await submitTutorAttendance({ sessionId: fixture.session.id, outcomes: { [fixture.student.id]: 'PRESENT' }, notes: 'Final review corrected to present.', normalEvidenceSelected: true }, graceTime);
+    const presentAgain = await atServerTime(graceTime, () => submitTutorAttendance({ sessionId: fixture.session.id, outcomes: { [fixture.student.id]: 'PRESENT' }, notes: 'Final review corrected to present.', screenshotEvidenceId: fixture.evidence.id }));
     expect(presentAgain.success).toBe(true);
     const first = await finalizeDueAttendance(policy, new Date(close.getTime() + 1));
     const second = await finalizeDueAttendance(policy, new Date(close.getTime() + 1));
@@ -124,8 +141,8 @@ describe('final Tutor attendance and settlement contract', () => {
   it('settles ABSENT to zero and does not invent data when no review was saved', async () => {
     const absent = await createFixture(new Date('2026-10-01T08:00:00.000Z'), new Date('2026-10-01T10:00:00.000Z'));
     vi.mocked(requireAuth).mockResolvedValue({ userId: absent.tutor.id, email: absent.tutor.email!, name: absent.tutor.name!, role: 'TUTOR' });
-    expect((await saveTutorAttendanceDraft({ sessionId: absent.session.id, outcomes: { [absent.student.id]: 'ABSENT' }, notes: 'The roster was reviewed and absent.' }, new Date('2026-10-01T09:00:00.000Z'))).success).toBe(true);
-    expect((await submitTutorAttendance({ sessionId: absent.session.id, outcomes: { [absent.student.id]: 'ABSENT' }, notes: 'The roster was reviewed and absent.', normalEvidenceSelected: true }, new Date('2026-10-01T10:00:00.000Z'))).success).toBe(true);
+    expect((await atServerTime(new Date('2026-10-01T09:00:00.000Z'), () => saveTutorAttendanceDraft({ sessionId: absent.session.id, outcomes: { [absent.student.id]: 'ABSENT' }, notes: 'The roster was reviewed and absent.' }))).success).toBe(true);
+    expect((await atServerTime(new Date('2026-10-01T10:00:00.000Z'), () => submitTutorAttendance({ sessionId: absent.session.id, outcomes: { [absent.student.id]: 'ABSENT' }, notes: 'The roster was reviewed and absent.', screenshotEvidenceId: absent.evidence.id }))).success).toBe(true);
     const absentResult = await finalizeDueAttendance(policy, new Date('2026-10-01T14:00:01.000Z'));
     expect(absentResult.finalizedCount).toBe(1);
     expect((await walletState(absent.student.id, absent.session.id)).transactions).toHaveLength(0);
@@ -142,7 +159,7 @@ describe('final Tutor attendance and settlement contract', () => {
     const fixture = await createFixture(new Date('2026-10-01T09:00:00.000Z'), new Date('2026-10-01T11:00:00.000Z'));
     const wrongTutor = await prisma.user.create({ data: { name: `Wrong ${prefix}`, email: `${prefix}wrong@example.com`, phone: `+20${Date.now()}99`, role: 'TUTOR' } });
     vi.mocked(requireAuth).mockResolvedValue({ userId: wrongTutor.id, email: wrongTutor.email!, name: wrongTutor.name!, role: 'TUTOR' });
-    const wrong = await saveTutorAttendanceDraft({ sessionId: fixture.session.id, outcomes: { [fixture.student.id]: 'PRESENT' }, notes: 'Wrong Tutor attempt.' }, new Date('2026-10-01T10:00:00.000Z'));
+    const wrong = await atServerTime(new Date('2026-10-01T10:00:00.000Z'), () => saveTutorAttendanceDraft({ sessionId: fixture.session.id, outcomes: { [fixture.student.id]: 'PRESENT' }, notes: 'Wrong Tutor attempt.' }));
     expect(wrong.success).toBe(false);
     const studentMutation = await executeStudentCheckIn({ token: 'historical-token', studentId: fixture.student.id, currentTime: now });
     expect(studentMutation).toMatchObject({ success: false, statusCode: 410 });
@@ -151,14 +168,34 @@ describe('final Tutor attendance and settlement contract', () => {
   it('keeps concurrent finalization to one net charge', async () => {
     const fixture = await createFixture(new Date('2026-10-01T09:00:00.000Z'), new Date('2026-10-01T11:00:00.000Z'));
     vi.mocked(requireAuth).mockResolvedValue({ userId: fixture.tutor.id, email: fixture.tutor.email!, name: fixture.tutor.name!, role: 'TUTOR' });
-    await saveTutorAttendanceDraft({ sessionId: fixture.session.id, outcomes: { [fixture.student.id]: 'PRESENT' }, notes: 'Concurrent finalizer fixture.' }, new Date('2026-10-01T10:00:00.000Z'));
-    await submitTutorAttendance({ sessionId: fixture.session.id, outcomes: { [fixture.student.id]: 'PRESENT' }, notes: 'Concurrent finalizer fixture.', normalEvidenceSelected: true }, new Date('2026-10-01T11:00:00.000Z'));
+    await atServerTime(new Date('2026-10-01T10:00:00.000Z'), () => saveTutorAttendanceDraft({ sessionId: fixture.session.id, outcomes: { [fixture.student.id]: 'PRESENT' }, notes: 'Concurrent finalizer fixture.' }));
+    await atServerTime(new Date('2026-10-01T11:00:00.000Z'), () => submitTutorAttendance({ sessionId: fixture.session.id, outcomes: { [fixture.student.id]: 'PRESENT' }, notes: 'Concurrent finalizer fixture.', screenshotEvidenceId: fixture.evidence.id }));
     const [one, two] = await Promise.all([
       finalizeDueAttendance(policy, new Date('2026-10-01T15:00:01.000Z')),
       finalizeDueAttendance(policy, new Date('2026-10-01T15:00:01.000Z')),
     ]);
     expect(one.finalizedCount + two.finalizedCount).toBe(1);
     expect((await walletState(fixture.student.id, fixture.session.id)).transactions.filter((entry) => entry.transaction_type === 'SESSION_DEDUCTION')).toHaveLength(1);
+  });
+
+  it('keeps session settlement and a concurrent Admin credit in balance-ledger agreement', async () => {
+    const fixture = await createFixture(new Date('2026-10-01T09:00:00.000Z'), new Date('2026-10-01T11:00:00.000Z'));
+    const admin = await createAdmin();
+    await prisma.wallet.update({ where: { user_id: fixture.student.id }, data: { balance: 0, is_flagged_overdraft: false } });
+    vi.mocked(requireAuth).mockResolvedValue({ userId: fixture.tutor.id, email: fixture.tutor.email!, name: fixture.tutor.name!, role: 'TUTOR' });
+    const outcomes = { [fixture.student.id]: 'PRESENT' as const };
+    await atServerTime(new Date('2026-10-01T10:00:00.000Z'), () => saveTutorAttendanceDraft({ sessionId: fixture.session.id, outcomes, notes: 'Concurrent settlement setup.' }));
+    const [submitted] = await Promise.all([
+      atServerTime(new Date('2026-10-01T15:00:00.000Z'), () => submitTutorAttendance({ sessionId: fixture.session.id, outcomes, notes: 'Concurrent settlement and deposit check.', screenshotEvidenceId: fixture.evidence.id })),
+      adminDeposit({ studentId: fixture.student.id, amount: 23.45, requestKey: randomUUID(), adminUserId: admin.id }),
+    ]);
+    expect(submitted.success).toBe(true);
+    const wallet = await prisma.wallet.findUniqueOrThrow({ where: { user_id: fixture.student.id } });
+    const ledger = await prisma.walletTransaction.findMany({ where: { wallet_id: wallet.id } });
+    const total = ledger.reduce((sum, entry) => sum.add(entry.amount), new Prisma.Decimal(0));
+    expect(wallet.balance.equals(total)).toBe(true);
+    expect(ledger.some((entry) => entry.transaction_type === 'ADMIN_DEPOSIT' && entry.amount.equals(new Prisma.Decimal('23.45')))).toBe(true);
+    expect(ledger.some((entry) => entry.transaction_type === 'SESSION_DEDUCTION' && entry.amount.equals(new Prisma.Decimal('-375.00')))).toBe(true);
   });
 
   it('persists one Admin recovery intervention, lists it as handled, and rejects repeats', async () => {
@@ -215,7 +252,7 @@ describe('final Tutor attendance and settlement contract', () => {
 
     const tutorView = await getTutorSessions(legacy.tutor.id, policy, afterNormalClose, { mode: 'single', sessionId: legacy.session.id });
     expect(tutorView[0].attendanceDisposition).toBe('ADMIN_REVIEW');
-    const saveResult = await saveTutorAttendanceDraft({ sessionId: legacy.session.id, outcomes: {}, notes: 'No roster data should not be edited.' }, afterNormalClose);
+    const saveResult = await atServerTime(afterNormalClose, () => saveTutorAttendanceDraft({ sessionId: legacy.session.id, outcomes: {}, notes: 'No roster data should not be edited.' }));
     expect(saveResult).toMatchObject({ success: false, message: expect.stringContaining('without an assigned Student roster') });
 
     const board = await getAdminAttendanceInterventionBoard(afterNormalClose);

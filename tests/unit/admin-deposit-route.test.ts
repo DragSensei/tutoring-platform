@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { randomUUID } from 'node:crypto';
 
 vi.mock('@/features/auth/server/session', () => ({
   requireAuth: vi.fn(),
@@ -15,7 +16,7 @@ const { POST } = await import('@/app/api/admin/wallets/deposit/route');
 function request() {
   return new NextRequest('http://localhost/api/admin/wallets/deposit', {
     method: 'POST',
-    body: JSON.stringify({ studentId: 'student-1', amount: 100 }),
+    body: JSON.stringify({ studentId: 'student-1', amount: 100, requestKey: randomUUID() }),
     headers: { 'content-type': 'application/json' },
   });
 }
@@ -41,6 +42,7 @@ describe('Admin wallet deposit authorization', () => {
     });
     vi.mocked(adminDeposit).mockResolvedValue({
       walletId: 'wallet-1',
+      creditedAmount: 100,
       newBalance: 100,
       isFlaggedOverdraft: false,
       transactionId: 'transaction-1',
@@ -51,6 +53,7 @@ describe('Admin wallet deposit authorization', () => {
     expect(adminDeposit).toHaveBeenCalledWith({
       studentId: 'student-1',
       amount: 100,
+      requestKey: expect.any(String),
       adminUserId: 'admin-1',
     });
   });

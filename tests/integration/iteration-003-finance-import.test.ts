@@ -17,16 +17,22 @@ const { saveTutorAttendanceDraft, submitTutorAttendance } = await import('@/app/
 const { finalizeDueAttendance } = await import('@/features/attendance/server/finalize-due-attendance');
 const { accrueTutorCompensation, reconcileSessionFinancialState } = await import('@/features/attendance/server/session-financials');
 const { updatePlatformPolicies } = await import('@/features/policies/server/policy-actions');
-const { getAdminFinanceSessionDetail } = await import('@/features/finances/server/finance-actions');
+const { getAdminFinanceReport, getAdminFinanceSessionDetail, getAdminPayableDetail } = await import('@/features/finances/server/finance-actions');
 const { confirmStudentImport, previewStudentImport } = await import('@/features/accounts/server/student-import');
 const { initiateAccountSetup } = await import('@/features/accounts/server/account-actions');
 
 const prefix = `test-003-finance-import-${process.pid}-${Date.now()}-`;
+async function atServerTime<T>(time: Date, run: () => Promise<T>) {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(time);
+  try { return await run(); } finally { vi.useRealTimers(); }
+}
 let adminId = '';
 let originalPolicy: Awaited<ReturnType<typeof prisma.platformPolicy.findUnique>> = null;
 const userIds = new Set<string>();
 const sourceIds = new Set<string>();
 const sessionIds = new Set<string>();
+const payoutIds = new Set<string>();
 const batchKeys = new Set<string>();
 let directSourceId = '';
 
@@ -117,6 +123,7 @@ async function setPolicy(input: {
 }
 
 async function cleanup() {
+  if (payoutIds.size) await prisma.payoutSettlement.deleteMany({ where: { id: { in: [...payoutIds] } } });
   const ids = [...sessionIds];
   if (ids.length) {
     await prisma.commissionLedgerEntry.deleteMany({ where: { session_id: { in: ids } } });
@@ -124,6 +131,7 @@ async function cleanup() {
     await prisma.walletTransaction.deleteMany({ where: { session_id: { in: ids } } });
     await prisma.attendanceRecord.deleteMany({ where: { session_id: { in: ids } } });
     await prisma.sessionParticipant.deleteMany({ where: { session_id: { in: ids } } });
+    await prisma.attendanceEvidence.deleteMany({ where: { session_id: { in: ids } } });
     await prisma.session.deleteMany({ where: { id: { in: ids } } });
   }
   const batches = batchKeys.size
@@ -198,8 +206,9 @@ describe('Iteration 003 financial and import database invariants', () => {
     vi.mocked(requireAuth).mockResolvedValue({ userId: tutor.id, email: tutor.email!, name: tutor.name!, role: 'TUTOR' });
     const saveTime = new Date(start.getTime() + 60 * 60_000);
     const submitTime = new Date(end.getTime() + 60_000);
-    expect((await saveTutorAttendanceDraft({ sessionId: session.id, outcomes: { [student.id]: 'PRESENT' }, notes: 'Delivered and reviewed.' }, saveTime)).success).toBe(true);
-    expect((await submitTutorAttendance({ sessionId: session.id, outcomes: { [student.id]: 'PRESENT' }, notes: 'Delivered and reviewed.', normalEvidenceSelected: true }, submitTime)).success).toBe(true);
+    expect((await atServerTime(saveTime, () => saveTutorAttendanceDraft({ sessionId: session.id, outcomes: { [student.id]: 'PRESENT' }, notes: 'Delivered and reviewed.' }))).success).toBe(true);
+    const evidence = await prisma.attendanceEvidence.create({ data: { session_id: session.id, uploaded_by_user_id: tutor.id, storage_key: `test/${session.id}/evidence`, content_type: 'image/png', size_bytes: 1, sha256: '0'.repeat(64) } });
+    expect((await atServerTime(submitTime, () => submitTutorAttendance({ sessionId: session.id, outcomes: { [student.id]: 'PRESENT' }, notes: 'Delivered and reviewed.', screenshotEvidenceId: evidence.id }))).success).toBe(true);
 
     const historicalStart = new Date(start.getTime() - 10 * 60 * 60_000);
     const historicalEnd = new Date(historicalStart.getTime() + 2 * 60 * 60_000);
@@ -232,6 +241,9 @@ describe('Iteration 003 financial and import database invariants', () => {
     }
     expect(await finalizeDueAttendance({ checkInWindowHours: 4 }, settlementTime)).toEqual({ dueCount: 1, finalizedCount: 1 });
     expect(await finalizeDueAttendance({ checkInWindowHours: 4 }, settlementTime)).toEqual({ dueCount: 0, finalizedCount: 0 });
+    expect(await prisma.tutorCompensationLedgerEntry.count({ where: { session_id: session.id } })).toBe(1);
+    expect(await prisma.commissionLedgerEntry.count({ where: { session_id: session.id } })).toBe(1);
+    expect(await prisma.walletTransaction.count({ where: { session_id: session.id, transaction_type: 'SESSION_DEDUCTION' } })).toBe(1);
 
     const tutorEntry = await prisma.tutorCompensationLedgerEntry.findUniqueOrThrow({ where: { session_id: session.id } });
     const commissionEntry = await prisma.commissionLedgerEntry.findUniqueOrThrow({ where: { session_id_student_id: { session_id: session.id, student_id: student.id } } });
@@ -257,6 +269,31 @@ describe('Iteration 003 financial and import database invariants', () => {
     expect(charges[0].amount.toFixed(2)).toBe('-375.00');
 
     vi.mocked(requireAuth).mockResolvedValue({ userId: adminId, email: `${prefix}actor@example.com`, name: 'Test Admin', role: 'ADMIN' });
+    const payoutRows = Array.from({ length: 101 }, (_, index) => ({
+      id: randomUUID(), tutor_id: tutor.id, amount: new Prisma.Decimal('1.00'),
+      idempotency_key: `${prefix}scale-payout-${index}`,
+    }));
+    payoutRows.forEach(({ id }) => payoutIds.add(id));
+    await prisma.payoutSettlement.createMany({ data: payoutRows });
+    const report = await getAdminFinanceReport();
+    expect(report.tutorPayables.find((row) => row.id === tutor.id)).toMatchObject({ earned: '1200.00', paid: '101.00', outstanding: '1099.00', deliveredMinutes: 120, sessionCount: 1 });
+    const payableDetail = await getAdminPayableDetail('tutor', tutor.id);
+    expect(payableDetail).toMatchObject({ type: 'tutor', earned: '1200.00', paid: '101.00', outstanding: '1099.00', payoutCount: 101 });
+    expect(payableDetail?.payouts).toHaveLength(101);
+    expect(report.salesPayables.find((row) => row.id === source.id)).toMatchObject({ earned: '37.50', paid: '0.00', outstanding: '37.50' });
+
+    // Compensation is reported by ledger creation date, independently of the session's delivery date.
+    const compensationActivityDate = new Date(settlementTime.getTime() + 2 * 24 * 60 * 60_000);
+    await prisma.tutorCompensationLedgerEntry.update({
+      where: { session_id: session.id },
+      data: { created_at: new Date(Date.UTC(compensationActivityDate.getUTCFullYear(), compensationActivityDate.getUTCMonth(), compensationActivityDate.getUTCDate(), 12)) },
+    });
+    const activityDate = compensationActivityDate.toISOString().slice(0, 10);
+    const activityReport = await getAdminFinanceReport({ from: activityDate, to: activityDate });
+    expect(activityReport.summary).toMatchObject({ compensatedMinutes: 120, tutorCompensation: '1200.00' });
+    expect(activityReport.compensation).toHaveLength(1);
+    expect(activityReport.tutorPayables.find((row) => row.id === tutor.id)).toMatchObject({ sessionCount: 1, deliveredMinutes: 120 });
+
     const detail = await getAdminFinanceSessionDetail(session.id);
     expect(detail).toMatchObject({
       id: session.id,

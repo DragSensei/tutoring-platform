@@ -33,6 +33,7 @@ export const tutorAttendanceSubmissionSchema = z.object({
     )
     .max(5000, 'Session notes must be 5000 characters or fewer'),
   normalEvidenceSelected: z.boolean().optional(),
+  screenshotEvidenceId: z.string().min(1).max(128).optional(),
   recoveryGrantId: z.string().min(1).max(128).optional(),
   lateExplanation: z.string().trim().max(2000).optional(),
   tutorAttested: z.boolean().optional(),

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { ArrowLeft } from 'lucide-react';
 import { Badge } from '@/shared/components/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/card';
@@ -34,6 +35,8 @@ export function FinanceSessionDetail({ detail }: { detail: SessionDetail }) {
           <div><p className="text-text-muted">Tutor compensation</p><p className="mt-1 font-mono font-semibold tabular-nums text-text-primary">{detail.compensation ? formatEGP(detail.compensation.amount) : 'No accrual'}</p><p className="mt-1 text-xs text-text-muted">{detail.compensation ? 'Recorded in the compensation ledger' : 'No ledger entry recorded'}</p></div>
         </CardContent>
       </Card>
+
+      {detail.screenshotEvidence && <Card className="border-border-subtle bg-canvas"><CardHeader><CardTitle className="text-base">Attendance screenshot evidence</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-sm text-text-muted">Submitted {formatDateTime(detail.screenshotEvidence.uploadedAt, { includeYear: true })} · {Math.ceil(detail.screenshotEvidence.sizeBytes / 1024)} KB · {detail.screenshotEvidence.contentType}</p><Image src={`/api/admin/attendance/evidence/${encodeURIComponent(detail.screenshotEvidence.id)}`} alt="Tutor attendance screenshot evidence" width={1920} height={1080} sizes="(max-width: 768px) 100vw, 900px" unoptimized className="max-h-[560px] h-auto w-full rounded-lg border border-border-subtle bg-canvas-subtle object-contain" /></CardContent></Card>}
 
       <AttendanceRecoveryReview
         sessionId={detail.id}

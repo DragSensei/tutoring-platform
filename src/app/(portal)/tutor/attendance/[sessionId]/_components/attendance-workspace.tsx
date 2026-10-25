@@ -26,6 +26,8 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
   const [review, setReview] = React.useState(() => createAttendanceReviewState(session?.roster || []));
   const [notes, setNotes] = React.useState(session?.attendanceNotes || '');
   const [evidence, setEvidence] = React.useState<LocalEvidenceMetadata | null>(null);
+  const [evidenceFile, setEvidenceFile] = React.useState<File | null>(null);
+  const [screenshotEvidenceId, setScreenshotEvidenceId] = React.useState<string | null>(null);
   const [lateExplanation, setLateExplanation] = React.useState('');
   const [tutorAttested, setTutorAttested] = React.useState(false);
   const [screenshotUnavailable, setScreenshotUnavailable] = React.useState<boolean | null>(null);
@@ -68,6 +70,36 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
     });
   }
 
+  function changeEvidence(value: LocalEvidenceMetadata | null, file: File | null) {
+    if (screenshotEvidenceId) {
+      const query = new URLSearchParams({ evidenceId: screenshotEvidenceId });
+      void fetch(`/api/tutor/attendance/evidence?${query}`, { method: 'DELETE' });
+    }
+    setScreenshotEvidenceId(null);
+    setEvidence(value);
+    setEvidenceFile(file);
+  }
+
+  function setRecoveryScreenshotUnavailable(unavailable: boolean) {
+    if (unavailable) changeEvidence(null, null);
+    setScreenshotUnavailable(unavailable);
+  }
+
+  async function uploadEvidence(): Promise<string | null> {
+    if (screenshotEvidenceId) return screenshotEvidenceId;
+    if (!evidenceFile) return null;
+    const query = new URLSearchParams({ sessionId: activeSession.id });
+    const response = await fetch(`/api/tutor/attendance/evidence?${query}`, {
+      method: 'POST',
+      headers: { 'Content-Type': evidenceFile.type },
+      body: evidenceFile,
+    });
+    const result = await response.json() as { evidenceId?: string; message?: string };
+    if (!response.ok || !result.evidenceId) throw new Error(result.message || 'Screenshot upload failed. Try again.');
+    setScreenshotEvidenceId(result.evidenceId);
+    return result.evidenceId;
+  }
+
   function submit() {
     if (!canSubmit) return;
     if (!canSubmitComplete) {
@@ -78,11 +110,20 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
     }
     setMessage(null);
     startTransition(async () => {
+      let uploadedEvidenceId = screenshotEvidenceId;
+      if (evidenceFile && (!isLateMode || screenshotUnavailable === false)) {
+        try {
+          uploadedEvidenceId = await uploadEvidence();
+        } catch (uploadError) {
+          setMessage(uploadError instanceof Error ? uploadError.message : 'Screenshot upload failed. Try again.');
+          return;
+        }
+      }
       const result = await submitTutorAttendance({
         sessionId: activeSession.id,
         outcomes,
         notes,
-        normalEvidenceSelected: !isLateMode && Boolean(evidence),
+        screenshotEvidenceId: uploadedEvidenceId ?? undefined,
         ...(isLateMode && recoveryGrant ? {
           recoveryGrantId: recoveryGrant.id,
           lateExplanation,
@@ -136,12 +177,12 @@ export function AttendanceWorkspace({ initialSessions, sessionId }: AttendanceWo
         </section>
 
         {canEdit && <section className="space-y-3">
-          <SessionEvidenceUpload value={evidence} required={!isLateMode} onChange={(value) => setEvidence(value)} />
+          <SessionEvidenceUpload value={evidence} required={!isLateMode} uploaded={Boolean(screenshotEvidenceId)} disabled={isPending} onChange={changeEvidence} />
           {isLateMode && <div className="space-y-3 rounded-2xl border border-border-subtle bg-canvas p-4 sm:p-5">
             <label htmlFor="late-attendance-explanation" className="block text-sm font-semibold text-text-primary">Attendance delay reason</label>
             <textarea id="late-attendance-explanation" value={lateExplanation} onChange={(event) => setLateExplanation(event.target.value)} rows={3} maxLength={2000} className="w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-text-primary" />
             <label className="flex min-h-[44px] items-center gap-3 text-sm text-text-primary"><input type="checkbox" checked={tutorAttested} onChange={(event) => setTutorAttested(event.target.checked)} className="h-5 w-5 accent-brand-primary" />I attest that the attendance I submitted is accurate.</label>
-            <fieldset className="space-y-2"><legend className="text-sm font-semibold text-text-primary">Screenshot availability</legend><div className="grid grid-cols-2 gap-2"><button type="button" aria-pressed={screenshotUnavailable === false} onClick={() => setScreenshotUnavailable(false)} className={`min-h-[44px] rounded-lg border px-3 text-sm font-semibold ${screenshotUnavailable === false ? 'border-brand-primary bg-brand-subtle text-brand-primary' : 'border-border-subtle bg-canvas text-text-primary'}`}>Available</button><button type="button" aria-pressed={screenshotUnavailable === true} onClick={() => setScreenshotUnavailable(true)} className={`min-h-[44px] rounded-lg border px-3 text-sm font-semibold ${screenshotUnavailable === true ? 'border-brand-primary bg-brand-subtle text-brand-primary' : 'border-border-subtle bg-canvas text-text-primary'}`}>Unavailable</button></div><p className="text-xs text-text-muted">A screenshot is optional in recovery mode and stays in this browser; it is not uploaded or verified by the server.</p></fieldset>
+            <fieldset className="space-y-2"><legend className="text-sm font-semibold text-text-primary">Screenshot availability</legend><div className="grid grid-cols-2 gap-2"><button type="button" aria-pressed={screenshotUnavailable === false} onClick={() => setRecoveryScreenshotUnavailable(false)} className={`min-h-[44px] rounded-lg border px-3 text-sm font-semibold ${screenshotUnavailable === false ? 'border-brand-primary bg-brand-subtle text-brand-primary' : 'border-border-subtle bg-canvas text-text-primary'}`}>Available</button><button type="button" aria-pressed={screenshotUnavailable === true} onClick={() => setRecoveryScreenshotUnavailable(true)} className={`min-h-[44px] rounded-lg border px-3 text-sm font-semibold ${screenshotUnavailable === true ? 'border-brand-primary bg-brand-subtle text-brand-primary' : 'border-border-subtle bg-canvas text-text-primary'}`}>Unavailable</button></div><p className="text-xs text-text-muted">A recovery screenshot remains optional. If selected, it is securely uploaded and attached when attendance is submitted.</p></fieldset>
           </div>}
         </section>}
       </div>}

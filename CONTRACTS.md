@@ -157,7 +157,7 @@ export interface CommissionLedgerEntryContract {
 
 ### Tutor Attendance, Wallet Settlement, and Finance Accrual Flow:
 ```
-Authenticated Tutor server-action request { sessionId, presentStudentIds, notes }
+Authenticated Tutor server-action request { sessionId, outcomes, notes, screenshotEvidenceId }
   │
   ├── 1. Require Tutor identity and scope Session to authenticated tutor_id
   │
@@ -197,7 +197,9 @@ Client server-action request { sessionId, presentStudentIds, notes }
 - `Session.status = COMPLETED` means the session occurrence and attendance have been finalized. It does not assert durable screenshot evidence.
 - PRESENT has exactly one net session charge; ABSENT has zero net session charge. Reconciliation appends immutable deductions/refunds and never deletes ledger history.
 - Repeating the same payload is idempotent because attendance is replaced against the unique `(session_id, student_id)` key and financial reconciliation targets the existing net ledger state.
-- Screenshot evidence is intentionally excluded from the server contract and remains browser-local until an approved durable storage provider exists.
+- A normal Tutor attendance submission requires a persisted `AttendanceEvidence` row uploaded by that Tutor for that Session; browser-selected evidence metadata is never authoritative.
+- `AttendanceEvidence` stores only metadata and a generated provider key. Its private bytes live behind `AttendanceEvidenceStorage`; local filesystem is the development adapter, while the prepared R2 adapter uses its private S3-compatible API. Admins view only submitted evidence through the authenticated Admin proxy route.
+- Uploads are compressed in the browser and validated on the server by declared content type, PNG/JPEG/WebP signature, dimensions, and a 5 MB limit. User filenames are not stored or used as object keys.
 
 ---
 
@@ -467,6 +469,28 @@ export interface AccountSetupTokenContract {
 
 ### `POST /api/admin/wallets/deposit`
 Direct administrative wallet credit top-up.
+
+- Approved 2026-10-13: new deposits require a UUID `requestKey` alongside
+  `studentId` and a numeric `amount`. Amounts must be finite, positive, at most
+  99,999,999.99 EGP, and have no more than two decimal places; extra precision
+  is rejected rather than rounded. Domain calculations use Prisma Decimal.
+- The authenticated Admin supplies ledger provenance; request bodies cannot
+  choose an Admin identity. The target must exist with the STUDENT role.
+- `WalletTransaction.request_key` is nullable and unique. Historical events
+  remain null. A deposit key binds the Student, Admin, amount, and event type.
+  Identical retries return the same transaction ID and credited amount with
+  the current wallet balance; changed details return HTTP 409.
+- Balance, overdraft flag, and ledger event commit together. Credits update
+  the stored balance atomically; a failed ledger insert rolls the credit back.
+- The top-up UI preserves its key after an ambiguous failed response and
+  retries the same intent with that key. A changed intent or successful deposit
+  receives a new key. Button disabling is supplementary to server protection.
+- The existing unexposed refund helper also updates balance and overdraft state
+  atomically with its ledger event; no new refund API or refund policy is added.
+- Public Tutor attendance actions derive time on the server. Caller-supplied
+  extra arguments cannot override deadline, attendance, or settlement time.
+  Boundary tests control Date internally without a production clock parameter.
+
 - **Status:** `200 OK`
 ```json
 {
@@ -589,3 +613,10 @@ export interface TablePaginationResult<T> {
 - No API, database, auth, or persistence contract changes.
 - `page` is clamped when data changes; controls are omitted when `pageCount` is one.
 - Bounds: deriving a page is O(12) time and O(12) output space; page-count calculation is O(1).
+
+## Global theme and finance UI ownership
+
+- `theme.config.ts` is the canonical presentation configuration. `ui.defaultMode` controls the initial server-rendered mode; semantic palettes and shared style settings feed Tailwind and the root document. Marketing-specific styling is configuration-owned. Business rates and attendance policy remain authoritative in PlatformPolicy and persisted financial snapshots, not presentation tokens.
+- Admin Finance displays tutor lifetime payable totals separately from the actual selected activity period and saved per-session duration/rate snapshots. No current rate is applied retrospectively. Missing rates and overpaid balances remain visible; payout, receivable, commission and wallet meanings remain unchanged.
+- Drag confirmed preserving scheduled-duration compensation and the start-through-end-plus-four-hour default attendance rule. The user did not request narrowing the existing supported scheduling duration range to only 30/60/120 minutes.
+- shadcn integration, a reusable LMS package and a Cloudflare runtime migration are future plans only; README owns their bounded adoption outline.

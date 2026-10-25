@@ -9,6 +9,24 @@ import { netPayout } from '@/features/finances/domain/payout-math';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_RANGE_DAYS = 366;
+const FINANCE_PAGE_SIZE = 100;
+
+async function collectFinancePages<T extends { id: string }>(fetchPage: (cursorId?: string) => Promise<T[]>): Promise<T[]> {
+  const rows: T[] = [];
+  let cursorId: string | undefined;
+  while (true) {
+    const page = await fetchPage(cursorId);
+    rows.push(...page);
+    if (page.length < FINANCE_PAGE_SIZE) return rows;
+    const nextCursor = page[page.length - 1]?.id;
+    if (!nextCursor || nextCursor === cursorId) throw new Error('Finance pagination did not advance its cursor');
+    cursorId = nextCursor;
+  }
+}
+
+function financeCursor(cursorId?: string) {
+  return { take: FINANCE_PAGE_SIZE, cursor: cursorId ? { id: cursorId } : undefined, skip: cursorId ? 1 : 0 };
+}
 export interface FinanceDateRangeInput {
   cycle?: string;
   month?: string;
@@ -65,8 +83,8 @@ export async function getAdminFinanceReport(input: FinanceDateRangeInput = {}) {
   await requireAuth(['ADMIN']);
   const range = normalizeFinanceDateRange(input);
   const [sessions, compensation, commissions, charges, compensationTotals, commissionTotals, chargeTotals, policy,
-    lifetimeCompensation, lifetimeCommissions, tutors, sources, payouts] = await Promise.all([
-    prisma.session.findMany({
+    lifetimeCompensation, lifetimeCommissions, tutors, sources, payouts, walletCredits, walletOverdrafts, expectedReceivables] = await Promise.all([
+    collectFinancePages((cursorId) => prisma.session.findMany({
       where: {
         historical_only: false,
         status: 'COMPLETED',
@@ -83,7 +101,8 @@ export async function getAdminFinanceReport(input: FinanceDateRangeInput = {}) {
         tutor_compensation: { select: { id: true, delivered_minutes: true, hourly_rate: true, amount: true } },
       },
       orderBy: [{ attendance_finalized_at: 'desc' }, { id: 'desc' }],
-    }),
+      ...financeCursor(cursorId),
+    })),
     prisma.tutorCompensationLedgerEntry.findMany({
       where: { created_at: { gte: range.from, lt: range.until } },
       select: {
@@ -136,7 +155,7 @@ export async function getAdminFinanceReport(input: FinanceDateRangeInput = {}) {
     }),
     prisma.tutorCompensationLedgerEntry.aggregate({
       where: { created_at: { gte: range.from, lt: range.until } },
-      _sum: { amount: true }, _count: { _all: true },
+      _sum: { amount: true, delivered_minutes: true }, _count: { _all: true },
     }),
     prisma.commissionLedgerEntry.aggregate({
       where: { created_at: { gte: range.from, lt: range.until } },
@@ -165,11 +184,14 @@ export async function getAdminFinanceReport(input: FinanceDateRangeInput = {}) {
         commission_updated_by: { select: { name: true } },
       },
     }),
-    prisma.tutorCompensationLedgerEntry.groupBy({ by: ['tutor_id'], _sum: { amount: true, delivered_minutes: true } }),
+    prisma.tutorCompensationLedgerEntry.groupBy({ by: ['tutor_id'], _sum: { amount: true, delivered_minutes: true }, _count: { _all: true } }),
     prisma.commissionLedgerEntry.groupBy({ by: ['recipient_source_id'], _sum: { amount: true, basis_amount: true } }),
-    prisma.user.findMany({ where: { role: 'TUTOR' }, select: { id: true, name: true } }),
-    prisma.referralSource.findMany({ select: { id: true, name: true, kind: true } }),
-    prisma.payoutSettlement.findMany({ select: { id: true, tutor_id: true, source_id: true, amount: true, paid_at: true, note: true, reference: true, reversal_of_id: true, reversal_of: { select: { tutor_id: true, source_id: true, amount: true, reversal_of_id: true } }, reversed_by: { select: { id: true } }, created_by: { select: { name: true } } }, orderBy: [{ paid_at: 'desc' }, { id: 'desc' }] }),
+    collectFinancePages((cursorId) => prisma.user.findMany({ where: { role: 'TUTOR' }, select: { id: true, name: true }, orderBy: { id: 'asc' }, ...financeCursor(cursorId) })),
+    collectFinancePages((cursorId) => prisma.referralSource.findMany({ select: { id: true, name: true, kind: true }, orderBy: { id: 'asc' }, ...financeCursor(cursorId) })),
+    collectFinancePages((cursorId) => prisma.payoutSettlement.findMany({ select: { id: true, tutor_id: true, source_id: true, amount: true, paid_at: true, note: true, reference: true, reversal_of_id: true, reversal_of: { select: { tutor_id: true, source_id: true, amount: true, reversal_of_id: true } }, reversed_by: { select: { id: true } }, created_by: { select: { name: true } } }, orderBy: [{ paid_at: 'desc' }, { id: 'desc' }], ...financeCursor(cursorId) })),
+    prisma.wallet.aggregate({ where: { balance: { gt: 0 } }, _sum: { balance: true }, _count: { _all: true } }),
+    prisma.wallet.aggregate({ where: { balance: { lt: 0 } }, _sum: { balance: true }, _count: { _all: true } }),
+    prisma.studentMonthlyReceivable.aggregate({ _sum: { final_amount: true }, _count: { _all: true } }),
   ]);
 
   const deliveredMinutes = sessions.reduce((total, session) =>
@@ -186,7 +208,7 @@ export async function getAdminFinanceReport(input: FinanceDateRangeInput = {}) {
     const tutor = tutors.find(({ id }) => id === row.tutor_id);
     const earned = new Prisma.Decimal(row._sum.amount ?? 0);
     const paid = netPayout(payouts.filter((payout) => payout.tutor_id === row.tutor_id));
-    return { id: row.tutor_id, name: tutor?.name ?? 'Former tutor', earned: earned.toFixed(2), paid: paid.toFixed(2), outstanding: earned.minus(paid).toFixed(2), deliveredMinutes: row._sum.delivered_minutes ?? 0 };
+    return { id: row.tutor_id, name: tutor?.name ?? 'Former tutor', earned: earned.toFixed(2), paid: paid.toFixed(2), outstanding: earned.minus(paid).toFixed(2), deliveredMinutes: row._sum.delivered_minutes ?? 0, sessionCount: row._count._all };
   }).sort((a, b) => a.name.localeCompare(b.name));
   const salesPayables = lifetimeCommissions.map((row) => {
     const source = sources.find(({ id }) => id === row.recipient_source_id);
@@ -210,12 +232,18 @@ export async function getAdminFinanceReport(input: FinanceDateRangeInput = {}) {
     range: { from: range.fromLabel, to: range.toLabel, month: input.month ?? '', cycleMonth: range.cycleMonth, cycleUntilLabel: range.cycleUntilLabel },
     summary: {
       deliveredMinutes,
-      compensatedMinutes: sessions.reduce((total, session) => total + (session.tutor_compensation?.delivered_minutes ?? 0), 0),
+      compensatedMinutes: compensationTotals._sum.delivered_minutes ?? 0,
       tutorCompensation: new Prisma.Decimal(compensationTotals._sum.amount ?? 0).toFixed(2),
       commission: new Prisma.Decimal(commissionTotals._sum.amount ?? 0).toFixed(2),
       lifetimeTutorOutstanding: tutorPayables.reduce((sum, row) => sum.plus(row.outstanding), new Prisma.Decimal(0)).toFixed(2),
       lifetimeSalesOutstanding: salesPayables.reduce((sum, row) => sum.plus(row.outstanding), new Prisma.Decimal(0)).toFixed(2),
       negativeOutstandingCount: [...tutorPayables, ...salesPayables].filter(({ outstanding }) => new Prisma.Decimal(outstanding).isNegative()).length,
+      studentWalletCredits: new Prisma.Decimal(walletCredits._sum.balance ?? 0).toFixed(2),
+      studentWalletCreditCount: walletCredits._count._all,
+      studentWalletOverdrafts: new Prisma.Decimal(walletOverdrafts._sum.balance ?? 0).abs().toFixed(2),
+      studentWalletOverdraftCount: walletOverdrafts._count._all,
+      expectedMonthlyReceivables: new Prisma.Decimal(expectedReceivables._sum.final_amount ?? 0).toFixed(2),
+      expectedMonthlyReceivableCount: expectedReceivables._count._all,
       systemTrackedCharges: new Prisma.Decimal(chargeTotals._sum.amount ?? 0).abs().toFixed(2),
       unaccruedMinutes,
       unaccruedSessionCount: unaccruedSessions.length,
@@ -316,6 +344,7 @@ export async function getAdminFinanceSessionDetail(sessionId: string) {
       participants: { select: { attendance_outcome: true, student: { select: { id: true, name: true } } } },
       attendances: { select: { student_id: true } },
       tutor_compensation: { select: { tutor_id: true, delivered_minutes: true, hourly_rate: true, amount: true, created_at: true } },
+      attendance_evidence: { select: { id: true, content_type: true, size_bytes: true, created_at: true, submitted_at: true } },
       attendance_recovery_grants: {
         include: { granted_by_admin: { select: { name: true } } },
         orderBy: { opened_at: 'desc' },
@@ -367,6 +396,12 @@ export async function getAdminFinanceSessionDetail(sessionId: string) {
     } : null,
     attendanceClosesAt: attendanceClosesAt.toISOString(),
     recoveryEligible: !session.historical_only && session.status !== 'CANCELLED' && !session.attendance_submitted_at && !session.attendance_finalized_at && !session.admin_attendance_handled_at && session.participants.length > 0 && now > attendanceClosesAt && !hasRecoveryGrant,
+    screenshotEvidence: session.attendance_evidence?.submitted_at ? {
+      id: session.attendance_evidence.id,
+      contentType: session.attendance_evidence.content_type,
+      sizeBytes: session.attendance_evidence.size_bytes,
+      uploadedAt: session.attendance_evidence.submitted_at.toISOString(),
+    } : null,
     recoveryGrants: session.attendance_recovery_grants.map((grant) => ({
       id: grant.id,
       adminName: grant.granted_by_admin.name ?? 'Admin',
@@ -425,7 +460,7 @@ export async function getAdminPayableDetail(recipientType: string, recipientId: 
   if (!recipient || (isTutor && 'role' in recipient && recipient.role !== 'TUTOR')) return null;
   const where = isTutor ? { tutor_id: recipientId } : { source_id: recipientId };
   const [allPayouts, payouts, payoutCount] = await Promise.all([
-    prisma.payoutSettlement.findMany({ where, select: { amount: true, tutor_id: true, source_id: true, reversal_of_id: true, reversal_of: { select: { amount: true, tutor_id: true, source_id: true, reversal_of_id: true } } } }),
+    collectFinancePages((cursorId) => prisma.payoutSettlement.findMany({ where, select: { id: true, amount: true, tutor_id: true, source_id: true, reversal_of_id: true, reversal_of: { select: { amount: true, tutor_id: true, source_id: true, reversal_of_id: true } } }, orderBy: { id: 'asc' }, ...financeCursor(cursorId) })),
     prisma.payoutSettlement.findMany({ where, select: { id: true, amount: true, paid_at: true, note: true, reference: true, reversal_of_id: true, reversed_by: { select: { id: true } }, created_by: { select: { name: true } } }, orderBy: [{ paid_at: 'desc' }, { id: 'desc' }], take: 200 }),
     prisma.payoutSettlement.count({ where }),
   ]);

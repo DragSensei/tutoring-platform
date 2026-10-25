@@ -21,8 +21,8 @@ export type TutorAttendanceResult =
 
 export async function saveTutorAttendanceDraft(
   input: TutorAttendanceDraftInput,
-  currentTime = new Date(),
 ): Promise<TutorAttendanceResult> {
+  const currentTime = new Date();
   let tutorId: string;
   try {
     tutorId = (await requireAuth(['TUTOR'])).userId;
@@ -44,8 +44,8 @@ export async function saveTutorAttendanceDraft(
 
 export async function submitTutorAttendance(
   input: TutorAttendanceSubmissionInput,
-  currentTime = new Date(),
 ): Promise<TutorAttendanceResult> {
+  const currentTime = new Date();
   let tutorId: string;
   try {
     tutorId = (await requireAuth(['TUTOR'])).userId;
@@ -129,6 +129,15 @@ async function submitAttendanceTx(
   const grant = input.recoveryGrantId
     ? await tx.attendanceRecoveryGrant.findFirst({ where: { id: input.recoveryGrantId, session_id: session.id } })
     : null;
+  const screenshotEvidence = input.screenshotEvidenceId
+    ? await tx.attendanceEvidence.findUnique({ where: { session_id: session.id } })
+    : null;
+  if (input.screenshotEvidenceId && (screenshotEvidence?.id !== input.screenshotEvidenceId || screenshotEvidence.uploaded_by_user_id !== tutorId)) {
+    throw new AttendanceStateError('The uploaded screenshot does not belong to this Tutor and Session.');
+  }
+  if (screenshotEvidence?.submitted_at && !session.attendance_submitted_at) {
+    throw new AttendanceStateError('The screenshot is already attached to submitted attendance.');
+  }
 
   if (session.attendance_submitted_at) {
     const sameOutcomes = session.participants.every(({ student_id, attendance_outcome }) => input.outcomes[student_id] === attendance_outcome);
@@ -159,7 +168,12 @@ async function submitAttendanceTx(
     }
   } else {
     if (currentTime > close) throw new AttendanceStateError('The attendance deadline passed. Ask Admin to grant a recovery window.');
-    if (input.normalEvidenceSelected !== true) throw new AttendanceStateError('Attach the normal session screenshot before submitting attendance.');
+    if (!screenshotEvidence || !input.screenshotEvidenceId || screenshotEvidence.submitted_at) {
+      throw new AttendanceStateError('Upload the normal session screenshot before submitting attendance.');
+    }
+  }
+  if (input.recoveryGrantId && input.screenshotUnavailable === true && screenshotEvidence) {
+    throw new AttendanceStateError('Remove the screenshot or mark it available before submitting recovery attendance.');
   }
 
   for (const [studentId, outcome] of Object.entries(input.outcomes)) {
@@ -180,6 +194,13 @@ async function submitAttendanceTx(
     where: { id: session.id },
     data: { attendance_notes: input.notes.trim(), attendance_saved_at: currentTime, attendance_submitted_at: currentTime },
   });
+  if (screenshotEvidence) {
+    const attached = await tx.attendanceEvidence.updateMany({
+      where: { id: screenshotEvidence.id, session_id: session.id, uploaded_by_user_id: tutorId, submitted_at: null },
+      data: { submitted_at: currentTime },
+    });
+    if (attached.count !== 1) throw new AttendanceStateError('The screenshot could not be attached to attendance. Please upload it again.');
+  }
 
   if (grant && input.recoveryGrantId) {
     const used = await tx.attendanceRecoveryGrant.updateMany({

@@ -19,7 +19,8 @@ export async function POST(req: NextRequest) {
     const result = await adminDeposit({
       studentId: validation.data.studentId,
       amount: validation.data.amount,
-      adminUserId: session?.userId,
+      adminUserId: session.userId,
+      requestKey: validation.data.requestKey,
     });
 
     return NextResponse.json({ success: true, ...result });
@@ -29,6 +30,9 @@ export async function POST(req: NextRequest) {
     }
     if (error instanceof Error && error.message.startsWith('Forbidden')) {
       return NextResponse.json({ error: 'Admin authentication is required' }, { status: 403 });
+    }
+    if (error instanceof Error && error.message.startsWith('Deposit request key was already used')) {
+      return NextResponse.json({ error: 'Deposit request key was already used for different details' }, { status: 409 });
     }
     return NextResponse.json(
       { error: 'Failed to process admin deposit' },

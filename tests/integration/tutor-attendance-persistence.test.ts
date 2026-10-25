@@ -16,6 +16,12 @@ const START = new Date('2026-10-01T10:00:00.000Z');
 const END = new Date('2026-10-01T12:00:00.000Z');
 const CLOSE = new Date('2026-10-01T16:00:00.000Z');
 
+async function atServerTime<T>(time: Date, run: () => Promise<T>) {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(time);
+  try { return await run(); } finally { vi.useRealTimers(); }
+}
+
 function createTransaction(overrides: { session?: Record<string, unknown> | null; grant?: Record<string, unknown> | null } = {}) {
   const session = overrides.session === undefined ? {
     id: 'session-1', status: 'SCHEDULED', start_time: START, end_time: END, historical_only: false,
@@ -30,6 +36,10 @@ function createTransaction(overrides: { session?: Record<string, unknown> | null
     platformPolicy: { findUnique: vi.fn().mockResolvedValue({ check_in_window_hours: 4 }) },
     sessionParticipant: { update: vi.fn().mockResolvedValue({}) },
     attendanceRecord: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }), createMany: vi.fn().mockResolvedValue({ count: 0 }) },
+    attendanceEvidence: {
+      findUnique: vi.fn().mockResolvedValue({ id: 'evidence-1', uploaded_by_user_id: 'tutor-1', submitted_at: null }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
     attendanceRecoveryGrant: {
       findFirst: vi.fn().mockResolvedValue(overrides.grant ?? null),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -54,14 +64,14 @@ describe('Tutor attendance draft and final submission boundaries', () => {
 
   it('requires an authenticated Tutor before opening a transaction', async () => {
     vi.mocked(requireAuth).mockRejectedValue(new Error('Unauthorized'));
-    await expect(saveTutorAttendanceDraft({ sessionId: 'session-1', outcomes: {}, notes: '' }, START)).resolves.toEqual({ success: false, message: 'Tutor authentication is required.' });
+    await expect(saveTutorAttendanceDraft({ sessionId: 'session-1', outcomes: {}, notes: '' })).resolves.toEqual({ success: false, message: 'Tutor authentication is required.' });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('saves a draft outcome without creating attendance records or financial effects', async () => {
     const tx = createTransaction();
     useTransaction(tx);
-    const result = await saveTutorAttendanceDraft({ sessionId: 'session-1', outcomes: { 'student-1': 'PRESENT', 'student-2': null }, notes: 'Still teaching the lesson.' }, new Date(START.getTime() + 1));
+    const result = await atServerTime(new Date(START.getTime() + 1), () => saveTutorAttendanceDraft({ sessionId: 'session-1', outcomes: { 'student-1': 'PRESENT', 'student-2': null }, notes: 'Still teaching the lesson.' }));
     expect(result).toMatchObject({ success: true, presentCount: 1 });
     expect(tx.sessionParticipant.update).toHaveBeenCalledTimes(2);
     expect(tx.attendanceRecord.deleteMany).not.toHaveBeenCalled();
@@ -73,28 +83,28 @@ describe('Tutor attendance draft and final submission boundaries', () => {
   it('rejects draft work before start and after the normal deadline', async () => {
     const beforeTx = createTransaction();
     useTransaction(beforeTx);
-    await expect(saveTutorAttendanceDraft({ sessionId: 'session-1', outcomes: {}, notes: '' }, new Date(START.getTime() - 1))).resolves.toMatchObject({ success: false, message: 'Attendance drafts open when the Session starts.' });
+    await expect(atServerTime(new Date(START.getTime() - 1), () => saveTutorAttendanceDraft({ sessionId: 'session-1', outcomes: {}, notes: '' }))).resolves.toMatchObject({ success: false, message: 'Attendance drafts open when the Session starts.' });
     const afterTx = createTransaction();
     useTransaction(afterTx);
-    await expect(saveTutorAttendanceDraft({ sessionId: 'session-1', outcomes: {}, notes: '' }, new Date(CLOSE.getTime() + 1))).resolves.toMatchObject({ success: false, message: 'The attendance window has closed. Ask Admin to grant a recovery window.' });
+    await expect(atServerTime(new Date(CLOSE.getTime() + 1), () => saveTutorAttendanceDraft({ sessionId: 'session-1', outcomes: {}, notes: '' }))).resolves.toMatchObject({ success: false, message: 'The attendance window has closed. Ask Admin to grant a recovery window.' });
     expect(afterTx.sessionParticipant.update).not.toHaveBeenCalled();
   });
 
   it('does not allow final submission before Session end or with unresolved roster outcomes', async () => {
     const beforeTx = createTransaction();
     useTransaction(beforeTx);
-    const input = { sessionId: 'session-1', outcomes: completeOutcomes, notes: 'The class completed its planned work.', normalEvidenceSelected: true };
-    await expect(submitTutorAttendance(input, new Date(END.getTime() - 1))).resolves.toMatchObject({ success: false, message: 'Final attendance can be submitted after the Session ends.' });
+    const input = { sessionId: 'session-1', outcomes: completeOutcomes, notes: 'The class completed its planned work.', screenshotEvidenceId: 'evidence-1' };
+    await expect(atServerTime(new Date(END.getTime() - 1), () => submitTutorAttendance(input))).resolves.toMatchObject({ success: false, message: 'Final attendance can be submitted after the Session ends.' });
     const partialTx = createTransaction();
     useTransaction(partialTx);
-    await expect(submitTutorAttendance({ ...input, outcomes: { 'student-1': 'PRESENT' } }, END)).resolves.toMatchObject({ success: false, message: 'Choose Present or Absent for every Student before submitting.' });
+    await expect(atServerTime(END, () => submitTutorAttendance({ ...input, outcomes: { 'student-1': 'PRESENT' } }))).resolves.toMatchObject({ success: false, message: 'Choose Present or Absent for every Student before submitting.' });
     expect(partialTx.attendanceRecord.deleteMany).not.toHaveBeenCalled();
   });
 
   it('records final attendance and creates eligible Tutor compensation after Session end', async () => {
     const tx = createTransaction();
     useTransaction(tx);
-    const result = await submitTutorAttendance({ sessionId: 'session-1', outcomes: completeOutcomes, notes: 'The class completed its planned work.', normalEvidenceSelected: true }, new Date(END.getTime() + 60_000));
+    const result = await atServerTime(new Date(END.getTime() + 60_000), () => submitTutorAttendance({ sessionId: 'session-1', outcomes: completeOutcomes, notes: 'The class completed its planned work.', screenshotEvidenceId: 'evidence-1' }));
     expect(result).toMatchObject({ success: true, presentCount: 1 });
     expect(tx.attendanceRecord.createMany).toHaveBeenCalledWith({ data: [{ session_id: 'session-1', student_id: 'student-1', attended_at: new Date(END.getTime() + 60_000) }], skipDuplicates: true });
     expect(tx.session.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ attendance_submitted_at: new Date(END.getTime() + 60_000) }) }));
@@ -102,15 +112,26 @@ describe('Tutor attendance draft and final submission boundaries', () => {
     expect(settleSubmittedAttendanceTx).not.toHaveBeenCalled();
   });
 
+  it('rejects a forged browser evidence boolean without a persisted upload', async () => {
+    const tx = createTransaction();
+    useTransaction(tx);
+    const result = await atServerTime(new Date(END.getTime() + 60_000), () => submitTutorAttendance({
+      sessionId: 'session-1', outcomes: completeOutcomes, notes: 'The class completed its planned work.', normalEvidenceSelected: true,
+    }));
+    expect(result).toMatchObject({ success: false, message: 'Upload the normal session screenshot before submitting attendance.' });
+    expect(tx.attendanceRecord.createMany).not.toHaveBeenCalled();
+    expect(tx.session.update).not.toHaveBeenCalled();
+  });
+
   it('uses a live recovery grant with Tutor attestation and settles immediately after the normal deadline', async () => {
     const openedAt = new Date('2026-10-01T16:30:00.000Z');
     const closeAt = new Date('2026-10-01T17:30:00.000Z');
     const tx = createTransaction({ grant: { id: 'grant-1', opened_at: openedAt, closes_at: closeAt, used_at: null } });
     useTransaction(tx);
-    const result = await submitTutorAttendance({
+    const result = await atServerTime(new Date('2026-10-01T17:00:00.000Z'), () => submitTutorAttendance({
       sessionId: 'session-1', outcomes: completeOutcomes, notes: 'The class completed its planned work.', recoveryGrantId: 'grant-1',
       lateExplanation: 'Internet service stopped after the lesson.', tutorAttested: true, screenshotUnavailable: true,
-    }, new Date('2026-10-01T17:00:00.000Z'));
+    }));
     expect(result).toMatchObject({ success: true, presentCount: 1 });
     expect(tx.attendanceRecoveryGrant.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ closes_at: { gte: new Date('2026-10-01T17:00:00.000Z') } }), data: expect.objectContaining({ tutor_attested_at: new Date('2026-10-01T17:00:00.000Z'), screenshot_unavailable: true }) }));
     expect(settleSubmittedAttendanceTx).toHaveBeenCalledTimes(1);
@@ -119,6 +140,6 @@ describe('Tutor attendance draft and final submission boundaries', () => {
   it('rejects a Session outside the authenticated Tutor scope', async () => {
     const tx = createTransaction({ session: null });
     useTransaction(tx);
-    await expect(saveTutorAttendanceDraft({ sessionId: 'someone-elses-session', outcomes: {}, notes: '' }, START)).resolves.toEqual({ success: false, message: 'Session or roster is not available to this Tutor.' });
+    await expect(atServerTime(START, () => saveTutorAttendanceDraft({ sessionId: 'someone-elses-session', outcomes: {}, notes: '' }))).resolves.toEqual({ success: false, message: 'Session or roster is not available to this Tutor.' });
   });
 });

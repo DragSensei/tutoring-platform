@@ -1,7 +1,65 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { runUiArchitectureLint } from "../../../../_shared-skills/scripts/lint-ui-architecture.mjs";
+import { pathToFileURL } from "url";
+
+const toolkitScripts = {
+  "lint-ui-architecture": "_shared-skills/scripts/lint-ui-architecture.mjs",
+  "token-lint": "_shared-skills/scripts/token-lint.mjs",
+  "mock-server": "_shared-skills/scripts/mock-server.mjs",
+};
+
+async function resolveToolkitScript(name) {
+  const relativeScript = toolkitScripts[name];
+  if (typeof relativeScript !== "string" || !Object.hasOwn(toolkitScripts, name)) {
+    throw new Error(`Unsupported toolkit script "${name}". Allowed: ${Object.keys(toolkitScripts).join(", ")}`);
+  }
+
+  const configPath = path.join(process.cwd(), ".local", "toolkit-root.json");
+  let config;
+  try {
+    config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch (error) {
+    const reason = error.code === "ENOENT" ? "file is missing" : error instanceof SyntaxError ? "JSON is invalid" : error.message;
+    throw new Error(`Toolkit root config ${configPath} ${reason}; expected {\"path\": \"<absolute toolkit root>\"}.`);
+  }
+
+  if (!config || typeof config.path !== "string" || !path.isAbsolute(config.path)) {
+    throw new Error(`Toolkit root config ${configPath} must contain an absolute string path.`);
+  }
+
+  const toolkitRoot = path.resolve(config.path);
+  const scriptPath = path.join(toolkitRoot, relativeScript);
+  if (!fs.existsSync(scriptPath) || !fs.statSync(scriptPath).isFile()) {
+    throw new Error(`Toolkit script is missing: ${scriptPath}`);
+  }
+  return scriptPath;
+}
+
+async function dispatchToolkitScript(name) {
+  try {
+    const scriptPath = await resolveToolkitScript(name);
+    const { spawnSync } = await import("child_process");
+    const result = spawnSync(process.execPath, [scriptPath, `--target=${process.cwd()}`], { cwd: process.cwd(), stdio: "inherit" });
+    if (result.error) throw result.error;
+    if (result.signal) {
+      console.error(`Toolkit script terminated by signal ${result.signal}.`);
+      process.exit(1);
+    }
+    process.exit(result.status ?? 1);
+  } catch (error) {
+    console.error(`Toolkit script dispatch failed: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+if (process.argv[2] === "--toolkit-script") {
+  if (process.argv.length !== 4) {
+    console.error("Usage: node scripts/verify-frontend.mjs --toolkit-script <lint-ui-architecture|token-lint|mock-server>");
+    process.exit(1);
+  }
+  await dispatchToolkitScript(process.argv[3]);
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -131,7 +189,15 @@ for (const file of marketingFiles) {
 // -----------------------------------------------------------------------------
 // GATE 3 & AST Sentinel Integration: Run AST Component Boundary Linter
 // -----------------------------------------------------------------------------
-const astLint = runUiArchitectureLint(rootDir);
+let astLint;
+try {
+  const lintUiArchitecturePath = await resolveToolkitScript("lint-ui-architecture");
+  const { runUiArchitectureLint } = await import(pathToFileURL(lintUiArchitecturePath).href);
+  astLint = runUiArchitectureLint(rootDir);
+} catch (error) {
+  errors.push(`[Gate 3 - Toolkit Configuration] ${error.message}`);
+  astLint = { violations: [] };
+}
 if (astLint.violations && astLint.violations.length > 0) {
   astLint.violations.forEach((v) => {
     errors.push(`[${v.gate} - ${v.type}] ${v.message}`);

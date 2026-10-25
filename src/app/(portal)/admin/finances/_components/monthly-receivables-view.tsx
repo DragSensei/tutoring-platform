@@ -80,7 +80,7 @@ export function MonthlyReceivablesView({ onPreview, onConfirm, attention }: Mont
       <header className="flex min-h-[92px] flex-col justify-start gap-2 border-b border-border-subtle pb-5">
         <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">Admin Console</Badge><span className="text-xs font-semibold text-text-muted">Financial operations</span></div>
         <h1 className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">Student receivables</h1>
-        <p className="text-sm text-text-muted">Preview expected amounts for an explicit billing period, then review before generation.</p>
+        <p className="text-sm text-text-muted">Preview and record expected dues for an explicit period. These records do not track or confirm external payments.</p>
       </header>
       <FinanceNavigation active="Student receivables" />
 
@@ -112,9 +112,9 @@ export function MonthlyReceivablesView({ onPreview, onConfirm, attention }: Mont
           {onConfirm && <button type="button" onClick={confirmGeneration} disabled={!canConfirmPreview(preview) || isPending || confirmed} className="min-h-[44px] rounded-lg bg-brand-primary px-5 py-2 text-sm font-semibold text-brand-subtle disabled:cursor-not-allowed disabled:opacity-50">{confirmed ? 'Receivables generated' : 'Confirm generation'}</button>}
         </div>
         {!onConfirm && <p className="rounded-lg border border-brand-border bg-brand-subtle p-3 text-sm text-text-primary">Generation is unavailable until the receivable mutation is connected.</p>}
-        <ConfirmDialog open={confirming} title="Generate receivables?" description={`Generate receivables for ${preview.periodStart} – ${preview.periodEnd}? This records expected dues and does not record external payment.`} confirmLabel="Generate receivables" cancelLabel="Back" pending={isPending} error={error} onCancel={() => setConfirming(false)} onConfirm={generateReceivables} />
+        <ConfirmDialog open={confirming} title="Generate expected dues?" description={`Record expected dues for ${preview.periodStart} – ${preview.periodEnd}? This does not record or confirm external payment.`} confirmLabel="Record expected dues" cancelLabel="Back" pending={isPending} error={error} onCancel={() => setConfirming(false)} onConfirm={generateReceivables} />
         {preview.rows.some((row) => !row.canGenerate) && <p className="rounded-lg border border-status-warning bg-canvas p-3 text-sm text-text-primary">Blocked Students remain visible with reasons; confirmation creates only ready rows.</p>}
-        {confirmResult && <p role="status" className="rounded-lg border border-border-subtle bg-canvas p-3 text-sm text-text-primary">Created {confirmResult.created}; already existed {confirmResult.alreadyExists}; still blocked {confirmResult.blocked}. No external payment is recorded.</p>}
+        {confirmResult && <p role="status" className="rounded-lg border border-border-subtle bg-canvas p-3 text-sm text-text-primary">Expected dues recorded: {confirmResult.created}; already existed: {confirmResult.alreadyExists}; blocked: {confirmResult.blocked}. No external payment is recorded or confirmed.</p>}
         <div className="grid min-w-0 gap-3">{preview.rows.map((row) => {
           const display = presentMonthlyReceivableRow(row);
           return <article key={row.studentId} className="min-w-0 rounded-xl border border-border-subtle bg-canvas p-4 sm:p-5">

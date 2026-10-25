@@ -53,7 +53,7 @@ export function Dialog({ isOpen, onClose, title, description, children }: Dialog
               </div>
               <button
                 onClick={onClose}
-                className="text-slate-400 hover:text-slate-600 rounded-lg p-1 transition-colors"
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-slate-400 hover:text-slate-600 rounded-lg p-1 transition-colors"
                 aria-label="Close"
               >
                 ✕

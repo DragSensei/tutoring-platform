@@ -1,0 +1,17 @@
+export const HERO_ROBOT_PALETTE = {
+  shellHighlight: '#fff',
+  shellMidtone: '#e9e8e3',
+  shellShadow: '#b3b7bf',
+  sideHighlight: '#c5c8cd',
+  sideShadow: '#747c89',
+  redHighlight: '#fa6666',
+  redMidtone: '#dc2626',
+  redShadow: '#94151d',
+  glassHighlight: '#424d60',
+  glassShadow: '#171f2c',
+  outline: '#20242c',
+  faceGlint: '#ffffff30',
+  shellGlint: '#ffffff70',
+  eye: '#f3f1ed',
+  detail: '#9da3ad',
+} as const;

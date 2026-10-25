@@ -66,9 +66,13 @@ describe('Domain Zod Schemas Validation', () => {
     it('accepts positive amount and student ID', () => {
       const valid = {
         studentId: 'student_123',
-        amount: 500,
+        amount: 500.25,
+        requestKey: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
       };
       expect(adminDepositSchema.safeParse(valid).success).toBe(true);
+      expect(adminDepositSchema.safeParse({ ...valid, amount: 1.0000000001 }).success).toBe(false);
+      expect(adminDepositSchema.safeParse({ ...valid, amount: 1.001 }).success).toBe(false);
+      expect(adminDepositSchema.safeParse({ studentId: valid.studentId, amount: valid.amount }).success).toBe(false);
     });
 
     it('rejects zero or negative deposit amounts', () => {

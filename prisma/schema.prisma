@@ -99,6 +99,7 @@ model User {
   tutored_sessions           Session[]                      @relation("TutorSessions")
   tutored_series             SessionSeries[]                @relation("TutorSeries")
   attendances                AttendanceRecord[]             @relation("StudentAttendances")
+  attendance_evidence_uploads AttendanceEvidence[]           @relation("AttendanceEvidenceUploader")
   session_participants       SessionParticipant[]
   series_participants        SessionSeriesParticipant[]
   setup_tokens               AccountSetupToken[]
@@ -265,6 +266,7 @@ model Session {
   tutor_compensation TutorCompensationLedgerEntry?
   commission_entries CommissionLedgerEntry[]
   attendance_recovery_grants AttendanceRecoveryGrant[]
+  attendance_evidence        AttendanceEvidence?
 
   @@unique([series_slot_id, occurrence_date])
   @@index([tutor_id])
@@ -362,6 +364,22 @@ model AttendanceRecoveryGrant {
   @@index([session_id, used_at, closes_at])
 }
 
+model AttendanceEvidence {
+  id                 String   @id @default(cuid())
+  session_id         String   @unique
+  session            Session  @relation(fields: [session_id], references: [id], onDelete: Restrict)
+  uploaded_by_user_id String
+  uploaded_by        User     @relation("AttendanceEvidenceUploader", fields: [uploaded_by_user_id], references: [id], onDelete: Restrict)
+  storage_key        String   @unique
+  content_type       String
+  size_bytes         Int
+  sha256             String
+  created_at         DateTime @default(now())
+  submitted_at       DateTime?
+
+  @@index([uploaded_by_user_id, created_at])
+}
+
 model AttendanceRecord {
   id          String   @id @default(cuid())
   session_id  String
@@ -385,6 +403,7 @@ model WalletTransaction {
   session            Session?               @relation(fields: [session_id], references: [id], onDelete: SetNull)
   created_by_user_id String?
   created_by         User?                  @relation("AdminCreatedTransactions", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  request_key        String?                @unique
   created_at         DateTime               @default(now())
   commission_entry   CommissionLedgerEntry?
 

@@ -15,6 +15,8 @@ interface SessionEvidenceUploadProps {
   value: LocalEvidenceMetadata | null;
   onChange: (value: LocalEvidenceMetadata | null, file: File | null) => void;
   required?: boolean;
+  uploaded?: boolean;
+  disabled?: boolean;
 }
 
 function formatBytes(bytes: number) {
@@ -22,7 +24,7 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function SessionEvidenceUpload({ value, onChange, required = true }: SessionEvidenceUploadProps) {
+export function SessionEvidenceUpload({ value, onChange, required = true, uploaded = false, disabled = false }: SessionEvidenceUploadProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
   const [isCompressing, setIsCompressing] = React.useState(false);
@@ -73,7 +75,7 @@ export function SessionEvidenceUpload({ value, onChange, required = true }: Sess
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 id="evidence-title" className="text-sm font-semibold text-stone-900">Session screenshot evidence <span className="text-brand-primary">{required ? 'Required' : 'Optional during recovery'}</span></h3>
-          <p className="mt-1 text-xs text-stone-500">PNG, JPEG, or WebP. Compressed in this browser; nothing is uploaded yet.</p>
+          <p className="mt-1 text-xs text-stone-500">PNG, JPEG, or WebP. Compressed in this browser and securely attached when attendance is submitted.</p>
         </div>
         <FileImage className="h-5 w-5 shrink-0 text-stone-400" aria-hidden="true" />
       </div>
@@ -82,6 +84,7 @@ export function SessionEvidenceUpload({ value, onChange, required = true }: Sess
         ref={inputRef}
         type="file"
         accept="image/png,image/jpeg,image/webp"
+        disabled={disabled}
         className="sr-only"
         onChange={(event) => void selectFile(event.target.files?.[0])}
       />
@@ -91,21 +94,21 @@ export function SessionEvidenceUpload({ value, onChange, required = true }: Sess
           {/* eslint-disable-next-line @next/next/no-img-element -- local object URLs are not compatible with the image optimizer. */}
           <img src={previewUrl} alt="Compressed session evidence preview" className="max-h-48 w-full object-contain bg-stone-100" />
           <div className="flex flex-wrap items-center justify-between gap-3 p-3">
-            <p className="min-w-0 text-xs text-stone-600"><span className="font-medium text-stone-900">{value?.name}</span> · {value && formatBytes(value.size)}</p>
-            <Button type="button" variant="ghost" className="min-h-[44px] px-2 text-brand-primary" onClick={clearEvidence}>
+            <p className="min-w-0 text-xs text-stone-600"><span className="font-medium text-stone-900">{value?.name}</span> · {value && formatBytes(value.size)} <span className="text-stone-400">{uploaded ? '(uploaded; attaches on submission)' : '(selected locally)'}</span></p>
+            <Button type="button" variant="ghost" className="min-h-[44px] px-2 text-brand-primary" disabled={disabled} onClick={clearEvidence}>
               <Trash2 className="mr-1 h-4 w-4" /> Remove
             </Button>
           </div>
         </div>
       ) : value ? (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white p-3">
-          <p className="text-xs text-stone-600"><span className="font-medium text-stone-900">{value.name}</span> · {formatBytes(value.size)} <span className="text-stone-400">(selected locally)</span></p>
-          <Button type="button" variant="outline" className="min-h-[44px] px-3" onClick={() => inputRef.current?.click()}>Replace</Button>
+          <p className="text-xs text-stone-600"><span className="font-medium text-stone-900">{value.name}</span> · {formatBytes(value.size)} <span className="text-stone-400">{uploaded ? '(uploaded; attaches on submission)' : '(selected locally)'}</span></p>
+          <Button type="button" variant="outline" className="min-h-[44px] px-3" disabled={disabled} onClick={() => inputRef.current?.click()}>Replace</Button>
         </div>
       ) : (
         <button
           type="button"
-          disabled={isCompressing}
+          disabled={disabled || isCompressing}
           onClick={() => inputRef.current?.click()}
           onDrop={(event) => {
             event.preventDefault();

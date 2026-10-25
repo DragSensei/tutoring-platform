@@ -1,6 +1,25 @@
 import type { Config } from "tailwindcss";
 import projectTheme from "./theme.config";
 
+const token = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
+const neutral = {
+  50: token('background'), 100: token('canvas-subtle'), 200: token('border-subtle'),
+  300: token('border-strong'), 400: token('text-subtle'), 500: token('text-muted'),
+  600: token('text-muted'), 700: token('text-primary'), 800: token('text-primary'),
+  900: token('text-primary'), 950: token('text-primary'),
+};
+const statusFamily = (name: string) => ({
+  50: token(`status-${name}-soft`), 100: token(`status-${name}-soft`),
+  200: `rgb(var(--status-${name}) / <alpha-value>)`, 300: `rgb(var(--status-${name}) / <alpha-value>)`,
+  400: token(`status-${name}`), 500: token(`status-${name}`), 600: token(`status-${name}`),
+  700: token(`status-${name}`), 800: token(`status-${name}`), 900: token(`status-${name}`),
+});
+const statusBackgroundFamily = (name: string) => ({
+  ...statusFamily(name),
+  600: token(`status-${name}-solid`), 700: token(`status-${name}-solid`),
+  800: token(`status-${name}-solid`), 900: token(`status-${name}-solid`),
+});
+
 const config: Config = {
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -14,81 +33,69 @@ const config: Config = {
   theme: {
     extend: {
       spacing: {
-        18: '4.5rem',
+        ...projectTheme.ui.legacyTokens.spacing,
       },
       colors: {
-        brand: projectTheme.brand,
+        brand: {
+          primary: token('brand-primary'), hover: token('brand-hover'),
+          subtle: token('brand-subtle'), border: token('brand-border'),
+        },
+        white: token('surface'),
+        slate: neutral,
+        stone: neutral,
+        emerald: statusFamily('success'),
+        green: statusFamily('success'),
+        amber: statusFamily('warning'),
+        yellow: statusFamily('warning'),
+        red: statusFamily('error'),
+        rose: statusFamily('error'),
+        blue: statusFamily('info'),
+        indigo: statusFamily('info'),
         text: {
-          primary: '#191817',
-          muted: '#6B685B',
-          subtle: '#9E9B8F',
+          primary: token('text-primary'),
+          muted: token('text-muted'),
+          subtle: token('text-subtle'),
         },
         border: {
-          subtle: '#E7E5DE',
-          strong: '#D1CEBD',
+          subtle: token('border-subtle'),
+          strong: token('border-strong'),
         },
         canvas: {
-          DEFAULT: '#FBFBF9',
-          subtle: '#F4F3EE',
-          dark: '#141413',
+          DEFAULT: token('canvas'),
+          subtle: token('canvas-subtle'),
+          dark: token('marketing-background'),
         },
-        background: '#131315',
-        'carbon-base': '#0A0A0C',
-        surface: {
-          DEFAULT: '#131315',
-          dim: '#131315',
-          bright: '#39393b',
-          'container-lowest': '#0e0e10',
-          'container-low': '#1c1b1d',
-          container: '#201f21',
-          'container-high': '#2a2a2c',
-          'container-highest': '#353437',
-          variant: '#353437',
+        background: token('background'),
+        marketing: {
+          background: token('marketing-background'),
+          foreground: token('marketing-foreground'),
         },
-        'on-surface': {
-          DEFAULT: '#e5e1e4',
-          variant: '#e6bdb8',
-        },
-        primary: {
-          DEFAULT: '#ffb4ab',
-          action: '#dc2626',
-          bright: '#ef4444',
-          container: '#dc2626',
-          'on-primary': '#690005',
-          'on-container': '#fff6f5',
-        },
-        secondary: {
-          DEFAULT: '#b9c8de',
-          slate: '#94a3b8',
-          container: '#39485a',
-          'on-secondary': '#233143',
-        },
-        tertiary: {
-          DEFAULT: '#ffb3ad',
-          container: '#d63135',
-        },
-        outline: {
-          DEFAULT: '#ac8884',
-          variant: '#5c403c',
-          silver: '#475569',
-          hairline: '#22242b',
+        ...projectTheme.ui.legacyTokens.colors,
+        status: {
+          success: token('status-success'), warning: token('status-warning'),
+          error: token('status-error'), info: token('status-info'),
         },
       },
-      fontFamily: {
-        sans: ['Geist', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'monospace'],
+      backgroundColor: {
+        slate: { ...neutral, 700: token('neutral-bg-dark'), 800: token('neutral-bg-darker'), 900: token('neutral-bg-darkest'), 950: token('neutral-bg-darkest') },
+        stone: { ...neutral, 700: token('neutral-bg-dark'), 800: token('neutral-bg-darker'), 900: token('neutral-bg-darkest'), 950: token('neutral-bg-darkest') },
+        emerald: statusBackgroundFamily('success'),
+        green: statusBackgroundFamily('success'),
+        amber: statusBackgroundFamily('warning'),
+        yellow: statusBackgroundFamily('warning'),
+        red: statusBackgroundFamily('error'),
+        rose: statusBackgroundFamily('error'),
+        blue: statusBackgroundFamily('info'),
+        indigo: statusBackgroundFamily('info'),
       },
-      borderRadius: {
-        sm: '0.125rem', // 2px
-        DEFAULT: '0.25rem', // 4px
-        md: '0.375rem', // 6px
-        lg: '0.5rem', // 8px
-        xl: '0.75rem', // 12px
-      },
+      textColor: { white: projectTheme.ui.legacyTokens.whiteForeground, brand: { primary: token('brand-link'), subtle: projectTheme.ui.legacyTokens.colors.primary['on-container'] } },
+      ringWidth: { 2: 'var(--focus-ring-width)' },
+      fontFamily: { sans: [...projectTheme.ui.typography.sans], mono: [...projectTheme.ui.typography.mono] },
+      borderRadius: projectTheme.ui.radii,
       boxShadow: {
-        'crimson-glow': '0 0 24px -4px rgba(220, 38, 38, 0.35)',
-        'crimson-rim': '0 0 16px rgba(220, 38, 38, 0.4)',
-        'metallic-frame': '0 0 0 1px rgba(148, 163, 184, 0.22)',
+        ...projectTheme.ui.legacyTokens.shadows,
+        sm: projectTheme.ui.components.cardShadow,
+        card: projectTheme.ui.components.cardShadow,
       },
     },
   },

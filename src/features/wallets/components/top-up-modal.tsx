@@ -20,6 +20,7 @@ export function TopUpModal({ isOpen, onClose, student, onSuccess }: TopUpModalPr
   const [amount, setAmount] = React.useState<string>('500');
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const requestRef = React.useRef<{ details: string; key: string } | null>(null);
 
   if (!student) return null;
 
@@ -27,11 +28,14 @@ export function TopUpModal({ isOpen, onClose, student, onSuccess }: TopUpModalPr
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const numAmount = parseFloat(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
+    const numAmount = Number(amount);
+    if (!Number.isFinite(numAmount) || numAmount <= 0 || !/^\d+(?:\.\d{1,2})?$/.test(numAmount.toString()) || numAmount > 99999999.99) {
       setError('Please enter a valid positive deposit amount');
       return;
     }
+
+    const details = JSON.stringify([student.id, numAmount]);
+    if (requestRef.current?.details !== details) requestRef.current = { details, key: crypto.randomUUID() };
 
     setLoading(true);
     setError(null);
@@ -43,6 +47,7 @@ export function TopUpModal({ isOpen, onClose, student, onSuccess }: TopUpModalPr
         body: JSON.stringify({
           studentId: student.id,
           amount: numAmount,
+          requestKey: requestRef.current.key,
         }),
       });
 
@@ -54,6 +59,7 @@ export function TopUpModal({ isOpen, onClose, student, onSuccess }: TopUpModalPr
       }
 
       setLoading(false);
+      requestRef.current = null;
       onClose();
       if (onSuccess) onSuccess();
     } catch {
@@ -85,7 +91,7 @@ export function TopUpModal({ isOpen, onClose, student, onSuccess }: TopUpModalPr
             min="1"
             step="0.01"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => { requestRef.current = null; setAmount(e.target.value); }}
             required
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-lg font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             placeholder="500.00"
@@ -102,7 +108,7 @@ export function TopUpModal({ isOpen, onClose, student, onSuccess }: TopUpModalPr
                 key={val}
                 type="button"
                 onClick={() => setAmount(val.toString())}
-                className="px-2.5 py-1 text-xs font-medium rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+                className="min-h-[44px] px-3 text-sm font-medium rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
               >
                 +{val} EGP
               </button>
@@ -111,10 +117,10 @@ export function TopUpModal({ isOpen, onClose, student, onSuccess }: TopUpModalPr
         </div>
 
         <div className="flex justify-end gap-2 pt-4">
-          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+          <Button type="button" variant="outline" onClick={onClose} disabled={loading} className="min-h-[44px]">
             Cancel
           </Button>
-          <Button type="submit" variant="primary" isLoading={loading}>
+          <Button type="submit" variant="primary" isLoading={loading} className="min-h-[44px]">
             Confirm Deposit
           </Button>
         </div>

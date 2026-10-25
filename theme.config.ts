@@ -1,33 +1,162 @@
 /**
- * Project-Specific Theme & Domain Configuration: Big Hero Robotics Tutoring Platform
- * 
- * Extracted from shared vault to guarantee clean isolation between generic templates
- * and client-specific branding, currency, and domain configurations.
+ * Project-specific brand, domain, and global UI configuration.
+ * Tailwind aliases and the server-rendered CSS variables below consume this
+ * single source so changing the mode never depends on client storage.
  */
-
 export const projectTheme = {
-  // Client Brand Palette (Big Hero Robotics Academy)
   brand: {
-    primary: '#DC2626',   // Crimson Red
-    hover: '#B91C1C',     // Deep Crimson
-    subtle: '#FEF2F2',    // Soft Rose 50
-    border: '#FECACA',    // Soft Rose 200
+    primary: '#DC2626',
+    hover: '#B91C1C',
+    subtle: '#FEF2F2',
+    border: '#FECACA',
   },
-
-  // Localization & Currency
+  ui: {
+    defaultMode: 'light' as 'light' | 'dark',
+    typography: {
+      sans: ['Geist', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+      mono: ['"JetBrains Mono"', 'monospace'],
+    },
+    radii: {
+      sm: '0.125rem',
+      DEFAULT: '0.25rem',
+      md: '0.375rem',
+      lg: '0.5rem',
+      xl: '0.75rem',
+      '2xl': '1rem',
+      full: '9999px',
+    },
+    components: {
+      controlMinHeight: '2.75rem',
+      focusRing: '2px',
+      cardShadow: '0 1px 2px rgb(15 23 42 / 0.08), 0 1px 1px rgb(15 23 42 / 0.04)',
+    },
+    legacyTokens: {
+      spacing: { 18: '4.5rem' },
+      whiteForeground: '#fff',
+      colors: {
+        'carbon-base': '#0A0A0C',
+        primary: { DEFAULT: '#ffb4ab', action: '#dc2626', bright: '#ef4444', container: '#dc2626', 'on-primary': '#690005', 'on-container': '#fff6f5' },
+        secondary: { DEFAULT: '#b9c8de', slate: '#94a3b8', container: '#39485a', 'on-secondary': '#233143' },
+        tertiary: { DEFAULT: '#ffb3ad', container: '#d63135' },
+        outline: { DEFAULT: '#ac8884', variant: '#5c403c', silver: '#475569', hairline: '#22242b' },
+        surface: { DEFAULT: '#131315', dim: '#131315', bright: '#39393b', 'container-lowest': '#0e0e10', 'container-low': '#1c1b1d', container: '#201f21', 'container-high': '#2a2a2c', 'container-highest': '#353437', variant: '#353437' },
+        'on-surface': { DEFAULT: '#e5e1e4', variant: '#e6bdb8' },
+      },
+      shadows: {
+        'crimson-glow': '0 0 24px -4px rgba(220, 38, 38, 0.35)',
+        'crimson-rim': '0 0 16px rgba(220, 38, 38, 0.4)',
+        'metallic-frame': '0 0 0 1px rgba(148, 163, 184, 0.22)',
+      },
+    },
+    palettes: {
+      light: {
+        background: '251 251 249',
+        foreground: '25 24 23',
+        canvas: '251 251 249',
+        'canvas-subtle': '244 243 238',
+        surface: '255 255 255',
+        'surface-dim': '244 243 238',
+        'surface-bright': '255 255 255',
+        'surface-container-lowest': '255 255 255',
+        'surface-container-low': '251 251 249',
+        'surface-container': '244 243 238',
+        'surface-container-high': '231 229 222',
+        'surface-container-highest': '209 206 189',
+        'text-primary': '25 24 23',
+        'text-muted': '107 104 91',
+        'text-subtle': '107 104 91',
+        'border-subtle': '231 229 222',
+        'border-strong': '209 206 189',
+        'on-surface': '25 24 23',
+        'on-surface-variant': '107 104 91',
+        'status-success': '4 120 87',
+        'status-success-solid': '4 120 87',
+        'status-warning': '146 64 14',
+        'status-warning-solid': '180 83 9',
+        'status-error': '185 28 28',
+        'status-error-solid': '220 38 38',
+        'status-info': '29 78 216',
+        'status-info-solid': '29 78 216',
+        'brand-primary': '220 38 38',
+        'brand-link': '185 28 28',
+        'brand-hover': '185 28 28',
+        'brand-subtle': '254 242 242',
+        'brand-border': '254 202 202',
+        'marketing-background': '20 20 19',
+        'marketing-foreground': '229 225 228',
+        'neutral-bg-dark': '51 65 85',
+        'neutral-bg-darker': '30 41 59',
+        'neutral-bg-darkest': '15 23 42',
+        'status-success-soft': '220 252 231',
+        'status-warning-soft': '254 243 199',
+        'status-error-soft': '254 226 226',
+        'status-info-soft': '219 234 254',
+      },
+      dark: {
+        background: '10 10 12',
+        foreground: '229 225 228',
+        canvas: '19 19 21',
+        'canvas-subtle': '28 27 29',
+        surface: '19 19 21',
+        'surface-dim': '14 14 16',
+        'surface-bright': '57 57 59',
+        'surface-container-lowest': '14 14 16',
+        'surface-container-low': '28 27 29',
+        'surface-container': '32 31 33',
+        'surface-container-high': '42 42 44',
+        'surface-container-highest': '53 52 55',
+        'text-primary': '229 225 228',
+        'text-muted': '184 181 188',
+        'text-subtle': '153 149 157',
+        'border-subtle': '58 57 62',
+        'border-strong': '80 78 85',
+        'on-surface': '229 225 228',
+        'on-surface-variant': '198 190 196',
+        'status-success': '74 222 128',
+        'status-success-solid': '21 128 61',
+        'status-warning': '251 191 36',
+        'status-warning-solid': '180 83 9',
+        'status-error': '252 129 129',
+        'status-error-solid': '185 28 28',
+        'status-info': '125 180 255',
+        'status-info-solid': '29 78 216',
+        'brand-primary': '220 38 38',
+        'brand-link': '252 165 165',
+        'brand-hover': '185 28 28',
+        'brand-subtle': '10 10 12',
+        'brand-border': '147 0 9',
+        'marketing-background': '20 20 19',
+        'marketing-foreground': '229 225 228',
+        'neutral-bg-dark': '42 42 44',
+        'neutral-bg-darker': '28 27 29',
+        'neutral-bg-darkest': '14 14 16',
+        'status-success-soft': '17 51 31',
+        'status-warning-soft': '61 44 9',
+        'status-error-soft': '69 18 20',
+        'status-info-soft': '15 38 66',
+      },
+    },
+  },
   locale: 'ar-EG',
-  currency: {
-    code: 'EGP',
-    symbol: 'EGP',
-    name: 'Egyptian Pound',
-  },
-
-  // Domain & Business Policy Configuration
+  currency: { code: 'EGP', symbol: 'EGP', name: 'Egyptian Pound' },
   domain: {
     clientName: 'Big Hero Robotics Academy',
     scheduleTerm: 'Gadwal',
     attendanceDeadlineHours: 4,
   },
-};
+} as const;
+
+export type ThemeMode = keyof typeof projectTheme.ui.palettes;
+
+export function themeCssVariables(mode: ThemeMode = projectTheme.ui.defaultMode) {
+  return Object.fromEntries(
+    [
+      ...Object.entries(projectTheme.ui.palettes[mode]).map(([name, value]) => [`--${name}`, value]),
+      ['--control-min-height', projectTheme.ui.components.controlMinHeight],
+      ['--focus-ring-width', projectTheme.ui.components.focusRing],
+      ['--card-shadow', projectTheme.ui.components.cardShadow],
+    ],
+  ) as Record<string, string>;
+}
 
 export default projectTheme;
